@@ -1,2 +1,3 @@
 *.root
 *.pkl
+.DS_Store
