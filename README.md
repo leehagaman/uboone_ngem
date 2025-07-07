@@ -1,1 +1,1 @@
-# next_gen_photon_epem
+# MicroBooNE Next-Gen Electromagnetic Shower Search (NGEM)
