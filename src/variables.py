@@ -7,6 +7,7 @@ wc_T_bdt_vars = [              # variables involved with BDT training (if you wa
     "nc_delta_score",               # BDT score for NC Delta selection
     "nc_pio_score",                 # BDT score for NC pi0 selection
     "numu_cc_flag",                 # flag, -1 means not generic selected, 0 means generic selected, 1 means cut-based numuCC selected. We often use "numu_cc_flag >= 0" to apply generic neutrino selection.
+    "shw_sp_n_20mev_showers",       # number of reco 20 MeV showers
 ]
 
 wc_T_eval_vars = [             # variables involved with low level reconstruction and truth information

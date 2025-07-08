@@ -1,0 +1,27 @@
+
+physics signal categories:
+
+NCDeltaRad_1gNp: 153.25 (16)
+NCDeltaRad_1g0p: 47.89 (5)
+NC1pi0_Np: 8023.47 (18224)
+NC1pi0_0p: 4769.08 (11053)
+numuCC1pi0_Np: 20245.82 (2108)
+numuCC1pi0_0p: 3709.38 (387)
+pi0_outFV: 7485.34 (781)
+other: 115231.99 (10825)
+
+
+reconstructable signal categories:
+
+1gNp: 945.25 (1551)
+1g0p: 474.06 (854)
+1gNp1mu: 2702.41 (281)
+1g0p1mu: 517.22 (54)
+1g_outFV: 3382.79 (354)
+2gNp: 7702.81 (16275)
+2g0p: 4727.30 (9968)
+2gNp1mu: 19821.87 (2058)
+2g0p1mu: 3957.01 (413)
+2g_outFV: 2169.30 (226)
+other: 113266.21 (11365)
+

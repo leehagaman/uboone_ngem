@@ -20,6 +20,14 @@ print("loading dataframe...")
 with open(f"{PROJECT_ROOT}/intermediate_files/all_df.pkl", "rb") as f:
     all_df = pickle.load(f)
 
+# Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
+original_num_events = all_df.shape[0]
+all_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0")
+preselected_num_events = all_df.shape[0]
+print(f"Preselected {preselected_num_events} / {original_num_events} events")
+
+#%%
+
 #%%
 
 x = all_df[wc_training_vars].to_numpy()
@@ -35,20 +43,28 @@ physics_signal_category_mapping = {
     "pi0_outFV": 6,
     "other": 7,
 }
+print("physics signal categories:")
+for k, v in physics_signal_category_mapping.items():
+    curr_df = all_df.query(f"physics_signal_category == '{k}'")
+    print(f"{k}: {curr_df['wc_net_weight'].sum():.2f} ({curr_df.shape[0]})")
 
 reconstructable_signal_category_mapping = {
     "1gNp": 0,
     "1g0p": 1,
     "1gNp1mu": 2,
     "1g0p1mu": 3,
-    "2gNp": 4,
-    "2g0p": 5,
-    "2gNp1mu": 6,
-    "2g0p1mu": 7,
-    "1g_outFV": 8,
+    "1g_outFV": 4,
+    "2gNp": 5,
+    "2g0p": 6,
+    "2gNp1mu": 7,
+    "2g0p1mu": 8,
     "2g_outFV": 9,
     "other": 10,
 }
+print("reconstructable signal categories:")
+for k, v in reconstructable_signal_category_mapping.items():
+    curr_df = all_df.query(f"reconstructable_signal_category == '{k}'")
+    print(f"{k}: {curr_df['wc_net_weight'].sum():.2f} ({curr_df.shape[0]})")
 
 y = all_df["reconstructable_signal_category"].map(reconstructable_signal_category_mapping).to_numpy()
 
