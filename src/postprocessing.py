@@ -5,19 +5,27 @@ from tqdm import tqdm
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21):
 
+    original_length = df.shape[0]
+
     summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
 
-    # deleting out-FV or otherwise weird events from the NC Pi0 overlay
-    nc_pi0_overlay_true_nc_1pi0_df = df.query("filetype == 'nc_pi0_overlay' and wc_truth_isCC==0 and wc_truth_NprimPio==1 and wc_truth_vtxInside == 1")
-    nu_overlay_true_nc_1pi0_df = df.query("filetype == 'nu_overlay' and wc_truth_isCC==0 and wc_truth_NprimPio==1 and wc_truth_vtxInside == 1")
-    nu_overlay_other_df = df.query("filetype == 'nu_overlay' and not (wc_truth_isCC==0 and wc_truth_NprimPio==1 and wc_truth_vtxInside == 1)")
-    dirt_df = df.query("filetype == 'dirt_overlay'")
+    # Get masks for different event types
+    nc_pi0_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nc_pi0_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
+    nu_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nu_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
+    nu_overlay_other_mask = (df["filetype"] == 'nu_overlay') & ~((df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1))
+    dirt_mask = df["filetype"] == 'dirt_overlay'
 
     # setting the POTs in order to combine the NC Pi0 overlay and nu overlay files without throwing away MC statistics
-    nc_pi0_overlay_true_nc_1pi0_df["wc_file_POT"] = summed_POT_nc_1pi0
-    nu_overlay_true_nc_1pi0_df["wc_file_POT"] = summed_POT_nc_1pi0
+    df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
+    df.loc[nu_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
 
-    df = pd.concat([nc_pi0_overlay_true_nc_1pi0_df, nu_overlay_true_nc_1pi0_df, nu_overlay_other_df, dirt_df])
+
+    # Filter out unwanted events by keeping only the events we want
+    combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask
+    
+    # Use boolean indexing instead of drop for more reliable filtering
+    df = df[combined_mask].copy()
+    df.reset_index(drop=True, inplace=True)
 
     weight_cv_arr = df["wc_weight_cv"].to_numpy()
     weight_spline_arr = df["wc_weight_spline"].to_numpy()
@@ -29,7 +37,14 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
         if weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp): # something went wrong with the saved GENIE weights, set it to one
             weight_temp = 1.
         net_weights.append(weight_temp * normalizing_POT / file_POT)
+
     df["wc_net_weight"] = net_weights
+
+    final_length = df.shape[0]
+
+    print(f"When combining different file types, went from {original_length} to {final_length} events")
+
+    return df
 
 
 def do_wc_postprocessing(df):
@@ -174,6 +189,8 @@ def do_wc_postprocessing(df):
     df["wc_reco_distance_to_boundary"] = distances_to_boundary
     df["wc_reco_backwards_projected_dist"] = backwards_projected_dists
 
+    return df
+
 
 def do_blip_postprocessing(df):
 
@@ -261,3 +278,246 @@ def do_blip_postprocessing(df):
     df["other_blip_y"] = other_blips_y
     df["other_blip_z"] = other_blips_z
     df["other_blip_energy"] = other_blips_energy
+
+    return df
+
+def add_extra_true_photon_variables(df):
+
+    true_num_gamma = []
+    true_gamma_energies = []
+    true_gamma_pairconversion_xs = []
+    true_gamma_pairconversion_ys = []
+    true_gamma_pairconversion_zs = []
+    true_num_gamma_pairconvert = []
+    true_num_gamma_pairconvert_in_FV = []
+    true_num_gamma_pairconvert_in_FV_20_MeV = []
+
+    truth_pdg_arr = df["wc_truth_pdg"].to_numpy()
+    truth_id_arr = df["wc_truth_id"].to_numpy()
+    truth_mother_arr = df["wc_truth_mother"].to_numpy()
+    truth_startMomentum_arr = df["wc_truth_startMomentum"].to_numpy()
+    truth_startXYZT_arr = df["wc_truth_startXYZT"].to_numpy()
+
+    num_infinite_loops_broken = 0
+
+    for event_i in tqdm(range(df.shape[0]), desc="Adding true photon variables"):
+
+        if isinstance(truth_id_arr[event_i], float) and np.isnan(truth_id_arr[event_i]):
+            true_num_gamma.append(np.nan)
+            true_gamma_energies.append(np.nan)
+            true_gamma_pairconversion_xs.append(np.nan)
+            true_gamma_pairconversion_ys.append(np.nan)
+            true_gamma_pairconversion_zs.append(np.nan)
+            true_num_gamma_pairconvert.append(np.nan)
+            true_num_gamma_pairconvert_in_FV.append(np.nan)
+            true_num_gamma_pairconvert_in_FV_20_MeV.append(np.nan)
+            continue
+
+        num_particles = len(truth_id_arr[event_i])
+        
+        curr_true_num_gamma = 0
+        curr_true_gamma_energies = []
+        curr_true_gamma_pairconversion_xs = []
+        curr_true_gamma_pairconversion_ys = []
+        curr_true_gamma_pairconversion_zs = []
+        curr_true_num_gamma_pairconvert = 0
+        curr_true_num_gamma_pairconvert_in_FV = 0
+        curr_true_num_gamma_pairconvert_in_FV_20_MeV = 0
+
+        pi0_ids = []
+        for i in range(num_particles):
+            if truth_pdg_arr[event_i][i] == 111:
+                pi0_ids.append(truth_id_arr[event_i][i])
+
+        primary_or_pi0_gamma_ids = []
+        for i in range(num_particles):
+            if truth_mother_arr[event_i][i] in pi0_ids or truth_mother_arr[event_i][i] == 0: # this is a daughter of a pi0 or a primary particle
+                if truth_pdg_arr[event_i][i] == 22: # this is a photon from a pi0 or a primary photon (most likely from an eta or Delta radiative)
+
+                    curr_true_num_gamma += 1
+                    curr_true_gamma_energies.append(truth_startMomentum_arr[event_i][i][3])
+                    primary_or_pi0_gamma_ids.append(truth_id_arr[event_i][i])
+
+        # looking for the first point where the photon transfers more than half its energy to daughter charged particles
+        # should be 100% for pair production, but compton scatters can also effectively cause the start of a shower
+        # daughter particles could disappear from the geant tree even if it pair converts, that type of photon won't be included here
+
+        # Create a mapping from photon ID to its position in the energy list
+        photon_id_to_position = {photon_id: pos for pos, photon_id in enumerate(primary_or_pi0_gamma_ids)}
+        
+        # Initialize conversion point lists with None values
+        curr_true_gamma_pairconversion_xs = [None] * len(primary_or_pi0_gamma_ids)
+        curr_true_gamma_pairconversion_ys = [None] * len(primary_or_pi0_gamma_ids)
+        curr_true_gamma_pairconversion_zs = [None] * len(primary_or_pi0_gamma_ids)
+        
+        # looking for pair conversion points, allowing for the possibility of Compton scattering
+        for i in range(num_particles):
+            if truth_id_arr[event_i][i] in primary_or_pi0_gamma_ids: # pi0/primary -> gamma, this won't include the manually deleted photon
+
+                original_gamma_energy = truth_startMomentum_arr[event_i][i][3]
+                cumulative_deposited_energy = 0
+
+                visited_ids = set()
+                iteration_count = 0
+                
+                while True:
+                    curr_id = truth_id_arr[event_i][i]
+                    
+                    if curr_id in visited_ids:
+                        num_infinite_loops_broken += 1
+                        break
+
+                    visited_ids.add(curr_id)
+                    iteration_count += 1
+                    
+                    descendants_ids = []
+                    descendants_indices = []
+                    descendants_pdgs = []
+                    for j in range(num_particles):
+                        if truth_mother_arr[event_i][j] == curr_id: # pi0/primary -> gamma -> this particle
+                            descendants_ids.append(truth_id_arr[event_i][j])
+                            descendants_indices.append(j)
+                            descendants_pdgs.append(truth_pdg_arr[event_i][j])
+
+                    for descendant_i in range(len(descendants_indices)):
+                        if abs(descendants_pdgs[descendant_i]) == 11: # electron/positron daughter
+                            cumulative_deposited_energy += truth_startMomentum_arr[event_i][descendants_indices[descendant_i]][3]
+
+                    if cumulative_deposited_energy > original_gamma_energy / 2: # it has deposited enough energy to effectively count as a pair conversion
+                        break
+
+                    if 22 in descendants_pdgs: # found a compton scatter, hasn't deposited enough energy yet, loop to consider that next photon
+                        curr_id = descendants_ids[descendants_pdgs.index(22)]
+                        #print("doing a compton scatter")
+                    else: # no compton scatter, we're done, it's either a pair conversion or photoelectric absorption or a Geant tree deletion
+                        break
+
+                if cumulative_deposited_energy < original_gamma_energy / 2: # weird event, didn't deposit enough energy to count as a pair conversion
+                    #print(f"weird event, no daughter photon, but also deposited less than half the energy: {cumulative_deposited_energy} / {original_gamma_energy}")
+                    pass
+                else:
+                    # Store conversion point in the correct position based on photon ID
+                    photon_id = truth_id_arr[event_i][i]
+                    position = photon_id_to_position[photon_id]
+                    
+                    curr_true_gamma_pairconversion_xs[position] = truth_startXYZT_arr[event_i][descendants_indices[0]][0]
+                    curr_true_gamma_pairconversion_ys[position] = truth_startXYZT_arr[event_i][descendants_indices[0]][1]
+                    curr_true_gamma_pairconversion_zs[position] = truth_startXYZT_arr[event_i][descendants_indices[0]][2]
+                    curr_true_num_gamma_pairconvert += 1
+
+                    if -1 < curr_true_gamma_pairconversion_xs[position] <= 254.3 and -115.0 < curr_true_gamma_pairconversion_ys[position] <= 117.0 and 0.6 < curr_true_gamma_pairconversion_zs[position] <= 1036.4:
+                        curr_true_num_gamma_pairconvert_in_FV += 1
+
+                        if original_gamma_energy > 0.02:
+                            curr_true_num_gamma_pairconvert_in_FV_20_MeV += 1
+
+        # Filter out None values from conversion point lists
+        curr_true_gamma_pairconversion_xs = [x for x in curr_true_gamma_pairconversion_xs if x is not None]
+        curr_true_gamma_pairconversion_ys = [y for y in curr_true_gamma_pairconversion_ys if y is not None]
+        curr_true_gamma_pairconversion_zs = [z for z in curr_true_gamma_pairconversion_zs if z is not None]
+        
+        true_num_gamma.append(curr_true_num_gamma)
+        true_gamma_energies.append(curr_true_gamma_energies)
+        true_gamma_pairconversion_xs.append(curr_true_gamma_pairconversion_xs)
+        true_gamma_pairconversion_ys.append(curr_true_gamma_pairconversion_ys)
+        true_gamma_pairconversion_zs.append(curr_true_gamma_pairconversion_zs)
+        true_num_gamma_pairconvert.append(curr_true_num_gamma_pairconvert)
+        true_num_gamma_pairconvert_in_FV.append(curr_true_num_gamma_pairconvert_in_FV)
+        true_num_gamma_pairconvert_in_FV_20_MeV.append(curr_true_num_gamma_pairconvert_in_FV_20_MeV)
+
+    if num_infinite_loops_broken > 0:
+        print(f"Broke infinite loops in the true gamma daughter search {num_infinite_loops_broken} / {df.shape[0]} times")
+
+    df["true_num_gamma"] = true_num_gamma
+    df["true_gamma_energies"] = true_gamma_energies
+    df["true_gamma_pairconversion_xs"] = true_gamma_pairconversion_xs
+    df["true_gamma_pairconversion_ys"] = true_gamma_pairconversion_ys
+    df["true_gamma_pairconversion_zs"] = true_gamma_pairconversion_zs
+    df["true_num_gamma_pairconvert"] = true_num_gamma_pairconvert
+    df["true_num_gamma_pairconvert_in_FV"] = true_num_gamma_pairconvert_in_FV
+    df["true_num_gamma_pairconvert_in_FV_20_MeV"] = true_num_gamma_pairconvert_in_FV_20_MeV
+    df["true_one_pairconvert_in_FV_20_MeV"] = true_num_gamma_pairconvert_in_FV_20_MeV == 1
+
+    return df
+
+
+def add_signal_categories(all_df):
+
+    truth_inFV_arr = all_df["wc_truth_vtxInside"].to_numpy()
+
+    true_num_gamma_pairconvert_in_FV = all_df["true_num_gamma_pairconvert_in_FV"].to_numpy()
+    truth_1g_arr = true_num_gamma_pairconvert_in_FV == 1
+    truth_2g_arr = true_num_gamma_pairconvert_in_FV == 2
+
+    wc_true_max_prim_proton_energy_arr = all_df["wc_true_max_prim_proton_energy"].to_numpy()
+    truth_Np_arr = wc_true_max_prim_proton_energy_arr >= 35
+    truth_0p_arr = wc_true_max_prim_proton_energy_arr < 35
+
+    truth_isCC_arr = all_df["wc_truth_isCC"].to_numpy().astype(bool)
+    truth_nuPdg_arr = all_df["wc_truth_nuPdg"].to_numpy()
+    truth_1mu_arr = truth_isCC_arr & (np.abs(truth_nuPdg_arr) == 14)
+    truth_0mu_arr = ~truth_1mu_arr
+
+    truth_NCDelta_arr = all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
+    truth_NprimPio_arr = all_df["wc_truth_NprimPio"].to_numpy()
+
+    conditions = [
+        (truth_inFV_arr == 1) & truth_1g_arr & truth_Np_arr & truth_0mu_arr,
+        (truth_inFV_arr == 1) & truth_1g_arr & truth_0p_arr & truth_0mu_arr,
+        (truth_inFV_arr == 1) & truth_1g_arr & truth_Np_arr & truth_1mu_arr,
+        (truth_inFV_arr == 1) & truth_1g_arr & truth_0p_arr & truth_1mu_arr,
+        (truth_inFV_arr == 1) & truth_2g_arr & truth_Np_arr & truth_0mu_arr,
+        (truth_inFV_arr == 1) & truth_2g_arr & truth_0p_arr & truth_0mu_arr,
+        (truth_inFV_arr == 1) & truth_2g_arr & truth_Np_arr & truth_1mu_arr,
+        (truth_inFV_arr == 1) & truth_2g_arr & truth_0p_arr & truth_1mu_arr,
+        (truth_inFV_arr == 0) & truth_1g_arr,
+        (truth_inFV_arr == 0) & truth_2g_arr,
+    ]
+    labels = [
+        "1gNp",
+        "1g0p",
+        "1gNp1mu",
+        "1g0p1mu",
+        "2gNp",
+        "2g0p",
+        "2gNp1mu",
+        "2g0p1mu",
+        "1g_outFV",
+        "2g_outFV",
+    ]
+    all_df['reconstructable_signal_category'] = np.select(conditions, labels, default="other")
+
+    conditions = [
+        (truth_inFV_arr == 1) & truth_NCDelta_arr & (truth_NprimPio_arr == 0) & truth_Np_arr,
+        (truth_inFV_arr == 1) & truth_NCDelta_arr & (truth_NprimPio_arr == 0) & truth_0p_arr,
+        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_Np_arr & truth_0mu_arr,
+        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_0p_arr & truth_0mu_arr,
+        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_Np_arr & truth_1mu_arr,
+        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_0p_arr & truth_1mu_arr,
+        (truth_inFV_arr == 0) & (truth_NprimPio_arr > 0),
+    ]
+    labels = [
+        "NCDeltaRad_1gNp",
+        "NCDeltaRad_1g0p",
+        "NC1pi0_Np",
+        "NC1pi0_0p",
+        "numuCC1pi0_Np",
+        "numuCC1pi0_0p",
+        "pi0_outFV",
+    ]
+    all_df['physics_signal_category'] = np.select(conditions, labels, default="other")
+
+    print("\nreconstructable signal categories:")
+    for reconstructable_signal_category in all_df['reconstructable_signal_category'].unique():
+        curr_df = all_df[all_df['reconstructable_signal_category'] == reconstructable_signal_category]
+        unweighted_num = curr_df.shape[0]
+        weighted_num = curr_df['wc_net_weight'].sum()
+        print(f"{reconstructable_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+    print("\nphysics signal categories:")
+    for physics_signal_category in all_df['physics_signal_category'].unique():
+        curr_df = all_df[all_df['physics_signal_category'] == physics_signal_category]
+        unweighted_num = curr_df.shape[0]
+        weighted_num = curr_df['wc_net_weight'].sum()
+        print(f"{physics_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+
+    return all_df
