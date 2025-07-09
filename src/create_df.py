@@ -7,7 +7,7 @@ import pickle
 import os
 
 from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars
-from variables import wc_T_eval_vars, wc_T_pf_vars
+from variables import wc_T_bdt_vars, wc_T_kine_vars, wc_T_eval_vars, wc_T_pf_vars
 from variables import blip_vars, pelee_vars
 from postprocessing import do_orthogonalization_and_POT_weighting, do_wc_postprocessing, do_blip_postprocessing
 from postprocessing import add_extra_true_photon_variables, add_signal_categories
@@ -62,6 +62,9 @@ def process_root_file(file_category):
 
     all_df = pd.concat([wc_df, blip_df, pelee_df], axis=1)
 
+    # remove some of these prefixes, for things that should be universal
+    all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
+
     all_df["filetype"] = filetype
 
     print(f"loaded {filetype}, {all_df.shape[0]} events, {file_POT:.2e} POT")
@@ -95,5 +98,18 @@ if __name__ == "__main__":
     with open("intermediate_files/all_df.pkl", "wb") as f:
         pickle.dump(all_df, f)
 
+    # restrict to fewer columns
+    # Add prefixes to match the actual column names in the DataFrame
+    non_training_columns = ["run", "subrun", "event", "filetype", "wc_net_weight", "reconstructable_signal_category", "physics_signal_category"]
+    non_training_columns += ["wc_" + var for var in wc_T_bdt_vars + wc_T_kine_vars + wc_T_eval_vars + wc_T_pf_vars if var not in ["run", "subrun", "event"]]
+    non_training_columns += [var for var in blip_vars]
+    non_training_columns += ["pelee_" + var for var in pelee_vars]
+    
+    all_df_no_training_vars = all_df[non_training_columns]
+
+    with open("intermediate_files/all_df_no_training_vars.pkl", "wb") as f:
+        pickle.dump(all_df_no_training_vars, f)
+
     print(f"saved intermediate_files/all_df.pkl, {os.path.getsize('intermediate_files/all_df.pkl') / 1024**3:.2f} GB")
+    print(f"saved intermediate_files/all_df_no_training_vars.pkl, {os.path.getsize('intermediate_files/all_df_no_training_vars.pkl') / 1024**3:.2f} GB")
     
