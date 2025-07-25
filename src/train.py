@@ -41,65 +41,68 @@ if __name__ == "__main__":
 
     print("loading dataframe...")
 
-    with open(f"{PROJECT_ROOT}/intermediate_files/all_df.pkl", "rb") as f:
+    with open(f"{PROJECT_ROOT}/intermediate_files/generic_df_train_vars.pkl", "rb") as f:
         all_df = pickle.load(f)
 
     train_indices, test_indices = train_test_split(np.arange(len(all_df)), test_size=0.5, random_state=42)
     all_df["used_for_training"] = False
+    all_df["used_for_testing"] = False
     all_df.loc[train_indices, "used_for_training"] = True
+    all_df.loc[test_indices, "used_for_testing"] = True
 
     # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
     original_num_events = all_df.shape[0]
-    presel_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0")
+    presel_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0") # the generic selection wc_kine_reco_Enu > 0 was already applied
     preselected_num_events = presel_df.shape[0]
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 
     x = presel_df[wc_training_vars].to_numpy()
     w = presel_df["wc_net_weight"].to_numpy()
 
-    physics_signal_category_mapping = {
-        "NCDeltaRad_1gNp": 0,
-        "NCDeltaRad_1g0p": 1,
-        "NC1pi0_Np": 2,
-        "NC1pi0_0p": 3,
-        "numuCC1pi0_Np": 4,
-        "numuCC1pi0_0p": 5,
-        "pi0_outFV": 6,
-        "other": 7,
-    }
-
-    reconstructable_signal_category_mapping = {
+    topological_signal_category_mapping = {
         "1gNp": 0,
         "1g0p": 1,
         "1gNp1mu": 2,
         "1g0p1mu": 3,
-        "1g_outFV": 4,
-        "2gNp": 5,
-        "2g0p": 6,
-        "2gNp1mu": 7,
-        "2g0p1mu": 8,
+        "2gNp": 4,
+        "2g0p": 5,
+        "2gNp1mu": 6,
+        "2g0p1mu": 7,
+        "1g_outFV": 8,
         "2g_outFV": 9,
-        "other": 10,
+        "0g": 10,
+        "3plusg": 11,
+        "dirt": 12,
+        "ext": 13,
     }
 
+    num_categories = len(topological_signal_category_mapping)
+    print(f"{num_categories=}")
+
     presel_train_df = presel_df.query("used_for_training == True")
-    presel_test_df = presel_df.query("used_for_training == False")
+    presel_test_df = presel_df.query("used_for_testing == True")
 
     x_train = presel_train_df[wc_training_vars].to_numpy()
-    y_train = presel_train_df["reconstructable_signal_category"].map(reconstructable_signal_category_mapping).to_numpy()
+    y_train = presel_train_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
     w_train = presel_train_df["wc_net_weight"].to_numpy()
     x_test = presel_test_df[wc_training_vars].to_numpy()
-    y_test = presel_test_df["reconstructable_signal_category"].map(reconstructable_signal_category_mapping).to_numpy()
+    y_test = presel_test_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
     w_test = presel_test_df["wc_net_weight"].to_numpy()
+    
+    # Debug: Check what categories are in training and test data
+    #unique_categories_train = np.unique(y_train)
+    #unique_categories_test = np.unique(y_test)
+    #print(f"Categories in training data: {unique_categories_train}")
+    #print(f"Categories in test data: {unique_categories_test}")
+    #print(f"Expected categories: {list(range(num_categories))}")
 
     eval_set = [(x_train, y_train), (x_test, y_test)]
     eval_weights = [w_train, w_test]
 
     model = xgb.XGBClassifier(
-        num_class=11,
+        num_class=num_categories,
         n_estimators=200,
         eval_metric=['mlogloss', 'merror'],
-        early_stopping_rounds=10,
     )
 
     model.fit(
@@ -164,8 +167,12 @@ if __name__ == "__main__":
 
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
-    category_names = {v: k for k, v in reconstructable_signal_category_mapping.items()}
-    n_categories = len(reconstructable_signal_category_mapping)
+    category_names = {v: k for k, v in topological_signal_category_mapping.items()}
+    n_categories = len(topological_signal_category_mapping)
+    
+    print(f"Model predict_proba shape: {y_proba.shape}")
+    print(f"Expected number of categories: {n_categories}")
+    print(f"Model n_classes_: {model.n_classes_}")
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
     bins = np.linspace(0, 1, 21)
@@ -188,7 +195,9 @@ if __name__ == "__main__":
     # Confusion Matrix
     plt.figure(figsize=(20, 6))
 
-    cm = confusion_matrix(y_test, y_pred, sample_weight=w_test)
+    # Ensure confusion matrix includes all expected categories, even if they have zero events
+    expected_labels = list(range(len(topological_signal_category_mapping)))
+    cm = confusion_matrix(y_test, y_pred, sample_weight=w_test, labels=expected_labels)
 
     # Handle division by zero for normalization
     row_sums = cm.sum(axis=1)
@@ -213,6 +222,9 @@ if __name__ == "__main__":
     plt.title('Confusion Matrix (Counts)')
     plt.xlabel('Predicted')
     plt.ylabel('True')
+
+    print(f"{n_categories=}")
+    print(f"{cm.shape=}")
 
     # Add text annotations
     for i in range(n_categories):
@@ -266,6 +278,7 @@ if __name__ == "__main__":
     prediction_df['subrun'] = all_df['subrun']
     prediction_df['event'] = all_df['event']
     prediction_df['used_for_training'] = all_df['used_for_training']
+    prediction_df['used_for_testing'] = all_df['used_for_testing']
     for i, category_name in enumerate(category_names.values()):
         prediction_df[f'prob_{category_name}'] = all_probabilities[:, i]
     prediction_df.to_pickle(output_dir / "predictions.pkl")

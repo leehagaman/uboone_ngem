@@ -14,6 +14,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
     nu_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nu_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
     nu_overlay_other_mask = (df["filetype"] == 'nu_overlay') & ~((df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1))
     dirt_mask = df["filetype"] == 'dirt_overlay'
+    ext_mask = df["filetype"] == 'ext'
 
     # setting the POTs in order to combine the NC Pi0 overlay and nu overlay files without throwing away MC statistics
     df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
@@ -21,7 +22,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
 
 
     # Filter out unwanted events by keeping only the events we want
-    combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask
+    combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask | ext_mask
     
     # Use boolean indexing instead of drop for more reliable filtering
     df = df[combined_mask].copy()
@@ -34,7 +35,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
     for i in tqdm(range(len(weight_cv_arr)), desc="Adding POT weighting"):
         file_POT = file_POTs[i]
         weight_temp = weight_cv_arr[i] * weight_spline_arr[i]
-        if weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp): # something went wrong with the saved GENIE weights, set it to one
+        if weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp) or np.isinf(weight_temp): # something went wrong with the saved GENIE weights, set it to one
             weight_temp = 1.
         net_weights.append(weight_temp * normalizing_POT / file_POT)
 
@@ -443,35 +444,55 @@ def add_extra_true_photon_variables(df):
 
 def add_signal_categories(all_df):
 
+    filetype_arr = all_df["filetype"].to_numpy()
+    all_df["normal_overlay"] = ~(filetype_arr == "dirt_overlay") & ~(filetype_arr == "ext")
+
     truth_inFV_arr = all_df["wc_truth_vtxInside"].to_numpy()
+    all_df["wc_truth_inFV"] = truth_inFV_arr == 1
 
     true_num_gamma_pairconvert_in_FV = all_df["true_num_gamma_pairconvert_in_FV"].to_numpy()
+    truth_0g_arr = true_num_gamma_pairconvert_in_FV == 0
     truth_1g_arr = true_num_gamma_pairconvert_in_FV == 1
     truth_2g_arr = true_num_gamma_pairconvert_in_FV == 2
+    truth_3plusg_arr = true_num_gamma_pairconvert_in_FV >= 3
+    all_df["wc_truth_0g"] = truth_0g_arr
+    all_df["wc_truth_1g"] = truth_1g_arr
+    all_df["wc_truth_2g"] = truth_2g_arr
+    all_df["wc_truth_3plusg"] = truth_3plusg_arr
 
     wc_true_max_prim_proton_energy_arr = all_df["wc_true_max_prim_proton_energy"].to_numpy()
     truth_Np_arr = wc_true_max_prim_proton_energy_arr >= 35
     truth_0p_arr = wc_true_max_prim_proton_energy_arr < 35
+    all_df["wc_truth_Np"] = truth_Np_arr
+    all_df["wc_truth_0p"] = truth_0p_arr
 
     truth_isCC_arr = all_df["wc_truth_isCC"].to_numpy().astype(bool)
     truth_nuPdg_arr = all_df["wc_truth_nuPdg"].to_numpy()
     truth_1mu_arr = truth_isCC_arr & (np.abs(truth_nuPdg_arr) == 14)
     truth_0mu_arr = ~truth_1mu_arr
+    all_df["wc_truth_1mu"] = truth_1mu_arr
+    all_df["wc_truth_0mu"] = truth_0mu_arr
 
-    truth_NCDelta_arr = all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
     truth_NprimPio_arr = all_df["wc_truth_NprimPio"].to_numpy()
+    all_df["wc_truth_0pi0"] = truth_NprimPio_arr == 0
+    all_df["wc_truth_1pi0"] = truth_NprimPio_arr == 1
+    all_df["wc_truth_multi_pi0"] = truth_NprimPio_arr > 1
 
-    conditions = [
-        (truth_inFV_arr == 1) & truth_1g_arr & truth_Np_arr & truth_0mu_arr,
-        (truth_inFV_arr == 1) & truth_1g_arr & truth_0p_arr & truth_0mu_arr,
-        (truth_inFV_arr == 1) & truth_1g_arr & truth_Np_arr & truth_1mu_arr,
-        (truth_inFV_arr == 1) & truth_1g_arr & truth_0p_arr & truth_1mu_arr,
-        (truth_inFV_arr == 1) & truth_2g_arr & truth_Np_arr & truth_0mu_arr,
-        (truth_inFV_arr == 1) & truth_2g_arr & truth_0p_arr & truth_0mu_arr,
-        (truth_inFV_arr == 1) & truth_2g_arr & truth_Np_arr & truth_1mu_arr,
-        (truth_inFV_arr == 1) & truth_2g_arr & truth_0p_arr & truth_1mu_arr,
-        (truth_inFV_arr == 0) & truth_1g_arr,
-        (truth_inFV_arr == 0) & truth_2g_arr,
+    queries = [
+        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_Np and wc_truth_0mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_0p and wc_truth_0mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_Np and wc_truth_1mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_0p and wc_truth_1mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_Np and wc_truth_0mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_0p and wc_truth_0mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_Np and wc_truth_1mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_0p and wc_truth_1mu",
+        "normal_overlay and not (wc_truth_inFV) and wc_truth_1g",
+        "normal_overlay and not (wc_truth_inFV) and wc_truth_2g",
+        "normal_overlay and wc_truth_0g",
+        "normal_overlay and wc_truth_3plusg",
+        "filetype == 'dirt_overlay'",
+        "filetype == 'ext'",
     ]
     labels = [
         "1gNp",
@@ -484,17 +505,42 @@ def add_signal_categories(all_df):
         "2g0p1mu",
         "1g_outFV",
         "2g_outFV",
+        "0g",
+        "3plusg",
+        "dirt",
+        "ext"
     ]
-    all_df['reconstructable_signal_category'] = np.select(conditions, labels, default="other")
+    conditions = [all_df.eval(query) for query in queries]
 
-    conditions = [
-        (truth_inFV_arr == 1) & truth_NCDelta_arr & (truth_NprimPio_arr == 0) & truth_Np_arr,
-        (truth_inFV_arr == 1) & truth_NCDelta_arr & (truth_NprimPio_arr == 0) & truth_0p_arr,
-        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_Np_arr & truth_0mu_arr,
-        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_0p_arr & truth_0mu_arr,
-        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_Np_arr & truth_1mu_arr,
-        (truth_inFV_arr == 1) & (truth_NCDelta_arr == 0) & (truth_NprimPio_arr == 1) & truth_0p_arr & truth_1mu_arr,
-        (truth_inFV_arr == 0) & (truth_NprimPio_arr > 0),
+    for i1, condition1 in enumerate(conditions):
+        for i2, condition2 in enumerate(conditions):
+            if i1 != i2:
+                overlap = condition1 & condition2
+                if overlap.any():
+                    first_index = np.where(overlap)[0][0]
+                    second_index = np.where(overlap)[0][1]
+                    print(all_df[["filetype", "wc_truth_inFV", "wc_truth_1g", "wc_truth_Np", "wc_truth_0mu", "topological_signal_category"]].iloc[first_index])
+                    print(all_df[["filetype", "wc_truth_inFV", "wc_truth_1g", "wc_truth_Np", "wc_truth_0mu", "topological_signal_category"]].iloc[second_index])
+                    raise AssertionError(f"Overlapping topological signal definitions: {labels[i1]} and {labels[i2]}")
+
+    all_df['topological_signal_category'] = np.select(conditions, labels, default="other")
+
+    uncategorized_df = all_df[all_df['topological_signal_category'] == 'other']
+    assert len(uncategorized_df) == 0, "Uncategorized topological signal categories!"
+
+    queries = [
+        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 1 and wc_truth_0pi0 and wc_truth_Np",
+        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 1 and wc_truth_0pi0 and wc_truth_0p",
+        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_Np and wc_truth_0mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_0p and wc_truth_0mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_Np and wc_truth_1mu",
+        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_0p and wc_truth_1mu",
+        "normal_overlay and wc_truth_inFV and (wc_truth_multi_pi0 or (wc_truth_1pi0 and wc_truth_NCDelta == 1))",
+        "normal_overlay and wc_truth_inFV and wc_truth_0pi0 and not (wc_truth_inFV and wc_truth_NCDelta == 1)",
+        "normal_overlay and not (wc_truth_inFV) and wc_truth_1pi0",
+        "normal_overlay and not (wc_truth_inFV) and not (wc_truth_1pi0)",
+        "filetype == 'dirt_overlay'",
+        "filetype == 'ext'",
     ]
     labels = [
         "NCDeltaRad_1gNp",
@@ -503,16 +549,35 @@ def add_signal_categories(all_df):
         "NC1pi0_0p",
         "numuCC1pi0_Np",
         "numuCC1pi0_0p",
-        "pi0_outFV",
+        "multi_pi0", # also includes pi0 + NC Delta radiative
+        "0pi0",
+        "1pi0_outFV",
+        "other_outFV",
+        "dirt",
+        "ext",
     ]
+    conditions = [all_df.eval(query) for query in queries]
+
+    for i1, condition1 in enumerate(conditions):
+        for i2, condition2 in enumerate(conditions):
+            if i1 != i2:
+                overlap = condition1 & condition2
+                if overlap.any():
+                    raise AssertionError(f"Overlapping physics signal definitions: {labels[i1]} and {labels[i2]}")
+
     all_df['physics_signal_category'] = np.select(conditions, labels, default="other")
 
-    print("\nreconstructable signal categories:")
-    for reconstructable_signal_category in all_df['reconstructable_signal_category'].unique():
-        curr_df = all_df[all_df['reconstructable_signal_category'] == reconstructable_signal_category]
+    uncategorized_df = all_df[all_df['physics_signal_category'] == 'other']
+    if len(uncategorized_df) > 0:
+        print(uncategorized_df[["wc_truth_inFV", "wc_truth_1pi0", "wc_truth_0pi0", "wc_truth_NCDelta", "wc_truth_NprimPio", "wc_truth_Np", "wc_truth_0mu", "wc_truth_1mu", "physics_signal_category"]].head(10))
+        raise AssertionError("Uncategorized physics signal categories!")
+
+    print("\ntopological signal categories:")
+    for topological_signal_category in all_df['topological_signal_category'].unique():
+        curr_df = all_df[all_df['topological_signal_category'] == topological_signal_category]
         unweighted_num = curr_df.shape[0]
         weighted_num = curr_df['wc_net_weight'].sum()
-        print(f"{reconstructable_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+        print(f"{topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
     print("\nphysics signal categories:")
     for physics_signal_category in all_df['physics_signal_category'].unique():
         curr_df = all_df[all_df['physics_signal_category'] == physics_signal_category]
