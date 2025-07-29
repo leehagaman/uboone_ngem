@@ -1,14 +1,14 @@
 
 import uproot
 import numpy as np
-import pandas as pd
+import polars as pl
 from tqdm import tqdm
-import pickle
 import os
 
 from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars
 from variables import wc_T_bdt_vars, wc_T_kine_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
 from variables import blip_vars, pelee_vars
+from variables import extra_training_vars
 from postprocessing import do_orthogonalization_and_POT_weighting, do_wc_postprocessing, do_blip_postprocessing
 from postprocessing import add_extra_true_photon_variables, add_signal_categories
 
@@ -51,39 +51,44 @@ def process_root_file(file_category):
         dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_vars, library="np"))
         dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np"))
     file_POT = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    wc_df = pd.DataFrame(dic)
+    
+    # Convert arrays to lists for polars compatibility maybe not needed?
+    #for col in dic:
+    #    dic[col] = dic[col].tolist()
+    
+    # Create polars DataFrame
+    wc_df = pl.DataFrame(dic)
     if filetype == "ext":
         file_POT = wc_processed_data_POT * wc_processed_ext_num_spills / wc_processed_data_num_spills
-    wc_df["file_POT"] = file_POT
+    wc_df = wc_df.with_columns(pl.lit(file_POT).alias("file_POT"))
     
     # loading blip variables
     dic = {}
     dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np"))
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    blip_df = pd.DataFrame(dic)
+    #for col in dic:
+    #    dic[col] = dic[col].tolist()
+    blip_df = pl.DataFrame(dic)
 
     # loading PeLEE variables
     dic = {}
     dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pelee_vars, library="np"))
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    pelee_df = pd.DataFrame(dic)
+    #for col in dic:
+    #    dic[col] = dic[col].tolist()
+    pelee_df = pl.DataFrame(dic)
 
-    wc_df = wc_df.add_prefix("wc_")
-    # blip_df = blip_df.add_prefix("blip_") # blip variables already have the "blip_" prefix
-    pelee_df = pelee_df.add_prefix("pelee_")
+    # Add prefixes using select with alias
+    wc_df = wc_df.rename({col: f"wc_{col}" for col in wc_df.columns})
+    # blip_df = blip_df.select([pl.col(col).alias(f"blip_{col}") for col in blip_df.columns])  # blip variables already have the "blip_" prefix
+    pelee_df = pelee_df.rename({col: f"pelee_{col}" for col in pelee_df.columns})
 
-    all_df = pd.concat([wc_df, blip_df, pelee_df], axis=1)
+    all_df = pl.concat([wc_df, blip_df, pelee_df], how="horizontal")
 
     # remove some of these prefixes, for things that should be universal
-    all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
+    all_df = all_df.rename({"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"})
 
-    all_df["filetype"] = filetype
+    all_df = all_df.with_columns(pl.lit(filetype).alias("filetype"))
 
-    print(f"loaded {filetype}, {all_df.shape[0]} events, {file_POT:.2e} POT")
+    print(f"loaded {filetype}, {all_df.height} events, {file_POT:.2e} POT")
 
     return all_df, file_POT
 
@@ -95,7 +100,7 @@ if __name__ == "__main__":
     dirt_df, dirt_POT = process_root_file("SURPRISE_4b_dirt_overlay")
     ext_df, ext_POT = process_root_file("SURPRISE_4b_ext")
 
-    all_df = pd.concat([nc_pi0_df, nu_df, dirt_df, ext_df])
+    all_df = pl.concat([nc_pi0_df, nu_df, dirt_df, ext_df], how="vertical")
 
     pot_dic = {
         "nc_pi0_overlay": nc_pi0_POT,
@@ -111,27 +116,28 @@ if __name__ == "__main__":
     all_df = add_extra_true_photon_variables(all_df)
     all_df = add_signal_categories(all_df)
 
-    RSEs = []
+    file_RSEs = []
     for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
-        RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
-        RSEs.append(RSE)
-    assert len(RSEs) == len(set(RSEs)), "Duplicate RSEs!"
+        file_RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
+        file_RSEs.append(file_RSE)
+    assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/run/subrun/event!"
 
-    print("saving to pickle...")
-
-    # restrict to generic selected events for a smaller file size
-    generic_df = all_df.query("wc_kine_reco_Enu > 0").reset_index(drop=True)
-    with open("intermediate_files/generic_df_train_vars.pkl", "wb") as f:
-        pickle.dump(generic_df, f)
-    print(f"saved intermediate_files/generic_df_train_vars.pkl, {os.path.getsize('intermediate_files/generic_df_train_vars.pkl') / 1024**3:.2f} GB")
+    print("saving intermediate_files/generic_df_train_vars.parquet...")
+    generic_df = all_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+    print("restricted to generic selected events")
+    
+    generic_df.write_parquet("intermediate_files/generic_df_train_vars.parquet", compression="zstd")
+    file_size_gb = os.path.getsize('intermediate_files/generic_df_train_vars.parquet') / 1024**3
+    print(f"saved intermediate_files/generic_df_train_vars.parquet, {file_size_gb:.2f} GB")
 
     # restrict to fewer columns for a smaller file size
-    non_training_columns = ["run", "subrun", "event", "filetype", "wc_net_weight", "topological_signal_category", "physics_signal_category"]
-    non_training_columns += ["wc_" + var for var in wc_T_bdt_vars + wc_T_kine_vars + wc_T_eval_vars + wc_T_pf_vars if var not in ["run", "subrun", "event"]]
-    non_training_columns += [var for var in blip_vars]
-    non_training_columns += ["pelee_" + var for var in pelee_vars]
-    all_df_no_training_columns = all_df[non_training_columns]
-    with open("intermediate_files/all_df.pkl", "wb") as f:
-        pickle.dump(all_df_no_training_columns, f)
-    print(f"saved intermediate_files/all_df.pkl, {os.path.getsize('intermediate_files/all_df.pkl') / 1024**3:.2f} GB")
+    print("saving intermediate_files/all_df.parquet...")
+    print(f"{all_df.shape=}")
+    all_df = all_df.drop(extra_training_vars)
+
+    print(f"{all_df.shape=}")
+    print("dropped extra training vars")
     
+    all_df.write_parquet("intermediate_files/all_df.parquet", compression="zstd")
+    file_size_gb = os.path.getsize('intermediate_files/all_df.parquet') / 1024**3
+    print(f"saved intermediate_files/all_df.parquet, {file_size_gb:.2f} GB")

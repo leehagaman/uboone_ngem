@@ -1,6 +1,6 @@
-import pickle
 import numpy as np
 import pandas as pd
+import polars as pl
 import xgboost as xgb
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
@@ -9,8 +9,11 @@ from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from datetime import datetime
 import os
-
 import argparse
+
+from signal_categories import topological_category_labels
+from variables import wc_training_vars
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -35,7 +38,6 @@ if __name__ == "__main__":
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Saving outputs to: {output_dir}")
 
-    from variables import wc_training_vars
 
     print("xgboost version: ", xgb.__version__)
 
@@ -59,28 +61,13 @@ if __name__ == "__main__":
     x = presel_df[wc_training_vars].to_numpy()
     w = presel_df["wc_net_weight"].to_numpy()
 
-    topological_signal_category_mapping = {
-        "1gNp": 0,
-        "1g0p": 1,
-        "1gNp1mu": 2,
-        "1g0p1mu": 3,
-        "2gNp": 4,
-        "2g0p": 5,
-        "2gNp1mu": 6,
-        "2g0p1mu": 7,
-        "1g_outFV": 8,
-        "2g_outFV": 9,
-        "0g": 10,
-        "3plusg": 11,
-        "dirt": 12,
-        "ext": 13,
-    }
-
-    num_categories = len(topological_signal_category_mapping)
+    num_categories = len(topological_category_labels)
     print(f"{num_categories=}")
 
     presel_train_df = presel_df.query("used_for_training == True")
     presel_test_df = presel_df.query("used_for_testing == True")
+
+    topological_signal_category_mapping = {cat: i for i, cat in enumerate(topological_category_labels)}
 
     x_train = presel_train_df[wc_training_vars].to_numpy()
     y_train = presel_train_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()

@@ -469,3 +469,10 @@ wc_training_vars += ["wc_reco_num_protons", "wc_reco_num_other_tracks"]
 
 wc_T_BDT_including_training_vars = list(set(wc_T_bdt_vars + wc_T_BDT_training_vars))
 wc_T_KINEvars_including_training_vars = list(set(wc_T_kine_vars + wc_T_KINEvars_training_vars))
+
+# training vars that aren't normally useful
+# subtracting wc_T_bdt_vars from wc_T_BDT_including_training_vars as sets
+extra_training_vars = []
+for var in wc_T_BDT_including_training_vars:
+    if var not in wc_T_bdt_vars and var != "wc_kine_reco_Enu" and var != "match_isFC":
+        extra_training_vars.append("wc_" + var)
