@@ -5,6 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 import pickle
 import os
+import time
 
 from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars
 from variables import wc_T_bdt_vars, wc_T_kine_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
@@ -38,6 +39,11 @@ def process_root_file(file_category):
         raise ValueError("Not looking at data yet!")
     else:
         raise ValueError("Invalid root file type!")
+    
+    root_file_size_gb = os.path.getsize(f"data_files/{filename}") / 1024**3
+
+    start_time = time.time()
+
     f = uproot.open(f"data_files/{filename}")
 
     # loading Wire-Cell variables
@@ -83,7 +89,9 @@ def process_root_file(file_category):
 
     all_df["filetype"] = filetype
 
-    print(f"loaded {filetype}, {all_df.shape[0]} events, {file_POT:.2e} POT")
+    end_time = time.time()
+
+    print(f"loaded {filetype}, {all_df.shape[0]} events, {file_POT:.2e} POT, {root_file_size_gb:.2f} GB root file, {end_time - start_time:.2f} seconds")
 
     return all_df, file_POT
 
@@ -111,27 +119,31 @@ if __name__ == "__main__":
     all_df = add_extra_true_photon_variables(all_df)
     all_df = add_signal_categories(all_df)
 
-    RSEs = []
+    file_RSEs = []
     for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
-        RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
-        RSEs.append(RSE)
-    assert len(RSEs) == len(set(RSEs)), "Duplicate RSEs!"
+        file_RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
+        file_RSEs.append(file_RSE)
+    assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/run/subrun/event!"
 
-    print("saving to pickle...")
 
-    # restrict to generic selected events for a smaller file size
-    generic_df = all_df.query("wc_kine_reco_Enu > 0").reset_index(drop=True)
-    with open("intermediate_files/generic_df_train_vars.pkl", "wb") as f:
-        pickle.dump(generic_df, f)
-    print(f"saved intermediate_files/generic_df_train_vars.pkl, {os.path.getsize('intermediate_files/generic_df_train_vars.pkl') / 1024**3:.2f} GB")
+    print("saving intermediate_files/generic_df_train_vars.pkl...", end="", flush=True)
+    start_time = time.time()
+    generic_df = all_df.query("wc_kine_reco_Enu > 0").reset_index(drop=True)    
+    generic_df.to_pickle("intermediate_files/generic_df_train_vars.pkl")
+    end_time = time.time()
+    file_size_gb = os.path.getsize('intermediate_files/generic_df_train_vars.pkl') / 1024**3
+    print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
 
+    print("saving intermediate_files/all_df.pkl...", end="", flush=True)
+    start_time = time.time()
     # restrict to fewer columns for a smaller file size
     non_training_columns = ["run", "subrun", "event", "filetype", "wc_net_weight", "topological_signal_category", "physics_signal_category"]
     non_training_columns += ["wc_" + var for var in wc_T_bdt_vars + wc_T_kine_vars + wc_T_eval_vars + wc_T_pf_vars if var not in ["run", "subrun", "event"]]
     non_training_columns += [var for var in blip_vars]
     non_training_columns += ["pelee_" + var for var in pelee_vars]
     all_df_no_training_columns = all_df[non_training_columns]
-    with open("intermediate_files/all_df.pkl", "wb") as f:
-        pickle.dump(all_df_no_training_columns, f)
-    print(f"saved intermediate_files/all_df.pkl, {os.path.getsize('intermediate_files/all_df.pkl') / 1024**3:.2f} GB")
+    all_df_no_training_columns.to_pickle("intermediate_files/all_df.pkl")
+    end_time = time.time()
+    file_size_gb = os.path.getsize('intermediate_files/all_df.pkl') / 1024**3
+    print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
     

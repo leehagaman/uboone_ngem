@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from signal_categories import topological_category_queries, topological_category_labels
+from signal_categories import physics_category_queries, physics_category_labels
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21):
 
@@ -478,111 +480,39 @@ def add_signal_categories(all_df):
     all_df["wc_truth_1pi0"] = truth_NprimPio_arr == 1
     all_df["wc_truth_multi_pi0"] = truth_NprimPio_arr > 1
 
-    queries = [
-        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_Np and wc_truth_0mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_0p and wc_truth_0mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_Np and wc_truth_1mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_1g and wc_truth_0p and wc_truth_1mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_Np and wc_truth_0mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_0p and wc_truth_0mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_Np and wc_truth_1mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_2g and wc_truth_0p and wc_truth_1mu",
-        "normal_overlay and not (wc_truth_inFV) and wc_truth_1g",
-        "normal_overlay and not (wc_truth_inFV) and wc_truth_2g",
-        "normal_overlay and wc_truth_0g",
-        "normal_overlay and wc_truth_3plusg",
-        "filetype == 'dirt_overlay'",
-        "filetype == 'ext'",
-    ]
-    labels = [
-        "1gNp",
-        "1g0p",
-        "1gNp1mu",
-        "1g0p1mu",
-        "2gNp",
-        "2g0p",
-        "2gNp1mu",
-        "2g0p1mu",
-        "1g_outFV",
-        "2g_outFV",
-        "0g",
-        "3plusg",
-        "dirt",
-        "ext"
-    ]
-    conditions = [all_df.eval(query) for query in queries]
-
-    for i1, condition1 in enumerate(conditions):
-        for i2, condition2 in enumerate(conditions):
+    topological_conditions = [all_df.eval(query) for query in topological_category_queries]
+    for i1, condition1 in enumerate(topological_conditions):
+        for i2, condition2 in enumerate(topological_conditions):
             if i1 != i2:
                 overlap = condition1 & condition2
                 if overlap.any():
-                    first_index = np.where(overlap)[0][0]
-                    second_index = np.where(overlap)[0][1]
-                    print(all_df[["filetype", "wc_truth_inFV", "wc_truth_1g", "wc_truth_Np", "wc_truth_0mu", "topological_signal_category"]].iloc[first_index])
-                    print(all_df[["filetype", "wc_truth_inFV", "wc_truth_1g", "wc_truth_Np", "wc_truth_0mu", "topological_signal_category"]].iloc[second_index])
-                    raise AssertionError(f"Overlapping topological signal definitions: {labels[i1]} and {labels[i2]}")
-
-    all_df['topological_signal_category'] = np.select(conditions, labels, default="other")
-
+                    raise AssertionError(f"Overlapping topological signal definitions: {topological_category_labels[i1]} and {topological_category_labels[i2]}")
+    all_df['topological_signal_category'] = np.select(topological_conditions, topological_category_labels, default="other")
     uncategorized_df = all_df[all_df['topological_signal_category'] == 'other']
     assert len(uncategorized_df) == 0, "Uncategorized topological signal categories!"
-
-    queries = [
-        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 1 and wc_truth_0pi0 and wc_truth_Np",
-        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 1 and wc_truth_0pi0 and wc_truth_0p",
-        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_Np and wc_truth_0mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_0p and wc_truth_0mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_Np and wc_truth_1mu",
-        "normal_overlay and wc_truth_inFV and wc_truth_NCDelta == 0 and wc_truth_1pi0 and wc_truth_0p and wc_truth_1mu",
-        "normal_overlay and wc_truth_inFV and (wc_truth_multi_pi0 or (wc_truth_1pi0 and wc_truth_NCDelta == 1))",
-        "normal_overlay and wc_truth_inFV and wc_truth_0pi0 and not (wc_truth_inFV and wc_truth_NCDelta == 1)",
-        "normal_overlay and not (wc_truth_inFV) and wc_truth_1pi0",
-        "normal_overlay and not (wc_truth_inFV) and not (wc_truth_1pi0)",
-        "filetype == 'dirt_overlay'",
-        "filetype == 'ext'",
-    ]
-    labels = [
-        "NCDeltaRad_1gNp",
-        "NCDeltaRad_1g0p",
-        "NC1pi0_Np",
-        "NC1pi0_0p",
-        "numuCC1pi0_Np",
-        "numuCC1pi0_0p",
-        "multi_pi0", # also includes pi0 + NC Delta radiative
-        "0pi0",
-        "1pi0_outFV",
-        "other_outFV",
-        "dirt",
-        "ext",
-    ]
-    conditions = [all_df.eval(query) for query in queries]
-
-    for i1, condition1 in enumerate(conditions):
-        for i2, condition2 in enumerate(conditions):
-            if i1 != i2:
-                overlap = condition1 & condition2
-                if overlap.any():
-                    raise AssertionError(f"Overlapping physics signal definitions: {labels[i1]} and {labels[i2]}")
-
-    all_df['physics_signal_category'] = np.select(conditions, labels, default="other")
-
-    uncategorized_df = all_df[all_df['physics_signal_category'] == 'other']
-    if len(uncategorized_df) > 0:
-        print(uncategorized_df[["wc_truth_inFV", "wc_truth_1pi0", "wc_truth_0pi0", "wc_truth_NCDelta", "wc_truth_NprimPio", "wc_truth_Np", "wc_truth_0mu", "wc_truth_1mu", "physics_signal_category"]].head(10))
-        raise AssertionError("Uncategorized physics signal categories!")
-
+    all_df["topological_signal_category"] = np.select(topological_conditions, topological_category_labels, default="other")
     print("\ntopological signal categories:")
     for topological_signal_category in all_df['topological_signal_category'].unique():
         curr_df = all_df[all_df['topological_signal_category'] == topological_signal_category]
         unweighted_num = curr_df.shape[0]
         weighted_num = curr_df['wc_net_weight'].sum()
-        print(f"{topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+        print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+
+    physics_conditions = [all_df.eval(query) for query in physics_category_queries]
+    for i1, condition1 in enumerate(physics_conditions):
+        for i2, condition2 in enumerate(physics_conditions):
+            if i1 != i2:
+                overlap = condition1 & condition2
+                if overlap.any():
+                    raise AssertionError(f"Overlapping topological signal definitions: {topological_category_labels[i1]} and {topological_category_labels[i2]}")
+    all_df["physics_signal_category"] = np.select(physics_conditions, physics_category_labels, default="other")
+    uncategorized_df = all_df[all_df['physics_signal_category'] == 'other']
+    assert len(uncategorized_df) == 0, "Uncategorized physics signal categories!"
     print("\nphysics signal categories:")
     for physics_signal_category in all_df['physics_signal_category'].unique():
         curr_df = all_df[all_df['physics_signal_category'] == physics_signal_category]
         unweighted_num = curr_df.shape[0]
         weighted_num = curr_df['wc_net_weight'].sum()
-        print(f"{physics_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+        print(f"    {physics_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
     return all_df
