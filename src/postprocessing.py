@@ -3,13 +3,15 @@ import polars as pl
 from tqdm import tqdm
 from signal_categories import topological_category_queries, topological_category_labels
 from signal_categories import physics_category_queries, physics_category_labels
-
+import time
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21):
 
     original_length = df.height
 
     summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
+
+    print("getting masks...")
 
     # Get masks for different event types using polars expressions
     nc_pi0_overlay_true_nc_1pi0_mask = (
@@ -27,17 +29,32 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
     dirt_mask = pl.col("filetype") == 'dirt_overlay'
     ext_mask = pl.col("filetype") == 'ext'
 
+    print("assigning summed_POT_nc_1pi0 value...")
 
-    # TODO HERE
-    # setting the POTs in order to combine the NC Pi0 overlay and nu overlay files without throwing away MC statistics
-    df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
-    df.loc[nu_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
-
+    # setting nc_pi0_overlay_true_nc_1pi0 and nu_overlay_true_nc_1pi0_mask to summed_POT_nc_1pi0
+    # (considering the fact that we use both the NC Pi0 overlay and nu overlay files)
+    df = df.with_columns([
+        pl.when(nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask)
+        .then(pl.lit(summed_POT_nc_1pi0))
+        .otherwise(pl.col("wc_file_POT"))
+        .alias("wc_file_POT")
+    ])
 
     # Filter out unwanted events by keeping only the events we want
     combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask | ext_mask
+
+    start_time = time.time()
+    mask_computed = df.select(combined_mask.alias("mask"))["mask"]
+    end_time = time.time()
+
+    print("filtering out unwanted events...", end="", flush=True)
+    start_time = time.time()
+    temp_df = df.filter(mask_computed)
+    end_time = time.time()
+    print(f"done ({end_time - start_time:.2f} seconds)")
     
-    df = df.filter(combined_mask)
+
+    print("assigning net weights...")
 
     # Calculate net weights using vectorized operations
     df = df.with_columns([
@@ -67,214 +84,128 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
 
 
 def do_wc_postprocessing(df):
-
-    # Helper function for proton and other track counting
-    def count_reco_particles(energy_list, pdg_list):
-        if isinstance(energy_list, float) and np.isnan(energy_list):
-            return (np.nan, np.nan)
-        
-        if energy_list is None or pdg_list is None:
-            return (np.nan, np.nan)
-            
-        proton_num = 0
-        other_track_num = 0
-        
-        for i in range(len(energy_list)):
-            if abs(pdg_list[i]) == 2212:
-                if energy_list[i] > 35:  # 35 MeV reco proton kinetic energy threshold
-                    proton_num += 1
-            if abs(pdg_list[i]) == 13 or abs(pdg_list[i]) == 211:  # see N_tracks at https://github.com/BNLIF/wcp-uboone-bdt/blob/main/inc/WCPLEEANA/cuts.h
-                if energy_list[i] > 10.:
-                    other_track_num += 1
-        return (proton_num, other_track_num)
-
-    # Helper function for truth primary proton energy
-    def get_max_prim_proton_energy(truth_pdg_list, truth_mother_list, truth_startMomentum_list):
-        if isinstance(truth_pdg_list, float) and np.isnan(truth_pdg_list):
-            return -1
-        
-        if truth_pdg_list is None or truth_mother_list is None or truth_startMomentum_list is None:
-            return -1
-            
-        max_prim_proton_energy = 0
-        for j in range(len(truth_pdg_list)):
-            if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2212:  # primary proton
-                max_prim_proton_energy = max(truth_startMomentum_list[j][3] * 1000. - 938.272089, max_prim_proton_energy)
-        return max_prim_proton_energy
-
-    # Helper function for shower calculations
-    def calculate_shower_variables(reco_shower_momentum, reco_nu_vtx_x, reco_nu_vtx_y, reco_nu_vtx_z):
-        if isinstance(reco_shower_momentum, float) and np.isnan(reco_shower_momentum):
-            return (np.nan, np.nan, np.nan, np.nan)
-        
-        if reco_shower_momentum is None:
-            return (np.nan, np.nan, np.nan, np.nan)
-
-        reco_shower_momentum_0 = reco_shower_momentum[0]
-        reco_shower_momentum_1 = reco_shower_momentum[1]
-        reco_shower_momentum_2 = reco_shower_momentum[2]
-        reco_shower_momentum_3 = reco_shower_momentum[3]
-        
-        if reco_shower_momentum_3 <= 0:
-            theta = np.nan
-            phi = np.nan
-            backwards_projected_dist = np.nan
-        else:
-            reco_shower_momentum_perp = np.sqrt(reco_shower_momentum_0 * reco_shower_momentum_0 + 
-                                                reco_shower_momentum_1 * reco_shower_momentum_1)
-            theta = np.arctan2(reco_shower_momentum_perp, reco_shower_momentum_2) * 180. / np.pi
-            phi = np.arctan2(reco_shower_momentum_0, reco_shower_momentum_1) * 180. / np.pi
-
-            shower_momentum_total_3d = np.sqrt(reco_shower_momentum_0 * reco_shower_momentum_0 + 
-                                              reco_shower_momentum_1 * reco_shower_momentum_1 + 
-                                              reco_shower_momentum_2 * reco_shower_momentum_2)
-            shower_unit_vector_3d = [reco_shower_momentum_0 / shower_momentum_total_3d, 
-                                    reco_shower_momentum_1 / shower_momentum_total_3d, 
-                                    reco_shower_momentum_2 / shower_momentum_total_3d]
-
-            min_backwards_projected_dist = 1e9
-                    
-            # projecting to x walls
-            if shower_unit_vector_3d[0] > 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_x - (-1)) / shower_unit_vector_3d[0])
-            elif shower_unit_vector_3d[0] < 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_x - (254.3)) / shower_unit_vector_3d[0])
-                
-            # projecting to y walls
-            if shower_unit_vector_3d[1] > 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_y - (-115.)) / shower_unit_vector_3d[1])
-            elif shower_unit_vector_3d[1] < 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_y - (117.)) / shower_unit_vector_3d[1])
-                
-            # projecting to z walls
-            if shower_unit_vector_3d[2] > 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_z - (0.6)) / shower_unit_vector_3d[2])
-            elif shower_unit_vector_3d[2] < 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_z - (1036.4)) / shower_unit_vector_3d[2])
-
-            backwards_projected_dist = min_backwards_projected_dist
-            
-        distance_to_boundary = np.min([
-            abs(reco_nu_vtx_x - (-1.)),
-            abs(reco_nu_vtx_x - (254.3)),
-            abs(reco_nu_vtx_y - (-115.)),
-            abs(reco_nu_vtx_y - (117.)),
-            abs(reco_nu_vtx_z - (0.6)),
-            abs(reco_nu_vtx_z - (1036.4))
-        ])
-        
-        return (theta, phi, distance_to_boundary, backwards_projected_dist)
-
-    print("Adding WC reco particle multiplicity...")
-    particle_counts = df.select([
-        pl.col("wc_kine_energy_particle"), 
-        pl.col("wc_kine_particle_type")
-    ]).map_rows(lambda x: count_reco_particles(x[0], x[1]))
     
+    print("Adding WC reco particle multiplicity...")
+
+    energy = pl.col("wc_kine_energy_particle").cast(pl.List(pl.Float64), strict=False)
+    pdg_abs = pl.col("wc_kine_particle_type").abs()
+    sufficient_energy_protons = (energy > 35) & (pdg_abs == 2212)
+    sufficient_energy_muons_pions = (energy > 10) & ((pdg_abs == 13) | (pdg_abs == 211))
     df = df.with_columns([
-        particle_counts.map_elements(lambda x: x[0], return_dtype=pl.Int32).alias("wc_reco_num_protons"),
-        particle_counts.map_elements(lambda x: x[1], return_dtype=pl.Int32).alias("wc_reco_num_other_tracks")
+        sufficient_energy_protons.list.sum().alias("wc_reco_num_protons"),
+        sufficient_energy_muons_pions.list.sum().alias("wc_reco_num_other_tracks")
     ])
 
-    print("Adding WC truth primary proton energy...")
-    max_proton_energies = df.select([
-        pl.col("wc_truth_pdg"), 
-        pl.col("wc_truth_mother"), 
-        pl.col("wc_truth_startMomentum")
-    ]).map_rows(lambda x: get_max_prim_proton_energy(x[0], x[1], x[2]))
-    
+
+    print("Adding WC truth primary proton number, max energy, and summed energy...")
+
+    pdg = pl.col("wc_truth_pdg")
+    mother = pl.col("wc_truth_mother")
+    start_p = pl.col("wc_truth_startMomentum")
+    index = pl.arr.index()
+    is_primary_proton = (
+        (pdg.arr.get(index) == 2212) &
+        (mother.arr.get(index) == 0)
+    )
+    energy = start_p.arr.get(index).arr.get(3)
     df = df.with_columns([
-        max_proton_energies.alias("wc_true_max_prim_proton_energy")
+        start_p.arr.eval(
+            is_primary_proton,
+            parallel=True
+        ).arr.sum().alias("wc_truth_num_prim_protons"),
+
+        start_p.arr.eval(
+            is_primary_proton.then(energy).otherwise(0.0),
+            parallel=True
+        ).arr.sum().alias("wc_truth_sum_prim_proton_energy"),
+
+        start_p.arr.eval(
+            is_primary_proton.then(energy).otherwise(None),
+            parallel=True
+        ).arr.max().alias("wc_truth_max_prim_proton_energy"),
     ])
 
     print("Adding WC shower position and angle variables...")
-    shower_vars = df.select([
-        pl.col("wc_reco_showerMomentum"),
-        pl.col("wc_reco_showervtxX"),
-        pl.col("wc_reco_showervtxY"),
-        pl.col("wc_reco_showervtxZ")
-    ]).map_rows(lambda x: calculate_shower_variables(x[0], x[1], x[2], x[3]))
-    
+
+    vtx_x = pl.col("wc_reco_showervtxX")
+    vtx_y = pl.col("wc_reco_showervtxY")
+    vtx_z = pl.col("wc_reco_showervtxZ")
+    shower_momentum = pl.col("wc_reco_showerMomentum")
+    px = shower_momentum.arr.get(0)
+    py = shower_momentum.arr.get(1)
+    pz = shower_momentum.arr.get(2)
+    E  = shower_momentum.arr.get(3)
+
+    # Magnitudes
+    p_total = (px**2 + py**2 + pz**2).sqrt()
+    p_perp = (px**2 + py**2).sqrt()
+
+    # Angular variables
+    theta = (p_perp / pz).arctan() * (180 / np.pi)
+    phi = pl.atan2(px, py) * (180 / np.pi)
+
+    # Unit vector
+    ux = px / p_total
+    uy = py / p_total
+    uz = pz / p_total
+
+    # Backward projection distances
+    x_proj = pl.when(ux > 0).then((vtx_x - (-1.0)) / ux).when(ux < 0).then((vtx_x - 254.3) / ux).otherwise(1e9)
+    y_proj = pl.when(uy > 0).then((vtx_y - (-115.0)) / uy).when(uy < 0).then((vtx_y - 117.0) / uy).otherwise(1e9)
+    z_proj = pl.when(uz > 0).then((vtx_z - 0.6) / uz).when(uz < 0).then((vtx_z - 1036.4) / uz).otherwise(1e9)
+    backproj_dist = pl.min_horizontal([x_proj, y_proj, z_proj])
+
+    dist_to_boundary = pl.min_horizontal([
+        (vtx_x - (-1.0)).abs(),
+        (vtx_x - 254.3).abs(),
+        (vtx_y - (-115.0)).abs(),
+        (vtx_y - 117.0).abs(),
+        (vtx_z - 0.6).abs(),
+        (vtx_z - 1036.4).abs()
+    ])
+
     df = df.with_columns([
-        shower_vars.map_elements(lambda x: x[0], return_dtype=pl.Float64).alias("wc_reco_shower_theta"),
-        shower_vars.map_elements(lambda x: x[1], return_dtype=pl.Float64).alias("wc_reco_shower_phi"),
-        shower_vars.map_elements(lambda x: x[2], return_dtype=pl.Float64).alias("wc_reco_distance_to_boundary"),
-        shower_vars.map_elements(lambda x: x[3], return_dtype=pl.Float64).alias("wc_reco_backwards_projected_dist")
+        theta.alias("wc_shower_theta"),
+        phi.alias("wc_shower_phi"),
+        dist_to_boundary.alias("wc_reco_distance_to_boundary"),
+        backproj_dist.alias("wc_reco_backwards_projected_dist")
     ])
 
     return df
-
 
 def do_blip_postprocessing(df):
 
-    # Helper function to separate blips by particle type
-    def separate_blips_by_pdg(blip_pdgs, blip_x, blip_y, blip_z, blip_energy):
-        electron_blips_x = []
-        electron_blips_y = []
-        electron_blips_z = []
-        electron_blips_energy = []
-        proton_blips_x = []
-        proton_blips_y = []
-        proton_blips_z = []
-        proton_blips_energy = []
-        other_blips_x = []
-        other_blips_y = []
-        other_blips_z = []
-        other_blips_energy = []
+    print("Separating blips by PDG code...")
 
-        if isinstance(blip_pdgs, float) and np.isnan(blip_pdgs):
-            return (electron_blips_x, electron_blips_y, electron_blips_z, electron_blips_energy,
-                    proton_blips_x, proton_blips_y, proton_blips_z, proton_blips_energy,
-                    other_blips_x, other_blips_y, other_blips_z, other_blips_energy)
+    pdg = pl.col("blip_true_pdg")
+    x = pl.col("blip_x")
+    y = pl.col("blip_y")
+    z = pl.col("blip_z")
+    energy = pl.col("blip_energy")
+    i = pl.arr.index()
+
+    is_electron = pdg.arr.get(i) == 11
+    is_proton = pdg.arr.get(i) == 2212
+    is_other = ~(is_electron | is_proton)
+
+    return df.with_columns([
+
+        pl.col("blip_x").arr.eval(is_electron.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("electron_blip_x"),
+        pl.col("blip_y").arr.eval(is_electron.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("electron_blip_y"),
+        pl.col("blip_z").arr.eval(is_electron.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("electron_blip_z"),
+        pl.col("blip_energy").arr.eval(is_electron.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("electron_blip_energy"),
         
-        if blip_pdgs is None:
-            return (electron_blips_x, electron_blips_y, electron_blips_z, electron_blips_energy,
-                    proton_blips_x, proton_blips_y, proton_blips_z, proton_blips_energy,
-                    other_blips_x, other_blips_y, other_blips_z, other_blips_energy)
+        pl.col("blip_x").arr.eval(is_proton.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("proton_blip_x"),
+        pl.col("blip_y").arr.eval(is_proton.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("proton_blip_y"),
+        pl.col("blip_z").arr.eval(is_proton.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("proton_blip_z"),
+        pl.col("blip_energy").arr.eval(is_proton.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("proton_blip_energy"),
 
-        for blip_index in range(len(blip_pdgs)):
-            if blip_pdgs[blip_index] == 11:
-                electron_blips_x.append(blip_x[blip_index])
-                electron_blips_y.append(blip_y[blip_index])
-                electron_blips_z.append(blip_z[blip_index])
-                electron_blips_energy.append(blip_energy[blip_index])
-            elif blip_pdgs[blip_index] == 2212:
-                proton_blips_x.append(blip_x[blip_index])
-                proton_blips_y.append(blip_y[blip_index])
-                proton_blips_z.append(blip_z[blip_index])
-                proton_blips_energy.append(blip_energy[blip_index])
-            else:
-                other_blips_x.append(blip_x[blip_index])
-                other_blips_y.append(blip_y[blip_index])
-                other_blips_z.append(blip_z[blip_index])
-                other_blips_energy.append(blip_energy[blip_index])
+        pl.col("blip_x").arr.eval(is_other.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("other_blip_x"),
+        pl.col("blip_y").arr.eval(is_other.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("other_blip_y"),
+        pl.col("blip_z").arr.eval(is_other.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("other_blip_z"),
+        pl.col("blip_energy").arr.eval(is_other.then(pl.element()).otherwise(None), parallel=True).drop_nulls().alias("other_blip_energy"),
 
-        return (electron_blips_x, electron_blips_y, electron_blips_z, electron_blips_energy,
-                proton_blips_x, proton_blips_y, proton_blips_z, proton_blips_energy,
-                other_blips_x, other_blips_y, other_blips_z, other_blips_energy)
-
-    print("Adding separate e/p/other blips...")
-    # Apply blip separation
-    blip_results = df.select([
-        pl.col("blip_true_pdg"),
-        pl.col("blip_x"),
-        pl.col("blip_y"),
-        pl.col("blip_z"),
-        pl.col("blip_energy")
-    ]).map_rows(lambda x: separate_blips_by_pdg(x[0], x[1], x[2], x[3], x[4]))
-    
-    blip_labels = [
-        "electron_blip_x", "electron_blip_y", "electron_blip_z", "electron_blip_energy",
-        "proton_blip_x", "proton_blip_y", "proton_blip_z", "proton_blip_energy",
-        "other_blip_x", "other_blip_y", "other_blip_z", "other_blip_energy"
-    ]
-
-    df = df.with_columns([
-        blip_results.map_elements(lambda x, i=i: x[i], return_dtype=pl.List(pl.Float64)).alias(name)
-        for i, name in enumerate(blip_labels)
     ])
-
-    return df
 
 
 def add_extra_true_photon_variables(df):

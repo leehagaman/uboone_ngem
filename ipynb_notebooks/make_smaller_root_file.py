@@ -1,4 +1,5 @@
 import subprocess
+import os
 
 # 1) The ROOT macro code as a Python multiline string
 root_macro = r'''
@@ -104,3 +105,5 @@ result = subprocess.run(cmd, capture_output=True, text=True)
 # 4) Print ROOT output
 print(result.stdout)
 print(result.stderr)
+
+os.remove("copy_first_1000.C")

@@ -100,7 +100,15 @@ if __name__ == "__main__":
     dirt_df, dirt_POT = process_root_file("SURPRISE_4b_dirt_overlay")
     ext_df, ext_POT = process_root_file("SURPRISE_4b_ext")
 
-    all_df = pl.concat([nc_pi0_df, nu_df, dirt_df, ext_df], how="vertical")
+    # Add missing columns, and reordering the columns before concatenation
+    all_columns = sorted(set().union(nc_pi0_df.columns, nu_df.columns, dirt_df.columns, ext_df.columns))
+    dfs_aligned = []
+    for df in [nc_pi0_df, nu_df, dirt_df, ext_df]:
+        missing_cols = [col for col in all_columns if col not in df.columns]
+        if missing_cols:
+            df = df.with_columns([pl.lit(None).alias(col) for col in missing_cols])
+        dfs_aligned.append(df.select(all_columns))
+    all_df = pl.concat(dfs_aligned, how="vertical")
 
     pot_dic = {
         "nc_pi0_overlay": nc_pi0_POT,
