@@ -91,7 +91,9 @@ def process_root_file(file_category):
 
     end_time = time.time()
 
-    print(f"loaded {filetype}, {all_df.shape[0]} events, {file_POT:.2e} POT, {root_file_size_gb:.2f} GB root file, {end_time - start_time:.2f} seconds")
+    print(
+        f"loaded {filetype:<20} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    )
 
     return all_df, file_POT
 
@@ -115,7 +117,7 @@ if __name__ == "__main__":
     print("doing post-processing...")
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic)
     all_df = do_wc_postprocessing(all_df)
-    all_df = do_blip_postprocessing(all_df)
+    #all_df = do_blip_postprocessing(all_df)
     all_df = add_extra_true_photon_variables(all_df)
     all_df = add_signal_categories(all_df)
 

@@ -449,8 +449,8 @@ def add_signal_categories(all_df):
     filetype_arr = all_df["filetype"].to_numpy()
     all_df["normal_overlay"] = ~(filetype_arr == "dirt_overlay") & ~(filetype_arr == "ext")
 
-    truth_inFV_arr = all_df["wc_truth_vtxInside"].to_numpy()
-    all_df["wc_truth_inFV"] = truth_inFV_arr == 1
+    truth_inFV_arr = all_df["wc_truth_vtxInside"].to_numpy().astype(bool)
+    all_df["wc_truth_inFV"] = truth_inFV_arr
 
     true_num_gamma_pairconvert_in_FV = all_df["true_num_gamma_pairconvert_in_FV"].to_numpy()
     truth_0g_arr = true_num_gamma_pairconvert_in_FV == 0
@@ -470,10 +470,18 @@ def add_signal_categories(all_df):
 
     truth_isCC_arr = all_df["wc_truth_isCC"].to_numpy().astype(bool)
     truth_nuPdg_arr = all_df["wc_truth_nuPdg"].to_numpy()
-    truth_1mu_arr = truth_isCC_arr & (np.abs(truth_nuPdg_arr) == 14)
-    truth_0mu_arr = ~truth_1mu_arr
-    all_df["wc_truth_1mu"] = truth_1mu_arr
-    all_df["wc_truth_0mu"] = truth_0mu_arr
+    truth_numuCC_arr = truth_isCC_arr & (np.abs(truth_nuPdg_arr) == 14)
+    truth_nueCC_arr = truth_isCC_arr & (np.abs(truth_nuPdg_arr) == 12)
+    all_df["wc_truth_numuCC"] = truth_numuCC_arr
+    all_df["wc_truth_notnumuCC"] = ~truth_numuCC_arr
+    all_df["wc_truth_nueCC"] = truth_nueCC_arr
+    all_df["wc_truth_notnueCC"] = ~truth_nueCC_arr
+    all_df["wc_truth_isCC"] = truth_isCC_arr
+    all_df["wc_truth_isNC"] = ~truth_isCC_arr
+    all_df["wc_truth_1mu"] = truth_numuCC_arr & truth_inFV_arr
+    all_df["wc_truth_0mu"] = ~(truth_numuCC_arr & truth_inFV_arr)
+    all_df["wc_truth_1e"] = truth_nueCC_arr & truth_inFV_arr
+    all_df["wc_truth_0e"] = ~(truth_nueCC_arr & truth_inFV_arr)
 
     truth_NprimPio_arr = all_df["wc_truth_NprimPio"].to_numpy()
     all_df["wc_truth_0pi0"] = truth_NprimPio_arr == 0
@@ -486,10 +494,17 @@ def add_signal_categories(all_df):
             if i1 != i2:
                 overlap = condition1 & condition2
                 if overlap.any():
-                    raise AssertionError(f"Overlapping topological signal definitions: {topological_category_labels[i1]} and {topological_category_labels[i2]}")
+                    print(f"Overlapping topological signal definitions: {topological_category_labels[i1]} and {topological_category_labels[i2]}")
+                    row = all_df[condition1 & condition2].iloc[0]
+                    print(f"Example: {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
+                    raise AssertionError
     all_df['topological_signal_category'] = np.select(topological_conditions, topological_category_labels, default="other")
     uncategorized_df = all_df[all_df['topological_signal_category'] == 'other']
-    assert len(uncategorized_df) == 0, "Uncategorized topological signal categories!"
+    if len(uncategorized_df) > 0:
+        print(f"Uncategorized topological signal categories!")
+        row = uncategorized_df.iloc[0]
+        print(f"Example: {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}")
+        raise AssertionError
     all_df["topological_signal_category"] = np.select(topological_conditions, topological_category_labels, default="other")
     print("\ntopological signal categories:")
     for topological_signal_category in all_df['topological_signal_category'].unique():
@@ -504,10 +519,17 @@ def add_signal_categories(all_df):
             if i1 != i2:
                 overlap = condition1 & condition2
                 if overlap.any():
-                    raise AssertionError(f"Overlapping topological signal definitions: {topological_category_labels[i1]} and {topological_category_labels[i2]}")
+                    print(f"Overlapping physics signal definitions: {physics_category_labels[i1]} and {physics_category_labels[i2]}")
+                    row = all_df[condition1 & condition2].iloc[0]
+                    print(f"Example: {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
+                    raise AssertionError
     all_df["physics_signal_category"] = np.select(physics_conditions, physics_category_labels, default="other")
     uncategorized_df = all_df[all_df['physics_signal_category'] == 'other']
-    assert len(uncategorized_df) == 0, "Uncategorized physics signal categories!"
+    if len(uncategorized_df) > 0:
+        print(f"Uncategorized physics signal categories!")
+        row = uncategorized_df.iloc[0]
+        print(f"Example: {row['wc_truth_inFV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_NCDelta']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_nueCC']=}")
+        raise AssertionError
     print("\nphysics signal categories:")
     for physics_signal_category in all_df['physics_signal_category'].unique():
         curr_df = all_df[all_df['physics_signal_category'] == physics_signal_category]
