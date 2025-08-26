@@ -6,6 +6,7 @@ from tqdm import tqdm
 import pickle
 import os
 import time
+import argparse
 
 from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars
 from variables import wc_T_bdt_vars, wc_T_kine_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
@@ -13,7 +14,7 @@ from variables import blip_vars, pelee_vars
 from postprocessing import do_orthogonalization_and_POT_weighting, do_wc_postprocessing, do_blip_postprocessing
 from postprocessing import add_extra_true_photon_variables, add_signal_categories
 
-def process_root_file(file_category):
+def process_root_file(file_category, frac_events: float = 1.0):
 
     # loading the root file
     if file_category == "SURPRISE_4b_NC_pi0_overlay":
@@ -46,34 +47,43 @@ def process_root_file(file_category):
 
     f = uproot.open(f"data_files/{filename}")
 
+    # determine how many events to read based on requested fraction
+    if not (0.0 < frac_events <= 1.0):
+        raise ValueError("--frac_events/-f must be in the interval (0, 1].")
+    total_entries = f["wcpselection"]["T_eval"].num_entries
+    n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
+    slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
+
     # loading Wire-Cell variables
     dic = {}
-    dic.update(f["wcpselection"]["T_BDTvars"].arrays(wc_T_BDT_including_training_vars, library="np"))
-    dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np"))
+    dic.update(f["wcpselection"]["T_BDTvars"].arrays(wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
     if filetype == "ext" or filetype == "data":
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np"))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np"))
+        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
+        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
     else:
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_vars, library="np"))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np"))
-    file_POT = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
+        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_vars, library="np", **slice_kwargs))
+        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
+    # compute total POT for the file (not sliced), then scale by frac_events
+    file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     for col in dic:
         dic[col] = dic[col].tolist()
     wc_df = pd.DataFrame(dic)
     if filetype == "ext":
-        file_POT = wc_processed_data_POT * wc_processed_ext_num_spills / wc_processed_data_num_spills
+        file_POT_total = wc_processed_data_POT * wc_processed_ext_num_spills / wc_processed_data_num_spills
+    file_POT = file_POT_total * frac_events
     wc_df["file_POT"] = file_POT
     
     # loading blip variables
     dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np"))
+    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np", **slice_kwargs))
     for col in dic:
         dic[col] = dic[col].tolist()
     blip_df = pd.DataFrame(dic)
 
     # loading PeLEE variables
     dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pelee_vars, library="np"))
+    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pelee_vars, library="np", **slice_kwargs))
     for col in dic:
         dic[col] = dic[col].tolist()
     pelee_df = pd.DataFrame(dic)
@@ -92,7 +102,7 @@ def process_root_file(file_category):
     end_time = time.time()
 
     print(
-        f"loaded {filetype:<20} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+        f"loaded {filetype:<20} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s (f={frac_events})"
     )
 
     return all_df, file_POT
@@ -100,10 +110,18 @@ def process_root_file(file_category):
 
 if __name__ == "__main__":
 
-    nc_pi0_df, nc_pi0_POT = process_root_file("SURPRISE_4b_NC_pi0_overlay")
-    nu_df, nu_POT = process_root_file("SURPRISE_4b_nu_overlay")
-    dirt_df, dirt_POT = process_root_file("SURPRISE_4b_dirt_overlay")
-    ext_df, ext_POT = process_root_file("SURPRISE_4b_ext")
+    parser = argparse.ArgumentParser(description="Create merged dataframe from SURPRISE 4b ROOT files")
+    parser.add_argument("-f", "--frac_events", type=float, default=1.0,
+                        help="Fraction of events (and POT) to load from each file, in (0,1]. Default: 1.0")
+    args = parser.parse_args()
+
+    nc_pi0_df, nc_pi0_POT = process_root_file("SURPRISE_4b_NC_pi0_overlay", frac_events=args.frac_events)
+    nu_df, nu_POT = process_root_file("SURPRISE_4b_nu_overlay", frac_events=args.frac_events)
+    dirt_df, dirt_POT = process_root_file("SURPRISE_4b_dirt_overlay", frac_events=args.frac_events)
+    ext_df, ext_POT = process_root_file("SURPRISE_4b_ext", frac_events=args.frac_events)
+
+    if args.frac_events < 1.0:
+        print(f"Loading {args.frac_events} fraction of events from each file")
 
     all_df = pd.concat([nc_pi0_df, nu_df, dirt_df, ext_df])
 
@@ -143,7 +161,25 @@ if __name__ == "__main__":
     non_training_columns += ["wc_" + var for var in wc_T_bdt_vars + wc_T_kine_vars + wc_T_eval_vars + wc_T_pf_vars if var not in ["run", "subrun", "event"]]
     non_training_columns += [var for var in blip_vars]
     non_training_columns += ["pelee_" + var for var in pelee_vars]
-    all_df_no_training_columns = all_df[non_training_columns]
+    remove_large_vector_columns = [
+        "wc_kine_energy_particle",
+        "wc_kine_particle_type",
+        "wc_truth_id",
+        "wc_truth_pdg",
+        "wc_truth_mother",
+        "wc_truth_startMomentum",
+        "wc_truth_startXYZT",
+        "wc_truth_endXYZT",
+        "wc_reco_id",
+        "wc_reco_pdg",
+        "wc_reco_mother",
+        "wc_reco_startMomentum",
+        "wc_reco_startXYZT",
+        "wc_reco_endXYZT",
+    ]
+    final_save_columns = [col for col in non_training_columns if col not in remove_large_vector_columns]
+
+    all_df_no_training_columns = all_df[final_save_columns]
     all_df_no_training_columns.to_pickle("intermediate_files/all_df.pkl")
     end_time = time.time()
     file_size_gb = os.path.getsize('intermediate_files/all_df.pkl') / 1024**3
