@@ -125,40 +125,6 @@ wc_extra_T_spacepoints_vars = [
     "TrueEDep_spacepoints_edep",
 ]
 
-blip_vars = [
-    "nblips_saved",
-    "blip_x",
-    "blip_y",
-    "blip_z",
-    "blip_dx",
-    "blip_dw",
-    "blip_energy",
-    "blip_true_g4id",
-    "blip_true_pdg",
-    "blip_true_energy",
-]
-
-# more technical blip variables
-extra_blip_vars = [
-    "blip_charge",
-    "blip_nplanes",
-    "blip_proxtrkdist",
-    "blip_proxtrkid",
-    "blip_touchtrk",
-    "blip_touchtrkid",
-    "blip_pl0_nwires",
-    "blip_pl1_nwires",
-    "blip_pl2_nwires",
-    "blip_pl0_bydeadwire",
-    "blip_pl1_bydeadwire",
-    "blip_pl2_bydeadwire",
-]
-
-# TODO: add more relevant PeLEE variables here
-pelee_vars = [
-    "shr_energy",
-]
-
 
 # These are the scalar variables saved for the numu tagger
 numu3_var = [
@@ -467,5 +433,97 @@ wc_training_vars = wc_T_BDT_training_vars + wc_T_KINEvars_training_vars
 wc_training_vars = [f"wc_{var}" for var in wc_training_vars]
 wc_training_vars += ["wc_reco_num_protons", "wc_reco_num_other_tracks"]
 
+wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC", "wc_reco_num_protons", "wc_reco_num_other_tracks"]]
+
 wc_T_BDT_including_training_vars = list(set(wc_T_bdt_vars + wc_T_BDT_training_vars))
 wc_T_KINEvars_including_training_vars = list(set(wc_T_kine_vars + wc_T_KINEvars_training_vars))
+
+
+blip_vars = [
+    "nblips_saved",
+    "blip_x",
+    "blip_y",
+    "blip_z",
+    "blip_dx",
+    "blip_dw",
+    "blip_energy",
+    "blip_true_g4id",
+    "blip_true_pdg",
+    "blip_true_energy",
+]
+
+# more technical blip variables
+extra_blip_vars = [
+    "blip_charge",
+    "blip_nplanes",
+    "blip_proxtrkdist",
+    "blip_proxtrkid",
+    "blip_touchtrk",
+    "blip_touchtrkid",
+    "blip_pl0_nwires",
+    "blip_pl1_nwires",
+    "blip_pl2_nwires",
+    "blip_pl0_bydeadwire",
+    "blip_pl1_bydeadwire",
+    "blip_pl2_bydeadwire",
+]
+
+# TODO: add more relevant PeLEE variables here
+pelee_vars = [
+    "shr_energy",
+    "reco_nu_vtx_x",
+    "reco_nu_vtx_y",
+    "reco_nu_vtx_z",
+    "reco_nu_vtx_sce_x",
+    "reco_nu_vtx_sce_y",
+    "reco_nu_vtx_sce_z",
+]
+
+# TODO: add more relevant gLEE variables here
+glee_vars = [
+    "sss_candidate_veto_score",
+    "sss3d_shower_score",
+]
+
+# TODO: add more relevant LANTERN variables here
+lantern_vars = [
+    "nShowers",
+    "showerPhScore",
+    "vtxX",
+    "vtxY",
+    "vtxZ",
+]
+
+wc_postprocessing_training_vars = [
+    "wc_reco_shower_theta",
+    "wc_reco_shower_phi",
+    "wc_reco_distance_to_boundary",
+    "wc_reco_backwards_projected_dist",
+]
+
+blip_postprocessing_training_vars = [
+    "blip_closest_upstream_distance",
+    "blip_closest_upstream_angle",
+    "blip_closest_upstream_impact_parameter",
+    "blip_closest_upstream_energy",
+    "blip_closest_upstream_type",
+]
+
+glee_postprocessing_training_vars = [
+    "glee_max_ssv_score",
+    "glee_max_3d_shower_score",
+]
+
+lantern_postprocessing_training_vars = [
+    "lantern_max_showerPhScore",
+    "lantern_second_max_showerPhScore",
+]
+
+combined_postprocessing_training_vars = [
+    "wc_pandora_dist",
+    "wc_lantern_dist",
+    "lantern_pandora_dist",
+]
+
+combined_training_vars = wc_training_vars + wc_postprocessing_training_vars + glee_postprocessing_training_vars + lantern_postprocessing_training_vars
+# leave blip, nanosecond timing, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability

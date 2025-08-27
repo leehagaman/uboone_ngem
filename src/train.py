@@ -11,12 +11,15 @@ import os
 import argparse
 
 from signal_categories import topological_category_labels
-from variables import wc_training_vars
+from variables import wc_training_vars, combined_training_vars
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
+    parser.add_argument("--training_vars", type=str, default="combined")
+    parser.add_argument("--early_stopping_rounds", type=int, default=50,
+                        help="Stop training if validation metric doesn't improve for this many rounds")
     args = parser.parse_args()
 
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +28,13 @@ if __name__ == "__main__":
         timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         args.name = f"training_{timestamp}"
 
-    
+    if args.training_vars == "combined":
+        training_vars = combined_training_vars
+    elif args.training_vars == "wc":
+        training_vars = wc_training_vars
+    else:
+        raise ValueError(f"Invalid training_vars: {args.training_vars}")
+
     # Delete the directory if it exists
     if (PROJECT_ROOT / 'training_outputs' / args.name).exists():
         import os
@@ -33,10 +42,10 @@ if __name__ == "__main__":
         print(f"Deleted existing directory: {PROJECT_ROOT / 'training_outputs' / args.name}")
 
     output_dir = PROJECT_ROOT / 'training_outputs' / args.name
-    
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Saving outputs to: {output_dir}")
-
+    score_vis_dir = output_dir / "score_vis"
+    score_vis_dir.mkdir(parents=True, exist_ok=True)
 
     print("xgboost version: ", xgb.__version__)
 
@@ -56,7 +65,7 @@ if __name__ == "__main__":
     preselected_num_events = presel_df.shape[0]
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 
-    x = presel_df[wc_training_vars].to_numpy()
+    x = presel_df[training_vars].to_numpy()
     w = presel_df["wc_net_weight"].to_numpy()
 
     num_categories = len(topological_category_labels)
@@ -67,12 +76,22 @@ if __name__ == "__main__":
 
     topological_signal_category_mapping = {cat: i for i, cat in enumerate(topological_category_labels)}
 
-    x_train = presel_train_df[wc_training_vars].to_numpy()
+    x_train = presel_train_df[training_vars].to_numpy()
+    x_train = x_train.astype(np.float64)
+    x_train[np.isinf(x_train)] = np.nan
+
     y_train = presel_train_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
     w_train = presel_train_df["wc_net_weight"].to_numpy()
-    x_test = presel_test_df[wc_training_vars].to_numpy()
+
+    x_test = presel_test_df[training_vars].to_numpy()
+    x_test = x_test.astype(np.float64)
+    x_test[np.isinf(x_test)] = np.nan
+
     y_test = presel_test_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
     w_test = presel_test_df["wc_net_weight"].to_numpy()
+
+    num_training_vars = len(training_vars)
+    print(f"{num_training_vars=}")
     
     # Debug: Check what categories are in training and test data
     #unique_categories_train = np.unique(y_train)
@@ -88,14 +107,20 @@ if __name__ == "__main__":
         num_class=num_categories,
         n_estimators=200,
         eval_metric=['mlogloss', 'merror'],
+        early_stopping_rounds=args.early_stopping_rounds,
     )
 
     model.fit(
         x_train, y_train, 
         sample_weight=w_train,
         eval_set=eval_set,
+        sample_weight_eval_set=eval_weights,
         verbose=20
     )
+
+    # Report best iteration if early stopping was used
+    if hasattr(model, "best_iteration") and model.best_iteration is not None:
+        print(f"Early stopping: best_iteration={model.best_iteration}")
 
     # Save model
     model.get_booster().save_model(output_dir / "bdt.json")
@@ -105,7 +130,7 @@ if __name__ == "__main__":
     # Feature Importance Plot
     plt.figure(figsize=(12, 8))
     importance_df = pd.DataFrame({
-        'feature': wc_training_vars,
+        'feature': training_vars,
         'importance': model.feature_importances_
     })
     importance_df = importance_df.sort_values('importance', ascending=True)  # Sort ascending so largest bar is at top
@@ -253,7 +278,9 @@ if __name__ == "__main__":
 
     # Get predictions for all data (not just test set, not just presel)
 
-    x = all_df[wc_training_vars].to_numpy()
+    x = all_df[training_vars].to_numpy()
+    x = x.astype(np.float64)
+    x[np.isinf(x)] = np.nan
 
     all_probabilities = model.predict_proba(x)
 

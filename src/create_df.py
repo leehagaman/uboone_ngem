@@ -8,11 +8,11 @@ import os
 import time
 import argparse
 
-from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars
+from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
 from variables import wc_T_bdt_vars, wc_T_kine_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
-from variables import blip_vars, pelee_vars
-from postprocessing import do_orthogonalization_and_POT_weighting, do_wc_postprocessing, do_blip_postprocessing
-from postprocessing import add_extra_true_photon_variables, add_signal_categories
+from variables import blip_vars, pelee_vars, glee_vars, lantern_vars
+from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, add_signal_categories
+from postprocessing import do_wc_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_glee_postprocessing, do_combined_postprocessing
 
 def process_root_file(file_category, frac_events: float = 1.0):
 
@@ -64,7 +64,6 @@ def process_root_file(file_category, frac_events: float = 1.0):
     else:
         dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_vars, library="np", **slice_kwargs))
         dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
-    # compute total POT for the file (not sliced), then scale by frac_events
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     for col in dic:
         dic[col] = dic[col].tolist()
@@ -88,11 +87,27 @@ def process_root_file(file_category, frac_events: float = 1.0):
         dic[col] = dic[col].tolist()
     pelee_df = pd.DataFrame(dic)
 
+    # loading gLEE variables
+    dic = {}
+    dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
+    for col in dic:
+        dic[col] = dic[col].tolist()
+    glee_df = pd.DataFrame(dic)
+
+    # loading LANTERN variables
+    dic = {}
+    dic.update(f["lantern"]["EventTree"].arrays(lantern_vars, library="np", **slice_kwargs))
+    for col in dic:
+        dic[col] = dic[col].tolist()
+    lantern_df = pd.DataFrame(dic)
+
     wc_df = wc_df.add_prefix("wc_")
     # blip_df = blip_df.add_prefix("blip_") # blip variables already have the "blip_" prefix
     pelee_df = pelee_df.add_prefix("pelee_")
+    glee_df = glee_df.add_prefix("glee_")
+    lantern_df = lantern_df.add_prefix("lantern_")
 
-    all_df = pd.concat([wc_df, blip_df, pelee_df], axis=1)
+    all_df = pd.concat([wc_df, blip_df, pelee_df, glee_df, lantern_df], axis=1)
 
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
@@ -101,9 +116,10 @@ def process_root_file(file_category, frac_events: float = 1.0):
 
     end_time = time.time()
 
-    print(
-        f"loaded {filetype:<20} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s (f={frac_events})"
-    )
+    progress_str = f"loaded {filetype:<20} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    if frac_events < 1.0:
+        progress_str += f" (f={frac_events})"
+    print(progress_str)
 
     return all_df, file_POT
 
@@ -135,9 +151,13 @@ if __name__ == "__main__":
     print("doing post-processing...")
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic)
     all_df = do_wc_postprocessing(all_df)
-    #all_df = do_blip_postprocessing(all_df)
     all_df = add_extra_true_photon_variables(all_df)
     all_df = add_signal_categories(all_df)
+
+    all_df = do_blip_postprocessing(all_df)
+    all_df = do_lantern_postprocessing(all_df)
+    all_df = do_glee_postprocessing(all_df)
+    all_df = do_combined_postprocessing(all_df)
 
     file_RSEs = []
     for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
@@ -157,11 +177,7 @@ if __name__ == "__main__":
     print("saving intermediate_files/all_df.pkl...", end="", flush=True)
     start_time = time.time()
     # restrict to fewer columns for a smaller file size
-    non_training_columns = ["run", "subrun", "event", "filetype", "wc_net_weight", "topological_signal_category", "physics_signal_category"]
-    non_training_columns += ["wc_" + var for var in wc_T_bdt_vars + wc_T_kine_vars + wc_T_eval_vars + wc_T_pf_vars if var not in ["run", "subrun", "event"]]
-    non_training_columns += [var for var in blip_vars]
-    non_training_columns += ["pelee_" + var for var in pelee_vars]
-    remove_large_vector_columns = [
+    vector_columns = [
         "wc_kine_energy_particle",
         "wc_kine_particle_type",
         "wc_truth_id",
@@ -176,8 +192,24 @@ if __name__ == "__main__":
         "wc_reco_startMomentum",
         "wc_reco_startXYZT",
         "wc_reco_endXYZT",
+
+        "lantern_showerPhScore",
+
+        "blip_x",
+        "blip_y",
+        "blip_z",
+        "blip_dx",
+        "blip_dw",
+        "blip_energy",
+        "blip_true_g4id",
+        "blip_true_pdg",
+        "blip_true_energy",
+
+        "glee_sss_candidate_veto_score",
+        "glee_sss3d_shower_score",
     ]
-    final_save_columns = [col for col in non_training_columns if col not in remove_large_vector_columns]
+    remove_columns = wc_training_only_vars + vector_columns
+    final_save_columns = [col for col in all_df.columns if col not in remove_columns]
 
     all_df_no_training_columns = all_df[final_save_columns]
     all_df_no_training_columns.to_pickle("intermediate_files/all_df.pkl")
