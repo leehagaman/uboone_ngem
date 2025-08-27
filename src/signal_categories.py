@@ -40,3 +40,14 @@ physics_categories = [
 physics_category_queries = [cat[1] for cat in physics_categories]
 physics_category_labels = [cat[0] for cat in physics_categories]
 physics_category_colors = [cat[2] for cat in physics_categories]
+
+
+filetype_categories = [
+    ("nc_pi0_overlay", "filetype == 'nc_pi0_overlay'", "xkcd:red"),
+    ("nu_overlay",     "filetype == 'nu_overlay'",     "xkcd:blue"),
+    ("dirt_overlay",   "filetype == 'dirt_overlay'",   "xkcd:green"),
+    ("ext",            "filetype == 'ext'",            "xkcd:yellow"),
+]
+filetype_category_queries = [cat[1] for cat in filetype_categories]
+filetype_category_labels = [cat[0] for cat in filetype_categories]
+filetype_category_colors = [cat[2] for cat in filetype_categories]
