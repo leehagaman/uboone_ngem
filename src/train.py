@@ -9,12 +9,15 @@ from sklearn.model_selection import train_test_split
 from datetime import datetime
 import os
 import argparse
+import time
 
 from signal_categories import topological_category_labels
 from variables import wc_training_vars, combined_training_vars
 
 
 if __name__ == "__main__":
+    main_start_time = time.time()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--training_vars", type=str, default="combined")
@@ -118,8 +121,7 @@ if __name__ == "__main__":
         verbose=20
     )
 
-    # Report best iteration if early stopping was used
-    if hasattr(model, "best_iteration") and model.best_iteration is not None:
+    if model.best_iteration is not None:
         print(f"Early stopping: best_iteration={model.best_iteration}")
 
     # Save model
@@ -155,6 +157,7 @@ if __name__ == "__main__":
     plt.title('Training Loss Curves')
     plt.legend()
     plt.grid(True, alpha=0.3)
+    plt.axvline(model.best_iteration, linestyle='--', color='k', alpha=0.6, label='Best iteration')
 
     # Accuracy curves (1 - error)
     plt.subplot(1, 2, 2)
@@ -167,6 +170,7 @@ if __name__ == "__main__":
     plt.title('Training Accuracy Curves')
     plt.legend()
     plt.grid(True, alpha=0.3)
+    plt.axvline(model.best_iteration, linestyle='--', color='k', alpha=0.6, label='Best iteration')
 
     plt.tight_layout()
     plt.savefig(output_dir / "training_curves.png", dpi=300, bbox_inches='tight')
@@ -296,3 +300,6 @@ if __name__ == "__main__":
 
     prediction_df.to_pickle(output_dir / "predictions.pkl")
     print(f"Saved predictions to: {output_dir / 'predictions.pkl'}")
+
+    main_end_time = time.time()
+    print(f"Total time to train the model: {main_end_time - main_start_time:.2f} seconds")

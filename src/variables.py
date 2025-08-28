@@ -1,7 +1,7 @@
 
 wc_T_bdt_vars = [              # variables involved with BDT training (if you want to train your own BDT, lots of these variables will be useful)
-                            # many of these variables describe specific features of the WC spacepoints using this code: https://github.com/BNLIF/wire-cell-pid/blob/master/src/NeutrinoID_nue_tagger.h
-                            # here, we just include higher level outputs:
+                               # many of these variables describe specific features of the WC spacepoints using this code: https://github.com/BNLIF/wire-cell-pid/blob/master/src/NeutrinoID_nue_tagger.h
+                               # here, we just include higher level outputs:
     "nue_score",                    # BDT score for nue selection, used for the WC inclusive nueCC analysis
     "numu_score",                   # BDT score for numu selection, used for the WC inclusive numuCC selections
     "nc_delta_score",               # BDT score for NC Delta selection
@@ -501,12 +501,13 @@ wc_postprocessing_training_vars = [
     "wc_reco_backwards_projected_dist",
 ]
 
-blip_postprocessing_training_vars = [
+blip_postprocessing_vars = [
     "blip_closest_upstream_distance",
     "blip_closest_upstream_angle",
     "blip_closest_upstream_impact_parameter",
     "blip_closest_upstream_energy",
-    "blip_closest_upstream_type",
+    "blip_closest_upstream_dx",
+    "blip_closest_upstream_dw",
 ]
 
 glee_postprocessing_training_vars = [

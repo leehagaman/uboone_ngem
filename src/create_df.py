@@ -125,6 +125,7 @@ def process_root_file(file_category, frac_events: float = 1.0):
 
 
 if __name__ == "__main__":
+    main_start_time = time.time()
 
     parser = argparse.ArgumentParser(description="Create merged dataframe from SURPRISE 4b ROOT files")
     parser.add_argument("-f", "--frac_events", type=float, default=1.0,
@@ -216,4 +217,6 @@ if __name__ == "__main__":
     end_time = time.time()
     file_size_gb = os.path.getsize('intermediate_files/all_df.pkl') / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
+    main_end_time = time.time()
+    print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
     

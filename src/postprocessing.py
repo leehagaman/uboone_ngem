@@ -464,80 +464,78 @@ def do_blip_postprocessing(df):
 
     # TODO: replace this blip analyzing code with a more detailed method or BDT according to Karan's studies
 
-    all_blip_pdgs = df["blip_true_pdg"].to_numpy()
     all_blip_x = df["blip_x"].to_numpy()
     all_blip_y = df["blip_y"].to_numpy()
     all_blip_z = df["blip_z"].to_numpy()
     all_blip_energy = df["blip_energy"].to_numpy()
-    wc_reco_shower_momentum = df["wc_reco_showerMomentum"].to_numpy()
-    wc_reco_shower_vtx_x = df["wc_reco_showervtxX"].to_numpy()
-    wc_reco_shower_vtx_y = df["wc_reco_showervtxY"].to_numpy()
-    wc_reco_shower_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
+    all_blip_dx = df["blip_dx"].to_numpy()
+    all_blip_dw = df["blip_dw"].to_numpy()
+    all_wc_reco_shower_momentum = df["wc_reco_showerMomentum"].to_numpy()
+    all_wc_reco_shower_vtx_x = df["wc_reco_showervtxX"].to_numpy()
+    all_wc_reco_shower_vtx_y = df["wc_reco_showervtxY"].to_numpy()
+    all_wc_reco_shower_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
 
     closest_upstream_blip_distance = []
     closest_upstream_blip_angle = []
     closest_upstream_blip_impact_parameter = []
     closest_upstream_blip_energy = []
-    closest_upstream_blip_type = []
+    closest_upstream_blip_dx = []
+    closest_upstream_blip_dw = []
     for event_index in tqdm(range(len(df)), desc="Finding closest upstream blip"):
 
         curr_closest_upstream_blip_distance = np.inf
         curr_closest_upstream_blip_angle = np.nan
         curr_closest_upstream_blip_impact_parameter = np.nan
         curr_closest_upstream_blip_energy = np.nan
-        curr_closest_upstream_blip_type = np.nan
+        curr_closest_upstream_blip_dx = np.nan
+        curr_closest_upstream_blip_dw = np.nan
 
-        curr_blip_pdgs = all_blip_pdgs[event_index]
-        curr_blip_x = all_blip_x[event_index]
-        curr_blip_y = all_blip_y[event_index]
-        curr_blip_z = all_blip_z[event_index]
-        curr_blip_energy = all_blip_energy[event_index]
-        curr_wc_reco_shower_momentum = np.array([wc_reco_shower_momentum[event_index][0], 
-                                                 wc_reco_shower_momentum[event_index][1], 
-                                                 wc_reco_shower_momentum[event_index][2]])
-        curr_wc_reco_shower_momentum_unit = curr_wc_reco_shower_momentum / np.linalg.norm(curr_wc_reco_shower_momentum)
-        curr_wc_reco_shower_vtx_x = wc_reco_shower_vtx_x[event_index]
-        curr_wc_reco_shower_vtx_y = wc_reco_shower_vtx_y[event_index]
-        curr_wc_reco_shower_vtx_z = wc_reco_shower_vtx_z[event_index]
+        blip_xs = all_blip_x[event_index]
+        blip_ys = all_blip_y[event_index]
+        blip_zs = all_blip_z[event_index]
+        blip_energies = all_blip_energy[event_index]
+        blip_dxs = all_blip_dx[event_index]
+        blip_dws = all_blip_dw[event_index]
 
-        if isinstance(curr_blip_pdgs, float) and np.isnan(curr_blip_pdgs): # not an array, skip
-            closest_upstream_blip_distance.append(np.nan)
-            closest_upstream_blip_angle.append(np.nan)
-            closest_upstream_blip_impact_parameter.append(np.nan)
-            closest_upstream_blip_energy.append(np.nan)
-            closest_upstream_blip_type.append(np.nan)
-            continue
+        wc_reco_shower_momentum = np.array([all_wc_reco_shower_momentum[event_index][0], 
+                                            all_wc_reco_shower_momentum[event_index][1], 
+                                            all_wc_reco_shower_momentum[event_index][2]])
+        wc_reco_shower_momentum_unit = wc_reco_shower_momentum / np.linalg.norm(wc_reco_shower_momentum)
+        wc_reco_shower_vtx_x = all_wc_reco_shower_vtx_x[event_index]
+        wc_reco_shower_vtx_y = all_wc_reco_shower_vtx_y[event_index]
+        wc_reco_shower_vtx_z = all_wc_reco_shower_vtx_z[event_index]
 
-        for blip_index in range(len(curr_blip_pdgs)):
-            dist_to_WC_shower_vtx = np.sqrt((curr_blip_x[blip_index] - curr_wc_reco_shower_vtx_x)**2
-                                          + (curr_blip_y[blip_index] - curr_wc_reco_shower_vtx_y)**2
-                                          + (curr_blip_z[blip_index] - curr_wc_reco_shower_vtx_z)**2)
+        for blip_index in range(len(blip_xs)):
+            dist_to_WC_shower_vtx = np.sqrt((blip_xs[blip_index] - wc_reco_shower_vtx_x)**2
+                                          + (blip_ys[blip_index] - wc_reco_shower_vtx_y)**2
+                                          + (blip_zs[blip_index] - wc_reco_shower_vtx_z)**2)
             threshold_dist = 2 # cm, must be at least 2 cm away to be considered upstream
-            if threshold_dist < dist_to_WC_shower_vtx < curr_closest_upstream_blip_distance:
+            shower_vtx_to_blip_vector = np.array([blip_xs[blip_index] - wc_reco_shower_vtx_x,
+                                        blip_ys[blip_index] - wc_reco_shower_vtx_y,
+                                        blip_zs[blip_index] - wc_reco_shower_vtx_z])
+            shower_vtx_to_blip_vector_unit = shower_vtx_to_blip_vector / np.linalg.norm(shower_vtx_to_blip_vector)
+            blip_angle = np.arccos(np.dot(shower_vtx_to_blip_vector_unit, -wc_reco_shower_momentum_unit)) * 180 / np.pi # angle between vtx to blip vector and backwards shower momentum vector
+            if threshold_dist < dist_to_WC_shower_vtx < curr_closest_upstream_blip_distance and blip_angle < 90:
                 curr_closest_upstream_blip_distance = dist_to_WC_shower_vtx
-
-                shower_vtx_to_blip_vector = np.array([curr_blip_x[blip_index] - curr_wc_reco_shower_vtx_x,
-                                                      curr_blip_y[blip_index] - curr_wc_reco_shower_vtx_y,
-                                                      curr_blip_z[blip_index] - curr_wc_reco_shower_vtx_z])
-                shower_vtx_to_blip_vector_unit = shower_vtx_to_blip_vector / np.linalg.norm(shower_vtx_to_blip_vector)
-                curr_closest_upstream_blip_angle = np.arccos(np.dot(shower_vtx_to_blip_vector_unit, curr_wc_reco_shower_momentum_unit)) * 180 / np.pi
-                projected_vec = np.dot(shower_vtx_to_blip_vector, curr_wc_reco_shower_momentum_unit) * curr_wc_reco_shower_momentum_unit
-                curr_closest_upstream_blip_impact_parameter = np.linalg.norm(shower_vtx_to_blip_vector - projected_vec)
-                curr_closest_upstream_blip_energy = curr_blip_energy[blip_index]
-                curr_closest_upstream_blip_type = curr_blip_pdgs[blip_index]
-
+                curr_closest_upstream_blip_angle = blip_angle
+                curr_projected_vec = np.dot(shower_vtx_to_blip_vector, wc_reco_shower_momentum_unit) * wc_reco_shower_momentum_unit # vtx to blip vector projected along shower axis
+                curr_closest_upstream_blip_impact_parameter = np.linalg.norm(shower_vtx_to_blip_vector - curr_projected_vec)
+                curr_closest_upstream_blip_energy = blip_energies[blip_index]
+                curr_closest_upstream_blip_dx = blip_dxs[blip_index]
+                curr_closest_upstream_blip_dw = blip_dws[blip_index]
         closest_upstream_blip_distance.append(curr_closest_upstream_blip_distance)
         closest_upstream_blip_angle.append(curr_closest_upstream_blip_angle)
         closest_upstream_blip_impact_parameter.append(curr_closest_upstream_blip_impact_parameter)
         closest_upstream_blip_energy.append(curr_closest_upstream_blip_energy)
-        closest_upstream_blip_type.append(curr_closest_upstream_blip_type)
-
+        closest_upstream_blip_dx.append(curr_closest_upstream_blip_dx)
+        closest_upstream_blip_dw.append(curr_closest_upstream_blip_dw)
     df["blip_closest_upstream_distance"] = closest_upstream_blip_distance
     df["blip_closest_upstream_angle"] = closest_upstream_blip_angle
     df["blip_closest_upstream_impact_parameter"] = closest_upstream_blip_impact_parameter
     df["blip_closest_upstream_energy"] = closest_upstream_blip_energy
-    df["blip_closest_upstream_type"] = closest_upstream_blip_type
-
+    df["blip_closest_upstream_dx"] = closest_upstream_blip_dx
+    df["blip_closest_upstream_dw"] = closest_upstream_blip_dw
+    
     return df
 
 def do_glee_postprocessing(df):
