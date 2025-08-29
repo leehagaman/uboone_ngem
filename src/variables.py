@@ -72,6 +72,10 @@ wc_T_pf_vars = [               # variables involved with individual particles
     "reco_startMomentum",
     "reco_startXYZT",
     "reco_endXYZT",
+
+    # Nanosecond timing
+    #"evtTimeNS",      # for data
+    "evtTimeNS_cor",  # for MC
 ]
 
 wc_T_pf_data_vars = [          # same as above, but for data files we do not attempt to load any truth information
@@ -90,6 +94,8 @@ wc_T_pf_data_vars = [          # same as above, but for data files we do not att
     "reco_startMomentum",
     "reco_startXYZT",
     "reco_endXYZT",
+    "evtTimeNS",      # for data
+    #"evtTimeNS_cor",  # for MC
 ]
 
 # some of these variables only exist in
