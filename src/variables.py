@@ -23,12 +23,16 @@ wc_T_eval_vars = [             # variables involved with low level reconstructio
     "truth_vtxInside",              # boolean, true neutrino vertex is inside the TPC Fiducial Volume
     "weight_cv",                    # GENIE MicroBooNE tune event weight (which should be corrected by also using weight_spline)
     "weight_spline",                # additional weight to correct the GENIE tune for certain events
+    "flash_measPe",                 # measured flash PE
+    "flash_predPe",                 # predicted flash PE
 ]
 wc_T_eval_data_vars = [        # same as above, but for data files we do not attempt to load any truth information
     "run",
     "subrun",
     "event",
     "match_isFC",
+    "flash_measPe",
+    "flash_predPe",
 ]
 
 wc_T_kine_vars = [             # variables involved with kinematic reconstruction
