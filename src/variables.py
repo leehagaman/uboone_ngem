@@ -536,5 +536,11 @@ combined_postprocessing_training_vars = [
     "lantern_pandora_dist",
 ]
 
-combined_training_vars = wc_training_vars + wc_postprocessing_training_vars + glee_postprocessing_training_vars + lantern_postprocessing_training_vars
+pelee_training_vars = [
+    "pelee_shr_energy",
+]
+
+wc_training_vars += wc_postprocessing_training_vars
+
+combined_training_vars = wc_training_vars + glee_postprocessing_training_vars + pelee_training_vars + lantern_postprocessing_training_vars + combined_postprocessing_training_vars
 # leave blip, nanosecond timing, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability

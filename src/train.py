@@ -81,14 +81,14 @@ if __name__ == "__main__":
 
     x_train = presel_train_df[training_vars].to_numpy()
     x_train = x_train.astype(np.float64)
-    x_train[np.isinf(x_train)] = np.nan
+    x_train[(x_train > 1e10) | (x_train < -1e10)] = np.nan
 
     y_train = presel_train_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
     w_train = presel_train_df["wc_net_weight"].to_numpy()
 
     x_test = presel_test_df[training_vars].to_numpy()
     x_test = x_test.astype(np.float64)
-    x_test[np.isinf(x_test)] = np.nan
+    x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
 
     y_test = presel_test_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
     w_test = presel_test_df["wc_net_weight"].to_numpy()
