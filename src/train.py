@@ -10,8 +10,9 @@ from datetime import datetime
 import os
 import argparse
 import time
+import umap
 
-from signal_categories import topological_category_labels
+from signal_categories import topological_category_labels, topological_category_colors
 from variables import wc_training_vars, combined_training_vars
 
 
@@ -124,12 +125,11 @@ if __name__ == "__main__":
     if model.best_iteration is not None:
         print(f"Early stopping: best_iteration={model.best_iteration}")
 
-    # Save model
+    print("Saving model...")
     model.get_booster().save_model(output_dir / "bdt.json")
 
+    print("Creating feature importance plot...")
     plt.style.use('default')
-
-    # Feature Importance Plot
     plt.figure(figsize=(12, 8))
     importance_df = pd.DataFrame({
         'feature': training_vars,
@@ -145,10 +145,8 @@ if __name__ == "__main__":
     plt.savefig(output_dir / "feature_importance.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-    # Training Curves
+    print("Creating training curves...")
     plt.figure(figsize=(12, 5))
-
-    # Loss curves
     plt.subplot(1, 2, 1)
     plt.plot(model.evals_result()['validation_0']['mlogloss'], label='Train Loss', linewidth=2)
     plt.plot(model.evals_result()['validation_1']['mlogloss'], label='Test Loss', linewidth=2)
@@ -158,8 +156,6 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.axvline(model.best_iteration, linestyle='--', color='k', alpha=0.6, label='Best iteration')
-
-    # Accuracy curves (1 - error)
     plt.subplot(1, 2, 2)
     train_acc = [1 - err for err in model.evals_result()['validation_0']['merror']]
     test_acc = [1 - err for err in model.evals_result()['validation_1']['merror']]
@@ -171,22 +167,16 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.axvline(model.best_iteration, linestyle='--', color='k', alpha=0.6, label='Best iteration')
-
     plt.tight_layout()
     plt.savefig(output_dir / "training_curves.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-    # Probability Histograms for Different Categories
+    print("Creating probability histograms...")
     plt.figure(figsize=(20, 12))
-
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
     category_names = {v: k for k, v in topological_signal_category_mapping.items()}
     n_categories = len(topological_signal_category_mapping)
-    
-    print(f"Model predict_proba shape: {y_proba.shape}")
-    print(f"Expected number of categories: {n_categories}")
-    print(f"Model n_classes_: {model.n_classes_}")
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
     bins = np.linspace(0, 1, 21)
@@ -206,29 +196,24 @@ if __name__ == "__main__":
     plt.savefig(output_dir / "probability_histograms.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-    # Confusion Matrix
+    print("Creating confusion matrix...")
     plt.figure(figsize=(20, 6))
-
     # Ensure confusion matrix includes all expected categories, even if they have zero events
     expected_labels = list(range(len(topological_signal_category_mapping)))
     cm = confusion_matrix(y_test, y_pred, sample_weight=w_test, labels=expected_labels)
-
     # Handle division by zero for normalization
     row_sums = cm.sum(axis=1)
     col_sums = cm.sum(axis=0)
-
     # Normalize rows (avoid division by zero)
     cm_normalized_rows = np.zeros_like(cm, dtype=float)
     for i in range(cm.shape[0]):
         if row_sums[i] > 0:
             cm_normalized_rows[i, :] = cm[i, :] / row_sums[i]
-
     # Normalize columns (avoid division by zero)
     cm_normalized_cols = np.zeros_like(cm, dtype=float)
     for j in range(cm.shape[1]):
         if col_sums[j] > 0:
             cm_normalized_cols[:, j] = cm[:, j] / col_sums[j]
-
     # Plot confusion matrix (counts)
     plt.subplot(1, 3, 1)
     im1 = plt.imshow(cm, cmap='Blues', aspect='auto', norm=LogNorm())
@@ -236,19 +221,13 @@ if __name__ == "__main__":
     plt.title('Confusion Matrix (Counts)')
     plt.xlabel('Predicted')
     plt.ylabel('True')
-
     print(f"{n_categories=}")
     print(f"{cm.shape=}")
-
-    # Add text annotations
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, str(int(cm[i, j])), ha='center', va='center', fontsize=8)
-
     plt.xticks(range(n_categories), [category_names[i] for i in range(n_categories)], rotation=45)
     plt.yticks(range(n_categories), [category_names[i] for i in range(n_categories)])
-
-    # Plot confusion matrix (normalized columns)
     plt.subplot(1, 3, 2)
     im2 = plt.imshow(cm_normalized_cols, cmap='Blues', aspect='auto')
     plt.colorbar(im2)
@@ -260,8 +239,6 @@ if __name__ == "__main__":
             plt.text(j, i, f'{cm_normalized_cols[i, j]:.2f}', ha='center', va='center', fontsize=8)
     plt.xticks(range(n_categories), [category_names[i] for i in range(n_categories)], rotation=45)
     plt.yticks(range(n_categories), [category_names[i] for i in range(n_categories)])
-
-    # Plot confusion matrix (normalized rows)
     plt.subplot(1, 3, 3)
     im3 = plt.imshow(cm_normalized_rows, cmap='Blues', aspect='auto')
     plt.colorbar(im3)
@@ -273,21 +250,16 @@ if __name__ == "__main__":
             plt.text(j, i, f'{cm_normalized_rows[i, j]:.2f}', ha='center', va='center', fontsize=8)
     plt.xticks(range(n_categories), [category_names[i] for i in range(n_categories)], rotation=45)
     plt.yticks(range(n_categories), [category_names[i] for i in range(n_categories)])
-
     plt.tight_layout()
     plt.savefig(output_dir / "confusion_matrix.png", dpi=300, bbox_inches='tight')
     plt.close()
 
     print("Creating prediction dataframe...")
-
     # Get predictions for all data (not just test set, not just presel)
-
     x = all_df[training_vars].to_numpy()
     x = x.astype(np.float64)
     x[np.isinf(x)] = np.nan
-
     all_probabilities = model.predict_proba(x)
-
     prediction_df = pd.DataFrame()
     prediction_df['filetype'] = all_df['filetype']
     prediction_df['run'] = all_df['run']
@@ -298,8 +270,9 @@ if __name__ == "__main__":
     for i, category_name in enumerate(category_names.values()):
         prediction_df[f'prob_{category_name}'] = all_probabilities[:, i]
 
+    print("Saving predictions...")
     prediction_df.to_pickle(output_dir / "predictions.pkl")
     print(f"Saved predictions to: {output_dir / 'predictions.pkl'}")
 
     main_end_time = time.time()
-    print(f"Total time to train the model: {main_end_time - main_start_time:.2f} seconds")
+    print(f"Total time to train and analyze the BDT: {main_end_time - main_start_time:.2f} seconds")

@@ -525,9 +525,156 @@ glee_postprocessing_training_vars = [
     "glee_max_3d_shower_score",
 ]
 
+lantern_vars = [
+
+    "vtxX",
+    "vtxY",
+    "vtxZ",
+
+    "vtxScore",
+    "recoNuE",
+    "foundVertex",
+
+    "nShowers",
+    "showerIsSecondary",
+    "showerPID",
+    "showerPhScore",
+    "showerElScore",
+    "showerMuScore",
+    "showerPiScore",
+    "showerPrScore",
+    "showerCharge",
+    "showerPurity",
+    "showerComp",
+    "showerPrimaryScore",
+    "showerFromNeutralScore",
+    "showerFromChargedScore",
+    "showerCosTheta",
+    "showerCosThetaY",
+    "showerDistToVtx",
+    "showerStartDirX",
+    "showerStartDirY",
+    "showerStartDirZ",
+
+    "nTracks",
+    "trackIsSecondary",
+    "trackClassified",
+    "trackCharge",
+    "trackComp",
+    "trackPurity",
+    "trackPrimaryScore",
+    "trackFromNeutralScore",
+    "trackFromChargedScore",
+    "trackCosTheta",
+    "trackCosThetaY",
+    "trackDistToVtx",
+    "trackStartDirX",
+    "trackStartDirY",
+    "trackStartDirZ",
+    "trackElScore",
+    "trackPhScore",
+    "trackMuScore",
+    "trackPiScore",
+    "trackPrScore",
+    "trackPID",
+]
+
+lantern_training_vars = [
+    "lantern_vtxScore",
+    "lantern_recoNuE",
+    "lantern_foundVertex",
+]
+
 lantern_postprocessing_training_vars = [
-    "lantern_max_showerPhScore",
-    "lantern_second_max_showerPhScore",
+    # shower variables
+    "lantern_max_shower_charge",
+    "lantern_max_electron_shower_charge",
+    "lantern_max_photon_shower_charge",
+    "lantern_max_electron_shower_PhScore",
+    "lantern_max_electron_shower_MuScore",
+    "lantern_max_electron_shower_PiScore",
+    "lantern_max_electron_shower_PrScore",
+    "lantern_max_electron_shower_electron_confidence",
+    "lantern_max_electron_shower_ph_normedscore",
+    "lantern_max_electron_shower_el_normedscore",
+    "lantern_max_electron_shower_PrimaryScore",
+    "lantern_max_electron_shower_FromNeutralScore",
+    "lantern_max_electron_shower_FromChargedScore",
+    "lantern_max_electron_shower_CosTheta",
+    "lantern_max_electron_shower_CosThetaY",
+    "lantern_max_electron_shower_DistToVtx",
+    "lantern_second_max_electron_shower_charge",
+    "lantern_second_max_electron_shower_PhScore",
+    "lantern_second_max_electron_shower_MuScore",
+    "lantern_second_max_electron_shower_PiScore",
+    "lantern_second_max_electron_shower_PrScore",
+    "lantern_second_max_electron_shower_electron_confidence",
+    "lantern_second_max_electron_shower_ph_normedscore",
+    "lantern_second_max_electron_shower_el_normedscore",
+    "lantern_second_max_electron_shower_PrimaryScore",
+    "lantern_second_max_electron_shower_FromNeutralScore",
+    "lantern_second_max_electron_shower_FromChargedScore",
+    "lantern_second_max_electron_shower_CosTheta",
+    "lantern_second_max_electron_shower_CosThetaY",
+    "lantern_second_max_electron_shower_DistToVtx",
+    "lantern_max_photon_shower_charge",
+    "lantern_max_photon_shower_PhScore",
+    "lantern_max_photon_shower_MuScore",
+    "lantern_max_photon_shower_PiScore",
+    "lantern_max_photon_shower_PrScore",
+    "lantern_max_photon_shower_electron_confidence",
+    "lantern_max_photon_shower_ph_normedscore",
+    "lantern_max_photon_shower_el_normedscore",
+    "lantern_max_photon_shower_PrimaryScore",
+    "lantern_max_photon_shower_FromNeutralScore",
+    "lantern_max_photon_shower_FromChargedScore",
+    "lantern_max_photon_shower_CosTheta",
+    "lantern_max_photon_shower_CosThetaY",
+    "lantern_max_photon_shower_DistToVtx",
+    "lantern_second_max_photon_shower_charge",
+    "lantern_second_max_photon_shower_PhScore",
+    "lantern_second_max_photon_shower_MuScore",
+    "lantern_second_max_photon_shower_PiScore",
+    "lantern_second_max_photon_shower_PrScore",
+    "lantern_second_max_photon_shower_electron_confidence",
+    "lantern_second_max_photon_shower_ph_normedscore",
+    "lantern_second_max_photon_shower_el_normedscore",
+    "lantern_second_max_photon_shower_PrimaryScore",
+    "lantern_second_max_photon_shower_FromNeutralScore",
+    "lantern_second_max_photon_shower_FromChargedScore",
+    "lantern_second_max_photon_shower_CosTheta",
+    "lantern_second_max_photon_shower_CosThetaY",
+    "lantern_second_max_photon_shower_DistToVtx",
+
+    # track variables
+    "lantern_prim_muon_track_max_muscore",
+    "lantern_prim_proton_track_max_prscore",
+    "lantern_prim_charged_pion_track_max_piscore",
+
+    # pi0 variables
+    "lantern_diphoton_opening_angle",
+    "lantern_diphoton_energy",
+    "lantern_diphoton_costheta",
+    "lantern_diphoton_mass",
+
+    # particle multiplicity variables
+    "lantern_prim_shower_photon_num",
+    "lantern_prim_shower_electron_num",
+    "lantern_prim_shower_muon_num",
+    "lantern_prim_shower_charged_pion_num",
+    "lantern_prim_shower_proton_num",
+
+    "lantern_prim_track_photon_num",
+    "lantern_prim_track_electron_num",
+    "lantern_prim_track_muon_num",
+    "lantern_prim_track_charged_pion_num",
+    "lantern_prim_track_proton_num",
+
+    "lantern_prim_photon_num",
+    "lantern_prim_electron_num",
+    "lantern_prim_muon_num",
+    "lantern_prim_charged_pion_num",
+    "lantern_prim_proton_num",
 ]
 
 combined_postprocessing_training_vars = [
@@ -542,5 +689,5 @@ pelee_training_vars = [
 
 wc_training_vars += wc_postprocessing_training_vars
 
-combined_training_vars = wc_training_vars + glee_postprocessing_training_vars + pelee_training_vars + lantern_postprocessing_training_vars + combined_postprocessing_training_vars
+combined_training_vars = wc_training_vars + glee_postprocessing_training_vars + pelee_training_vars + lantern_training_vars + lantern_postprocessing_training_vars + combined_postprocessing_training_vars
 # leave blip, nanosecond timing, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability

@@ -560,25 +560,660 @@ def do_glee_postprocessing(df):
     return df
 
 def do_lantern_postprocessing(df):
-    
-    # TODO: add more LANTERN variables here
 
-    showerPhScores = df["lantern_showerPhScore"].to_numpy()
-    maxShowerPhScores = []
-    secondMaxShowerPhScores = []
-    for i in tqdm(range(len(showerPhScores)), desc="Analyzing LANTERN showerPhScore"):
-        curr_max_showerPhScore = -np.inf
-        curr_second_max_showerPhScore = -np.inf
-        for j in range(len(showerPhScores[i])):
-            if showerPhScores[i][j] > curr_max_showerPhScore:
-                curr_second_max_showerPhScore = curr_max_showerPhScore
-                curr_max_showerPhScore = showerPhScores[i][j]
-            elif showerPhScores[i][j] > curr_second_max_showerPhScore:
-                curr_second_max_showerPhScore = showerPhScores[i][j]
-        maxShowerPhScores.append(curr_max_showerPhScore)
-        secondMaxShowerPhScores.append(curr_second_max_showerPhScore)
-    df["lantern_max_showerPhScore"] = maxShowerPhScores
-    df["lantern_second_max_showerPhScore"] = secondMaxShowerPhScores
+    # References of variables that the LANTERN team has found useful:
+    # LANTERN 1e selection reco variables, from https://github.com/NuTufts/lantern_ana/blob/main/studies/nue_cc_inclusive/plot_mmr_nue_selection_vars_run4b.py
+    """
+    vars = [('eventweight_weight',200,0,10,'event weight',0), # don't include event weight as a training variable
+            ('recoElectron_emax_econfidence', 40, 0, 20,'electron confidence score',0),
+            ('recoElectron_emax_primary_score',40,0,1.0,'primary score',0),
+            ('recoElectron_emax_fromneutral_score',40,0,1.0,'from neutral parent score',0),
+            ('recoElectron_emax_fromcharged_score',40,0,1.0,'from charged parent score',0),
+            ('recoElectron_emax_el_normedscore',40,0,1.0,'electron-like score (normalized)',0),
+            ('recoMuonTrack_nMuTracks',20,0,20,'num of muon-like tracks',0),
+            ('recoMuonTrack_max_muscore',50,-20,0.5,'max mu-like score',0),
+            ('vertex_properties_score',60,0.4,1.0,'keypoint score',0),
+            ('vertex_properties_cosmicfrac',50,0,1.01,'fraction of cosmic pixel near vertex',0),
+            ('visible_energy',15,0,3000,'visible energy; MeV',0)
+    """
+    # LANTERN 1g selection reco variables, from https://github.com/NuTufts/lantern_ana/blob/main/studies/1gXp_nc/plot_1gX_vars.py
+    """
+    selection_cut = "vertex_properties_found==1"
+    selection_cut += " && nphotons==1"
+    selection_cut += " && nProtons==0"
+    selection_cut += " && nPions==0"
+    selection_cut += " && nElectrons==0"
+    selection_cut += " && nMuons==0"
+    selection_cut += " && TMath::IsNaN(vertex_properties_score)==0"
+    """
+
+    # see function here: https://github.com/NuTufts/lantern_ana/blob/94f31b83e8a170230ca7b948c701671ab3099bbd/lantern_ana/utils/get_primary_electron_candidates.py
+    # this code is similar, but adds information about up to two electrons and two photons, and extra pi0-relevant information for the two photon case, and counts all particles
+
+    max_shower_charges = []
+
+    max_electron_shower_charges = []
+    max_electron_shower_PhScores = []
+    max_electron_shower_ElScores = []
+    max_electron_shower_MuScores = []
+    max_electron_shower_PiScores = []
+    max_electron_shower_PrScores = []
+    max_electron_shower_el_normedscores = []
+    max_electron_shower_ph_normedscores = []
+    max_electron_shower_electron_confidences = []
+    max_electron_shower_PrimaryScores = []
+    max_electron_shower_FromNeutralScores = []
+    max_electron_shower_FromChargedScores = []
+    max_electron_shower_CosThetas = []
+    max_electron_shower_CosThetaYs = []
+    max_electron_shower_DistToVtxs = []
+
+    second_max_electron_shower_charges = []
+    second_max_electron_shower_PhScores = []
+    second_max_electron_shower_ElScores = []
+    second_max_electron_shower_MuScores = []
+    second_max_electron_shower_PiScores = []
+    second_max_electron_shower_PrScores = []
+    second_max_electron_shower_el_normedscores = []
+    second_max_electron_shower_ph_normedscores = []
+    second_max_electron_shower_electron_confidences = []
+    second_max_electron_shower_PrimaryScores = []
+    second_max_electron_shower_FromNeutralScores = []
+    second_max_electron_shower_FromChargedScores = []
+    second_max_electron_shower_CosThetas = []
+    second_max_electron_shower_CosThetaYs = []
+    second_max_electron_shower_DistToVtxs = []
+    
+    max_photon_shower_charges = []
+    max_photon_shower_PhScores = []
+    max_photon_shower_ElScores = []
+    max_photon_shower_MuScores = []
+    max_photon_shower_PiScores = []
+    max_photon_shower_PrScores = []
+    max_photon_shower_el_normedscores = []
+    max_photon_shower_ph_normedscores = []
+    max_photon_shower_electron_confidences = []
+    max_photon_shower_PrimaryScores = []
+    max_photon_shower_FromNeutralScores = []
+    max_photon_shower_FromChargedScores = []
+    max_photon_shower_CosThetas = []
+    max_photon_shower_CosThetaYs = []
+    max_photon_shower_DistToVtxs = []
+
+    second_max_photon_shower_charges = []
+    second_max_photon_shower_PhScores = []
+    second_max_photon_shower_ElScores = []
+    second_max_photon_shower_MuScores = []
+    second_max_photon_shower_PiScores = []
+    second_max_photon_shower_PrScores = []
+    second_max_photon_shower_el_normedscores = []
+    second_max_photon_shower_ph_normedscores = []
+    second_max_photon_shower_electron_confidences = []
+    second_max_photon_shower_PrimaryScores = []
+    second_max_photon_shower_FromNeutralScores = []
+    second_max_photon_shower_FromChargedScores = []
+    second_max_photon_shower_CosThetas = []
+    second_max_photon_shower_CosThetaYs = []
+    second_max_photon_shower_DistToVtxs = []
+
+    diphoton_opening_angles = []
+    diphoton_energies = []
+    diphoton_costhetas = []
+    diphoton_masses = []
+
+    prim_shower_photon_nums = []
+    prim_shower_electron_nums = []
+    prim_shower_muon_nums = []
+    prim_shower_charged_pion_nums = []
+    prim_shower_proton_nums = []
+
+    nShowers = df["lantern_nShowers"].to_numpy()
+    showerIsSecondary = df["lantern_showerIsSecondary"].to_numpy()
+    showerPID = df["lantern_showerPID"].to_numpy()
+    showerPhScore = df["lantern_showerPhScore"].to_numpy()
+    showerElScore = df["lantern_showerElScore"].to_numpy()
+    showerMuScore = df["lantern_showerMuScore"].to_numpy()
+    showerPiScore = df["lantern_showerPiScore"].to_numpy()
+    showerPrScore = df["lantern_showerPrScore"].to_numpy()
+    showerCharge = df["lantern_showerCharge"].to_numpy()
+    showerPurity = df["lantern_showerPurity"].to_numpy()
+    showerComp = df["lantern_showerComp"].to_numpy()
+    showerPrimaryScore = df["lantern_showerPrimaryScore"].to_numpy()
+    showerFromNeutralScore = df["lantern_showerFromNeutralScore"].to_numpy()
+    showerFromChargedScore = df["lantern_showerFromChargedScore"].to_numpy()
+    showerCosTheta = df["lantern_showerCosTheta"].to_numpy()
+    showerCosThetaY = df["lantern_showerCosThetaY"].to_numpy()
+    showerDistToVtx = df["lantern_showerDistToVtx"].to_numpy()
+    showerStartDirX = df["lantern_showerStartDirX"].to_numpy()
+    showerStartDirY = df["lantern_showerStartDirY"].to_numpy()
+    showerStartDirZ = df["lantern_showerStartDirZ"].to_numpy()
+    for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN showers"):
+        curr_nShowers = nShowers[event_i]
+        curr_showerIsSecondary = showerIsSecondary[event_i]
+        curr_showerPID = showerPID[event_i]
+        curr_showerPhScore = showerPhScore[event_i]
+        curr_showerElScore = showerElScore[event_i]
+        curr_showerMuScore = showerMuScore[event_i]
+        curr_showerPiScore = showerPiScore[event_i]
+        curr_showerPrScore = showerPrScore[event_i]
+        curr_showerCharge = showerCharge[event_i]
+        curr_showerPurity = showerPurity[event_i]
+        curr_showerComp = showerComp[event_i]
+        curr_showerPrimaryScore = showerPrimaryScore[event_i]
+        curr_showerFromNeutralScore = showerFromNeutralScore[event_i]
+        curr_showerFromChargedScore = showerFromChargedScore[event_i]
+        curr_showerCosTheta = showerCosTheta[event_i]
+        curr_showerCosThetaY = showerCosThetaY[event_i]
+        curr_showerDistToVtx = showerDistToVtx[event_i]
+        curr_showerStartDirX = showerStartDirX[event_i]
+        curr_showerStartDirY = showerStartDirY[event_i]
+        curr_showerStartDirZ = showerStartDirZ[event_i]
+
+        max_shower_charge = 0
+
+        max_photon_shower_charge = 0
+        max_photon_shower_PhScore = np.nan
+        max_photon_shower_ElScore = np.nan
+        max_photon_shower_MuScore = np.nan
+        max_photon_shower_PiScore = np.nan
+        max_photon_shower_PrScore = np.nan
+        max_photon_shower_electron_confidence = np.nan
+        max_photon_shower_ph_normedscore = np.nan
+        max_photon_shower_el_normedscore = np.nan
+        max_photon_shower_PrimaryScore = np.nan
+        max_photon_shower_FromNeutralScore = np.nan
+        max_photon_shower_FromChargedScore = np.nan
+        max_photon_shower_CosTheta = np.nan
+        max_photon_shower_CosThetaY = np.nan
+        max_photon_shower_DistToVtx = np.nan
+        max_photon_shower_StartDirX = np.nan
+        max_photon_shower_StartDirY = np.nan
+        max_photon_shower_StartDirZ = np.nan
+        second_max_photon_shower_charge = -1e-6
+        second_max_photon_shower_PhScore = np.nan
+        second_max_photon_shower_ElScore = np.nan
+        second_max_photon_shower_MuScore = np.nan
+        second_max_photon_shower_PiScore = np.nan
+        second_max_photon_shower_PrScore = np.nan
+        second_max_photon_shower_electron_confidence = np.nan
+        second_max_photon_shower_ph_normedscore = np.nan
+        second_max_photon_shower_el_normedscore = np.nan
+        second_max_photon_shower_PrimaryScore = np.nan
+        second_max_photon_shower_FromNeutralScore = np.nan
+        second_max_photon_shower_FromChargedScore = np.nan
+        second_max_photon_shower_CosTheta = np.nan
+        second_max_photon_shower_CosThetaY = np.nan
+        second_max_photon_shower_DistToVtx = np.nan
+        second_max_photon_shower_StartDirX = np.nan
+        second_max_photon_shower_StartDirY = np.nan
+        second_max_photon_shower_StartDirZ = np.nan
+
+        max_electron_shower_charge = 0
+        max_electron_shower_PhScore = np.nan
+        max_electron_shower_ElScore = np.nan
+        max_electron_shower_MuScore = np.nan
+        max_electron_shower_PiScore = np.nan
+        max_electron_shower_PrScore = np.nan
+        max_electron_shower_electron_confidence = np.nan
+        max_electron_shower_ph_normedscore = np.nan
+        max_electron_shower_el_normedscore = np.nan
+        max_electron_shower_PrimaryScore = np.nan
+        max_electron_shower_FromNeutralScore = np.nan
+        max_electron_shower_FromChargedScore = np.nan
+        max_electron_shower_CosTheta = np.nan
+        max_electron_shower_CosThetaY = np.nan
+        max_electron_shower_DistToVtx = np.nan
+        second_max_electron_shower_charge = -1e-6
+        second_max_electron_shower_PhScore = np.nan
+        second_max_electron_shower_ElScore = np.nan
+        second_max_electron_shower_MuScore = np.nan
+        second_max_electron_shower_PiScore = np.nan
+        second_max_electron_shower_PrScore = np.nan
+        second_max_electron_shower_electron_confidence = np.nan
+        second_max_electron_shower_ph_normedscore = np.nan
+        second_max_electron_shower_el_normedscore = np.nan
+        second_max_electron_shower_PrimaryScore = np.nan
+        second_max_electron_shower_FromNeutralScore = np.nan
+        second_max_electron_shower_FromChargedScore = np.nan
+        second_max_electron_shower_CosTheta = np.nan
+        second_max_electron_shower_CosThetaY = np.nan
+        second_max_electron_shower_DistToVtx = np.nan
+
+        diphoton_opening_angle = np.nan
+        diphoton_energy = np.nan
+        diphoton_costheta = np.nan
+        diphoton_mass = np.nan
+
+        curr_num_photons = 0
+        curr_num_electrons = 0
+        curr_num_muons = 0
+        curr_num_charged_pions = 0
+        curr_num_protons = 0
+
+        for shower_i in range(curr_nShowers):
+            if curr_showerIsSecondary[shower_i] != 0: # only considering primary showers
+                continue
+
+            min_charge, min_completeness, min_purity = 0, 0, 0
+            if curr_showerCharge[shower_i] < min_charge or curr_showerComp[shower_i] < min_completeness or curr_showerPurity[shower_i] < min_purity:
+                continue
+
+            if curr_showerPID[shower_i] == 22:
+                curr_num_photons += 1
+            elif curr_showerPID[shower_i] == 11:
+                curr_num_electrons += 1
+            elif curr_showerPID[shower_i] == 13:
+                curr_num_muons += 1
+            elif curr_showerPID[shower_i] == 211:
+                curr_num_charged_pions += 1
+            elif curr_showerPID[shower_i] == 2212:
+                curr_num_protons += 1
+            else:
+                assert False, "Invalid shower PID"
+
+            is_electron = curr_showerElScore[shower_i] > curr_showerPhScore[shower_i]
+            electron_confidence = curr_showerElScore[shower_i] - (curr_showerPhScore[shower_i] + curr_showerPiScore[shower_i]) / 2
+            el_normedscore = np.exp(curr_showerElScore[shower_i]) / (np.exp(curr_showerPhScore[shower_i])
+                                                                   + np.exp(curr_showerElScore[shower_i])
+                                                                   + np.exp(curr_showerMuScore[shower_i])
+                                                                   + np.exp(curr_showerPiScore[shower_i])
+                                                                   + np.exp(curr_showerPrScore[shower_i]))
+            ph_normedscore = np.exp(curr_showerPhScore[shower_i]) / (np.exp(curr_showerElScore[shower_i])
+                                                                   + np.exp(curr_showerPhScore[shower_i])
+                                                                   + np.exp(curr_showerMuScore[shower_i])
+                                                                   + np.exp(curr_showerPiScore[shower_i])
+                                                                   + np.exp(curr_showerPrScore[shower_i]))
+            
+            if curr_showerCharge[shower_i] > max_shower_charge:
+                max_shower_charge = curr_showerCharge[shower_i]
+
+            if is_electron:
+                if curr_showerCharge[shower_i] > max_electron_shower_charge: # new largest electron shower
+                    max_electron_shower_charge = curr_showerCharge[shower_i]
+                    second_max_electron_shower_charge = max_shower_charge
+                    second_max_electron_shower_charge = max_electron_shower_charge
+                    second_max_electron_shower_PhScore = max_electron_shower_PhScore
+                    second_max_electron_shower_ElScore = max_electron_shower_ElScore
+                    second_max_electron_shower_MuScore = max_electron_shower_MuScore
+                    second_max_electron_shower_PiScore = max_electron_shower_PiScore
+                    second_max_electron_shower_PrScore = max_electron_shower_PrScore
+                    second_max_electron_shower_ph_normedscore = max_electron_shower_ph_normedscore
+                    second_max_electron_shower_el_normedscore = max_electron_shower_el_normedscore
+                    second_max_electron_shower_electron_confidence = max_electron_shower_electron_confidence
+                    second_max_electron_shower_PrimaryScore = max_electron_shower_PrimaryScore
+                    second_max_electron_shower_FromNeutralScore = max_electron_shower_FromNeutralScore
+                    second_max_electron_shower_FromChargedScore = max_electron_shower_FromChargedScore
+                    second_max_electron_shower_CosTheta = max_electron_shower_CosTheta
+                    second_max_electron_shower_CosThetaY = max_electron_shower_CosThetaY
+                    second_max_electron_shower_DistToVtx = max_electron_shower_DistToVtx
+
+                    max_electron_shower_charge = curr_showerCharge[shower_i]
+                    max_electron_shower_PhScore = curr_showerPhScore[shower_i]
+                    max_electron_shower_ElScore = curr_showerElScore[shower_i]
+                    max_electron_shower_MuScore = curr_showerMuScore[shower_i]
+                    max_electron_shower_PiScore = curr_showerPiScore[shower_i]
+                    max_electron_shower_PrScore = curr_showerPrScore[shower_i]
+                    max_electron_shower_ph_normedscore = ph_normedscore
+                    max_electron_shower_el_normedscore = el_normedscore
+                    max_electron_shower_electron_confidence = electron_confidence
+                    max_electron_shower_PrimaryScore = curr_showerPrimaryScore[shower_i]
+                    max_electron_shower_FromNeutralScore = curr_showerFromNeutralScore[shower_i]
+                    max_electron_shower_FromChargedScore = curr_showerFromChargedScore[shower_i]
+                    max_electron_shower_CosTheta = curr_showerCosTheta[shower_i]
+                    max_electron_shower_CosThetaY = curr_showerCosThetaY[shower_i]
+                    max_electron_shower_DistToVtx = curr_showerDistToVtx[shower_i]
+                elif curr_showerCharge[shower_i] > second_max_electron_shower_charge: # new second largest electron shower
+                    second_max_electron_shower_charge = curr_showerCharge[shower_i]
+                    second_max_electron_shower_PhScore = curr_showerPhScore[shower_i]
+                    second_max_electron_shower_ElScore = curr_showerElScore[shower_i]
+                    second_max_electron_shower_MuScore = curr_showerMuScore[shower_i]
+                    second_max_electron_shower_PiScore = curr_showerPiScore[shower_i]
+                    second_max_electron_shower_PrScore = curr_showerPrScore[shower_i]
+                    second_max_electron_shower_ph_normedscore = ph_normedscore
+                    second_max_electron_shower_el_normedscore = el_normedscore
+                    second_max_electron_shower_electron_confidence = electron_confidence
+                    second_max_electron_shower_PrimaryScore = curr_showerPrimaryScore[shower_i]
+                    second_max_electron_shower_FromNeutralScore = curr_showerFromNeutralScore[shower_i]
+                    second_max_electron_shower_FromChargedScore = curr_showerFromChargedScore[shower_i]
+                    second_max_electron_shower_CosTheta = curr_showerCosTheta[shower_i]
+                    second_max_electron_shower_CosThetaY = curr_showerCosThetaY[shower_i]
+                    second_max_electron_shower_DistToVtx = curr_showerDistToVtx[shower_i]
+
+            else: # photon shower
+                if curr_showerCharge[shower_i] > max_photon_shower_charge: # new largest photon shower
+                    second_max_photon_shower_charge = max_photon_shower_charge
+                    second_max_photon_shower_PhScore = max_photon_shower_PhScore
+                    second_max_photon_shower_ElScore = max_photon_shower_ElScore
+                    second_max_photon_shower_MuScore = max_photon_shower_MuScore
+                    second_max_photon_shower_PiScore = max_photon_shower_PiScore
+                    second_max_photon_shower_PrScore = max_photon_shower_PrScore
+                    second_max_photon_shower_ph_normedscore = max_photon_shower_ph_normedscore
+                    second_max_photon_shower_el_normedscore = max_photon_shower_el_normedscore
+                    second_max_photon_shower_electron_confidence = max_photon_shower_electron_confidence
+                    second_max_photon_shower_PrimaryScore = max_photon_shower_PrimaryScore
+                    second_max_photon_shower_FromNeutralScore = max_photon_shower_FromNeutralScore
+                    second_max_photon_shower_FromChargedScore = max_photon_shower_FromChargedScore
+                    second_max_photon_shower_CosTheta = max_photon_shower_CosTheta
+                    second_max_photon_shower_CosThetaY = max_photon_shower_CosThetaY
+                    second_max_photon_shower_DistToVtx = max_photon_shower_DistToVtx
+                    second_max_photon_shower_StartDirX = max_photon_shower_StartDirX
+                    second_max_photon_shower_StartDirY = max_photon_shower_StartDirY
+                    second_max_photon_shower_StartDirZ = max_photon_shower_StartDirZ
+
+                    max_photon_shower_charge = curr_showerCharge[shower_i]
+                    max_photon_shower_PhScore = curr_showerPhScore[shower_i]
+                    max_photon_shower_ElScore = curr_showerElScore[shower_i]
+                    max_photon_shower_MuScore = curr_showerMuScore[shower_i]
+                    max_photon_shower_PiScore = curr_showerPiScore[shower_i]
+                    max_photon_shower_PrScore = curr_showerPrScore[shower_i]
+                    max_photon_shower_ph_normedscore = ph_normedscore
+                    max_photon_shower_el_normedscore = el_normedscore
+                    max_photon_shower_electron_confidence = electron_confidence
+                    max_photon_shower_PrimaryScore = curr_showerPrimaryScore[shower_i]
+                    max_photon_shower_FromNeutralScore = curr_showerFromNeutralScore[shower_i]
+                    max_photon_shower_FromChargedScore = curr_showerFromChargedScore[shower_i]
+                    max_photon_shower_CosTheta = curr_showerCosTheta[shower_i]
+                    max_photon_shower_CosThetaY = curr_showerCosThetaY[shower_i]
+                    max_photon_shower_DistToVtx = curr_showerDistToVtx[shower_i]
+                    max_photon_shower_StartDirX = curr_showerStartDirX[shower_i]
+                    max_photon_shower_StartDirY = curr_showerStartDirY[shower_i]
+                    max_photon_shower_StartDirZ = curr_showerStartDirZ[shower_i]
+
+                elif curr_showerCharge[shower_i] > second_max_photon_shower_charge: # new second largest photon shower
+                    second_max_photon_shower_charge = curr_showerCharge[shower_i]
+                    second_max_photon_shower_PhScore = curr_showerPhScore[shower_i]
+                    second_max_photon_shower_ElScore = curr_showerElScore[shower_i]
+                    second_max_photon_shower_MuScore = curr_showerMuScore[shower_i]
+                    second_max_photon_shower_PiScore = curr_showerPiScore[shower_i]
+                    second_max_photon_shower_PrScore = curr_showerPrScore[shower_i]
+                    second_max_photon_shower_ph_normedscore = ph_normedscore
+                    second_max_photon_shower_el_normedscore = el_normedscore
+                    second_max_photon_shower_electron_confidence = electron_confidence
+                    second_max_photon_shower_PrimaryScore = curr_showerPrimaryScore[shower_i]
+                    second_max_photon_shower_FromNeutralScore = curr_showerFromNeutralScore[shower_i]
+                    second_max_photon_shower_FromChargedScore = curr_showerFromChargedScore[shower_i]
+                    second_max_photon_shower_CosTheta = curr_showerCosTheta[shower_i]
+                    second_max_photon_shower_CosThetaY = curr_showerCosThetaY[shower_i]
+                    second_max_photon_shower_DistToVtx = curr_showerDistToVtx[shower_i]
+                    second_max_photon_shower_StartDirX = curr_showerStartDirX[shower_i]
+                    second_max_photon_shower_StartDirY = curr_showerStartDirY[shower_i]
+                    second_max_photon_shower_StartDirZ = curr_showerStartDirZ[shower_i]
+
+        if max_photon_shower_charge > 0 and second_max_photon_shower_charge > 0: # LANTERN sees two photons
+
+            photon_1_energy = max_photon_shower_charge
+            photon_2_energy = second_max_photon_shower_charge
+
+            photon_1_dir = np.array([max_photon_shower_StartDirX, max_photon_shower_StartDirY, max_photon_shower_StartDirZ])
+            photon_2_dir = np.array([second_max_photon_shower_StartDirX, second_max_photon_shower_StartDirY, second_max_photon_shower_StartDirZ])
+            photon_1_dir = photon_1_dir / np.linalg.norm(photon_1_dir)
+            photon_2_dir = photon_2_dir / np.linalg.norm(photon_2_dir)
+
+            diphoton_energy = photon_1_energy + photon_2_energy
+            diphoton_momentum = photon_1_energy * photon_1_dir + photon_2_energy * photon_2_dir
+
+            diphoton_opening_angle = np.arccos(np.dot(photon_1_dir, photon_2_dir)) * 180 / np.pi
+            diphoton_costheta = diphoton_momentum[2] / diphoton_energy
+            diphoton_mass = np.sqrt(diphoton_energy**2 - diphoton_momentum[0]**2 - diphoton_momentum[1]**2 - diphoton_momentum[2]**2)
+
+        max_shower_charges.append(max_shower_charge)
+        max_electron_shower_charges.append(max_electron_shower_charge)
+        max_electron_shower_PhScores.append(max_electron_shower_PhScore)
+        max_electron_shower_ElScores.append(max_electron_shower_ElScore)
+        max_electron_shower_MuScores.append(max_electron_shower_MuScore)
+        max_electron_shower_PiScores.append(max_electron_shower_PiScore)
+        max_electron_shower_PrScores.append(max_electron_shower_PrScore)
+        max_electron_shower_electron_confidences.append(max_electron_shower_electron_confidence)
+        max_electron_shower_ph_normedscores.append(max_electron_shower_ph_normedscore)
+        max_electron_shower_el_normedscores.append(max_electron_shower_el_normedscore)
+        max_electron_shower_PrimaryScores.append(max_electron_shower_PrimaryScore)
+        max_electron_shower_FromNeutralScores.append(max_electron_shower_FromNeutralScore)
+        max_electron_shower_FromChargedScores.append(max_electron_shower_FromChargedScore)
+        max_electron_shower_CosThetas.append(max_electron_shower_CosTheta)
+        max_electron_shower_CosThetaYs.append(max_electron_shower_CosThetaY)
+        max_electron_shower_DistToVtxs.append(max_electron_shower_DistToVtx)
+        second_max_electron_shower_charges.append(second_max_electron_shower_charge)
+        second_max_electron_shower_PhScores.append(second_max_electron_shower_PhScore)
+        second_max_electron_shower_ElScores.append(second_max_electron_shower_ElScore)
+        second_max_electron_shower_MuScores.append(second_max_electron_shower_MuScore)
+        second_max_electron_shower_PiScores.append(second_max_electron_shower_PiScore)
+        second_max_electron_shower_PrScores.append(second_max_electron_shower_PrScore)
+        second_max_electron_shower_electron_confidences.append(second_max_electron_shower_electron_confidence)
+        second_max_electron_shower_ph_normedscores.append(second_max_electron_shower_ph_normedscore)
+        second_max_electron_shower_el_normedscores.append(second_max_electron_shower_el_normedscore)
+        second_max_electron_shower_PrimaryScores.append(second_max_electron_shower_PrimaryScore)
+        second_max_electron_shower_FromNeutralScores.append(second_max_electron_shower_FromNeutralScore)
+        second_max_electron_shower_FromChargedScores.append(second_max_electron_shower_FromChargedScore)
+        second_max_electron_shower_CosThetas.append(second_max_electron_shower_CosTheta)
+        second_max_electron_shower_CosThetaYs.append(second_max_electron_shower_CosThetaY)
+        second_max_electron_shower_DistToVtxs.append(second_max_electron_shower_DistToVtx)
+        max_photon_shower_charges.append(max_photon_shower_charge)
+        max_photon_shower_PhScores.append(max_photon_shower_PhScore)
+        max_photon_shower_ElScores.append(max_photon_shower_ElScore)
+        max_photon_shower_MuScores.append(max_photon_shower_MuScore)
+        max_photon_shower_PiScores.append(max_photon_shower_PiScore)
+        max_photon_shower_PrScores.append(max_photon_shower_PrScore)
+        max_photon_shower_electron_confidences.append(max_photon_shower_electron_confidence)
+        max_photon_shower_ph_normedscores.append(max_photon_shower_ph_normedscore)
+        max_photon_shower_el_normedscores.append(max_photon_shower_el_normedscore)
+        max_photon_shower_PrimaryScores.append(max_photon_shower_PrimaryScore)
+        max_photon_shower_FromNeutralScores.append(max_photon_shower_FromNeutralScore)
+        max_photon_shower_FromChargedScores.append(max_photon_shower_FromChargedScore)
+        max_photon_shower_CosThetas.append(max_photon_shower_CosTheta)
+        max_photon_shower_CosThetaYs.append(max_photon_shower_CosThetaY)
+        max_photon_shower_DistToVtxs.append(max_photon_shower_DistToVtx)
+        second_max_photon_shower_charges.append(second_max_photon_shower_charge)
+        second_max_photon_shower_PhScores.append(second_max_photon_shower_PhScore)
+        second_max_photon_shower_ElScores.append(second_max_photon_shower_ElScore)
+        second_max_photon_shower_MuScores.append(second_max_photon_shower_MuScore)
+        second_max_photon_shower_PiScores.append(second_max_photon_shower_PiScore)
+        second_max_photon_shower_PrScores.append(second_max_photon_shower_PrScore)
+        second_max_photon_shower_electron_confidences.append(second_max_photon_shower_electron_confidence)
+        second_max_photon_shower_ph_normedscores.append(second_max_photon_shower_ph_normedscore)
+        second_max_photon_shower_el_normedscores.append(second_max_photon_shower_el_normedscore)
+        second_max_photon_shower_PrimaryScores.append(second_max_photon_shower_PrimaryScore)
+        second_max_photon_shower_FromNeutralScores.append(second_max_photon_shower_FromNeutralScore)
+        second_max_photon_shower_FromChargedScores.append(second_max_photon_shower_FromChargedScore)
+        second_max_photon_shower_CosThetas.append(second_max_photon_shower_CosTheta)
+        second_max_photon_shower_CosThetaYs.append(second_max_photon_shower_CosThetaY)
+        second_max_photon_shower_DistToVtxs.append(second_max_photon_shower_DistToVtx)
+        diphoton_opening_angles.append(diphoton_opening_angle)
+        diphoton_energies.append(diphoton_energy)
+        diphoton_costhetas.append(diphoton_costheta)
+        diphoton_masses.append(diphoton_mass)
+        prim_shower_photon_nums.append(curr_num_photons)
+        prim_shower_electron_nums.append(curr_num_electrons)
+        prim_shower_muon_nums.append(curr_num_muons)
+        prim_shower_charged_pion_nums.append(curr_num_charged_pions)
+        prim_shower_proton_nums.append(curr_num_protons)
+
+
+    df["lantern_max_shower_charge"] = max_shower_charges
+
+    df["lantern_max_electron_shower_charge"] = max_electron_shower_charges
+    df["lantern_max_electron_shower_ElScore"] = max_electron_shower_ElScores
+    df["lantern_max_electron_shower_PhScore"] = max_electron_shower_PhScores
+    df["lantern_max_electron_shower_MuScore"] = max_electron_shower_MuScores
+    df["lantern_max_electron_shower_PiScore"] = max_electron_shower_PiScores
+    df["lantern_max_electron_shower_PrScore"] = max_electron_shower_PrScores
+    df["lantern_max_electron_shower_electron_confidence"] = max_electron_shower_electron_confidences
+    df["lantern_max_electron_shower_ph_normedscore"] = max_electron_shower_ph_normedscores
+    df["lantern_max_electron_shower_el_normedscore"] = max_electron_shower_el_normedscores
+    df["lantern_max_electron_shower_PrimaryScore"] = max_electron_shower_PrimaryScores
+    df["lantern_max_electron_shower_FromNeutralScore"] = max_electron_shower_FromNeutralScores
+    df["lantern_max_electron_shower_FromChargedScore"] = max_electron_shower_FromChargedScore
+    df["lantern_max_electron_shower_CosTheta"] = max_electron_shower_CosThetas
+    df["lantern_max_electron_shower_CosThetaY"] = max_electron_shower_CosThetaYs
+    df["lantern_max_electron_shower_DistToVtx"] = max_electron_shower_DistToVtxs
+    df["lantern_second_max_electron_shower_charge"] = second_max_electron_shower_charges
+    df["lantern_second_max_electron_shower_PhScore"] = second_max_electron_shower_PhScores
+    df["lantern_second_max_electron_shower_ElScore"] = second_max_electron_shower_ElScores
+    df["lantern_second_max_electron_shower_MuScore"] = second_max_electron_shower_MuScores
+    df["lantern_second_max_electron_shower_PiScore"] = second_max_electron_shower_PiScores
+    df["lantern_second_max_electron_shower_PrScore"] = second_max_electron_shower_PrScores
+    df["lantern_second_max_electron_shower_electron_confidence"] = second_max_electron_shower_electron_confidences
+    df["lantern_second_max_electron_shower_ph_normedscore"] = second_max_electron_shower_ph_normedscores
+    df["lantern_second_max_electron_shower_el_normedscore"] = second_max_electron_shower_el_normedscores
+    df["lantern_second_max_electron_shower_PrimaryScore"] = second_max_electron_shower_PrimaryScores
+    df["lantern_second_max_electron_shower_FromNeutralScore"] = second_max_electron_shower_FromNeutralScores
+    df["lantern_second_max_electron_shower_FromChargedScore"] = second_max_electron_shower_FromChargedScores
+    df["lantern_second_max_electron_shower_CosTheta"] = second_max_electron_shower_CosThetas
+    df["lantern_second_max_electron_shower_CosThetaY"] = second_max_electron_shower_CosThetaYs
+    df["lantern_second_max_electron_shower_DistToVtx"] = second_max_electron_shower_DistToVtxs
+
+    df["lantern_max_photon_shower_charge"] = max_photon_shower_charges
+    df["lantern_max_photon_shower_PhScore"] = max_photon_shower_PhScores
+    df["lantern_max_photon_shower_ElScore"] = max_photon_shower_ElScores
+    df["lantern_max_photon_shower_MuScore"] = max_photon_shower_MuScores
+    df["lantern_max_photon_shower_PiScore"] = max_photon_shower_PiScores
+    df["lantern_max_photon_shower_PrScore"] = max_photon_shower_PrScores
+    df["lantern_max_photon_shower_electron_confidence"] = max_photon_shower_electron_confidences    
+    df["lantern_max_photon_shower_ph_normedscore"] = max_photon_shower_ph_normedscores
+    df["lantern_max_photon_shower_el_normedscore"] = max_photon_shower_el_normedscores
+    df["lantern_max_photon_shower_PrimaryScore"] = max_photon_shower_PrimaryScores
+    df["lantern_max_photon_shower_FromNeutralScore"] = max_photon_shower_FromNeutralScores
+    df["lantern_max_photon_shower_FromChargedScore"] = max_photon_shower_FromChargedScores
+    df["lantern_max_photon_shower_CosTheta"] = max_photon_shower_CosThetas
+    df["lantern_max_photon_shower_CosThetaY"] = max_photon_shower_CosThetaYs
+    df["lantern_max_photon_shower_DistToVtx"] = max_photon_shower_DistToVtxs
+    df["lantern_second_max_photon_shower_charge"] = second_max_photon_shower_charges
+    df["lantern_second_max_photon_shower_PhScore"] = second_max_photon_shower_PhScores
+    df["lantern_second_max_photon_shower_ElScore"] = second_max_photon_shower_ElScores
+    df["lantern_second_max_photon_shower_MuScore"] = second_max_photon_shower_MuScores
+    df["lantern_second_max_photon_shower_PiScore"] = second_max_photon_shower_PiScores
+    df["lantern_second_max_photon_shower_PrScore"] = second_max_photon_shower_PrScores
+    df["lantern_second_max_photon_shower_electron_confidence"] = second_max_photon_shower_electron_confidences
+    df["lantern_second_max_photon_shower_ph_normedscore"] = second_max_photon_shower_ph_normedscores
+    df["lantern_second_max_photon_shower_el_normedscore"] = second_max_photon_shower_el_normedscores
+    df["lantern_second_max_photon_shower_PrimaryScore"] = second_max_photon_shower_PrimaryScores
+    df["lantern_second_max_photon_shower_FromNeutralScore"] = second_max_photon_shower_FromNeutralScores
+    df["lantern_second_max_photon_shower_FromChargedScore"] = second_max_photon_shower_FromChargedScores
+    df["lantern_second_max_photon_shower_CosTheta"] = second_max_photon_shower_CosThetas
+    df["lantern_second_max_photon_shower_CosThetaY"] = second_max_photon_shower_CosThetaYs
+    df["lantern_second_max_photon_shower_DistToVtx"] = second_max_photon_shower_DistToVtxs
+
+    df["lantern_diphoton_opening_angle"] = diphoton_opening_angles
+    df["lantern_diphoton_energy"] = diphoton_energies
+    df["lantern_diphoton_costheta"] = diphoton_costhetas
+    df["lantern_diphoton_mass"] = diphoton_masses
+
+    df["lantern_prim_shower_photon_num"] = prim_shower_photon_nums
+    df["lantern_prim_shower_electron_num"] = prim_shower_electron_nums
+    df["lantern_prim_shower_muon_num"] = prim_shower_muon_nums
+    df["lantern_prim_shower_charged_pion_num"] = prim_shower_charged_pion_nums
+    df["lantern_prim_shower_proton_num"] = prim_shower_proton_nums
+
+
+    # see function here: https://github.com/NuTufts/lantern_ana/blob/94f31b83e8a170230ca7b948c701671ab3099bbd/lantern_ana/utils/get_primary_muon_candidates.py
+    # this code is similar, but considers all types of tracks, and counts all types of particles
+
+    prim_muon_track_max_muscores = []
+    prim_proton_track_max_prscores = []
+    prim_charged_pion_track_max_piscores = []
+
+    prim_track_photon_nums = []
+    prim_track_electron_nums = []
+    prim_track_muon_nums = []
+    prim_track_charged_pion_nums = []
+    prim_track_proton_nums = []
+    
+    nTracks = df["lantern_nTracks"].to_numpy()
+    trackIsSecondary = df["lantern_trackIsSecondary"].to_numpy()
+    trackClassified = df["lantern_trackClassified"].to_numpy()
+    trackCharge = df["lantern_trackCharge"].to_numpy()
+    #trackCosTheta = df["lantern_trackCosTheta"].to_numpy()
+    #trackCosThetaY = df["lantern_trackCosThetaY"].to_numpy()
+    #trackDistToVtx = df["lantern_trackDistToVtx"].to_numpy()
+    trackComp = df["lantern_trackComp"].to_numpy()
+    trackPurity = df["lantern_trackPurity"].to_numpy()
+    #trackPrimaryScore = df["lantern_trackPrimaryScore"].to_numpy()
+    #trackFromNeutralScore = df["lantern_trackFromNeutralScore"].to_numpy()
+    #trackFromChargedScore = df["lantern_trackFromChargedScore"].to_numpy()
+    trackPID = df["lantern_trackPID"].to_numpy()
+    #trackElScore = df["lantern_trackElScore"].to_numpy()
+    #trackPhScore = df["lantern_trackPhScore"].to_numpy()
+    trackMuScore = df["lantern_trackMuScore"].to_numpy()
+    trackPiScore = df["lantern_trackPiScore"].to_numpy()
+    trackPrScore = df["lantern_trackPrScore"].to_numpy()
+
+    for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN tracks"):
+        curr_nTracks = nTracks[event_i]
+        curr_trackIsSecondary = trackIsSecondary[event_i]
+        curr_trackClassified = trackClassified[event_i]
+        curr_trackCharge = trackCharge[event_i]
+        curr_trackComp = trackComp[event_i]
+        curr_trackPurity = trackPurity[event_i]
+        curr_trackPID = trackPID[event_i]
+        curr_trackMuScore = trackMuScore[event_i]
+        curr_trackPiScore = trackPiScore[event_i]
+        curr_trackPrScore = trackPrScore[event_i]
+
+        curr_num_photons = 0
+        curr_num_electrons = 0
+        curr_num_muons = 0
+        curr_num_protons = 0
+        curr_num_charged_pions = 0
+
+        curr_max_muscore = np.nan   
+        curr_max_prscore = np.nan
+        curr_max_piscore = np.nan
+        
+        for track_i in range(curr_nTracks):
+            if curr_trackIsSecondary[track_i] != 0: # only considering primary tracks
+                continue
+
+            if curr_trackClassified[track_i] != 0: # only considering classified tracks
+                continue
+
+            min_charge, min_completeness, min_purity = 0, 0, 0
+            if curr_trackCharge[track_i] < min_charge or curr_trackComp[track_i] < min_completeness or curr_trackPurity[track_i] < min_purity:
+                continue
+
+            if curr_trackPID[track_i] == 13: # muon
+                curr_num_muons += 1
+                if curr_trackMuScore[track_i] > curr_max_muscore or curr_max_muscore is np.nan:
+                    curr_max_muscore = curr_trackMuScore[track_i]
+            elif curr_trackPID[track_i] == 2212: # proton
+                curr_num_protons += 1
+                if curr_trackPrScore[track_i] > curr_max_prscore or curr_max_prscore is np.nan:
+                    curr_max_prscore = curr_trackPrScore[track_i]
+            elif curr_trackPID[track_i] == 211: # charged pion
+                curr_num_charged_pions += 1
+                if curr_trackPiScore[track_i] > curr_max_piscore or curr_max_piscore is np.nan:
+                    curr_max_piscore = curr_trackPiScore[track_i]
+            elif curr_trackPID[track_i] == 22: # photon
+                curr_num_photons += 1
+            elif curr_trackPID[track_i] == 11: # electron
+                curr_num_electrons += 1
+            else:
+                assert False, "Invalid track PID"
+
+        prim_track_photon_nums.append(curr_num_photons)
+        prim_track_electron_nums.append(curr_num_electrons)
+        prim_track_muon_nums.append(curr_num_muons)
+        prim_track_charged_pion_nums.append(curr_num_charged_pions)
+        prim_track_proton_nums.append(curr_num_protons)
+
+        prim_muon_track_max_muscores.append(curr_max_muscore)
+        prim_proton_track_max_prscores.append(curr_max_prscore)
+        prim_charged_pion_track_max_piscores.append(curr_max_piscore)
+
+
+    df["lantern_prim_track_photon_num"] = prim_track_photon_nums
+    df["lantern_prim_track_electron_num"] = prim_track_electron_nums
+    df["lantern_prim_track_muon_num"] = prim_track_muon_nums   
+    df["lantern_prim_track_charged_pion_num"] = prim_track_charged_pion_nums
+    df["lantern_prim_track_proton_num"] = prim_track_proton_nums
+
+    df["lantern_prim_photon_num"] = np.array(prim_shower_photon_nums) + np.array(prim_track_photon_nums)
+    df["lantern_prim_electron_num"] = np.array(prim_shower_electron_nums) + np.array(prim_track_electron_nums)
+    df["lantern_prim_muon_num"] = np.array(prim_shower_muon_nums) + np.array(prim_track_muon_nums)
+    df["lantern_prim_charged_pion_num"] = np.array(prim_shower_charged_pion_nums) + np.array(prim_track_charged_pion_nums)
+    df["lantern_prim_proton_num"] = np.array(prim_shower_proton_nums) + np.array(prim_track_proton_nums)
+
+    df["lantern_prim_muon_track_max_muscore"] = prim_muon_track_max_muscores
+    df["lantern_prim_proton_track_max_prscore"] = prim_proton_track_max_prscores
+    df["lantern_prim_charged_pion_track_max_piscore"] = prim_charged_pion_track_max_piscores
 
     return df
 
