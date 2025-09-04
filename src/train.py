@@ -13,7 +13,7 @@ import time
 import umap
 
 from signal_categories import topological_category_labels, topological_category_colors
-from variables import wc_training_vars, combined_training_vars
+from variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
 
 if __name__ == "__main__":
@@ -36,6 +36,8 @@ if __name__ == "__main__":
         training_vars = combined_training_vars
     elif args.training_vars == "wc":
         training_vars = wc_training_vars
+    elif args.training_vars == "lantern":
+        training_vars = lantern_training_vars
     else:
         raise ValueError(f"Invalid training_vars: {args.training_vars}")
 

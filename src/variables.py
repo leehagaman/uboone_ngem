@@ -511,7 +511,7 @@ blip_postprocessing_vars = [
     "blip_closest_upstream_dw",
 ]
 
-glee_postprocessing_training_vars = [
+glee_training_vars = [
     "glee_max_ssv_score",
     "glee_max_3d_shower_score",
 ]
@@ -570,7 +570,7 @@ lantern_vars = [
     "trackPID",
 ]
 
-lantern_training_vars = [
+lantern_direct_training_vars = [
     "lantern_vtxScore",
     "lantern_recoNuE",
     "lantern_foundVertex",
@@ -581,6 +581,7 @@ lantern_postprocessing_training_vars = [
     "lantern_max_shower_charge",
     "lantern_max_electron_shower_charge",
     "lantern_max_photon_shower_charge",
+    "lantern_max_electron_shower_ElScore",
     "lantern_max_electron_shower_PhScore",
     "lantern_max_electron_shower_MuScore",
     "lantern_max_electron_shower_PiScore",
@@ -596,6 +597,7 @@ lantern_postprocessing_training_vars = [
     "lantern_max_electron_shower_DistToVtx",
     "lantern_second_max_electron_shower_charge",
     "lantern_second_max_electron_shower_PhScore",
+    "lantern_second_max_electron_shower_ElScore",
     "lantern_second_max_electron_shower_MuScore",
     "lantern_second_max_electron_shower_PiScore",
     "lantern_second_max_electron_shower_PrScore",
@@ -610,6 +612,7 @@ lantern_postprocessing_training_vars = [
     "lantern_second_max_electron_shower_DistToVtx",
     "lantern_max_photon_shower_charge",
     "lantern_max_photon_shower_PhScore",
+    "lantern_max_photon_shower_ElScore",
     "lantern_max_photon_shower_MuScore",
     "lantern_max_photon_shower_PiScore",
     "lantern_max_photon_shower_PrScore",
@@ -624,6 +627,7 @@ lantern_postprocessing_training_vars = [
     "lantern_max_photon_shower_DistToVtx",
     "lantern_second_max_photon_shower_charge",
     "lantern_second_max_photon_shower_PhScore",
+    "lantern_second_max_photon_shower_ElScore",
     "lantern_second_max_photon_shower_MuScore",
     "lantern_second_max_photon_shower_PiScore",
     "lantern_second_max_photon_shower_PrScore",
@@ -668,6 +672,8 @@ lantern_postprocessing_training_vars = [
     "lantern_prim_proton_num",
 ]
 
+lantern_training_vars = lantern_direct_training_vars + lantern_postprocessing_training_vars
+
 combined_postprocessing_training_vars = [
     "wc_pandora_dist",
     "wc_lantern_dist",
@@ -680,5 +686,5 @@ pelee_training_vars = [
 
 wc_training_vars += wc_postprocessing_training_vars
 
-combined_training_vars = wc_training_vars + glee_postprocessing_training_vars + pelee_training_vars + lantern_training_vars + lantern_postprocessing_training_vars + combined_postprocessing_training_vars
+combined_training_vars = wc_training_vars + glee_training_vars + pelee_training_vars + lantern_training_vars + combined_postprocessing_training_vars
 # leave blip, nanosecond timing, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability
