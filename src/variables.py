@@ -495,15 +495,6 @@ glee_vars = [
     "sss3d_shower_score",
 ]
 
-# TODO: add more relevant LANTERN variables here
-lantern_vars = [
-    "nShowers",
-    "showerPhScore",
-    "vtxX",
-    "vtxY",
-    "vtxZ",
-]
-
 wc_postprocessing_training_vars = [
     "wc_reco_shower_theta",
     "wc_reco_shower_phi",
