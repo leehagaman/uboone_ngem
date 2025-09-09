@@ -10,11 +10,11 @@ from datetime import datetime
 import os
 import argparse
 import time
-import umap
 
 from signal_categories import topological_category_labels, topological_category_colors
 from variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
+from file_locations import intermediate_files_location
 
 if __name__ == "__main__":
     main_start_time = time.time()
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     print("loading dataframe...")
 
-    all_df = pd.read_pickle(f"{PROJECT_ROOT}/intermediate_files/generic_df_train_vars.pkl")
+    all_df = pd.read_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
 
     train_indices, test_indices = train_test_split(np.arange(len(all_df)), test_size=0.5, random_state=42)
     all_df["used_for_training"] = False
@@ -66,8 +66,9 @@ if __name__ == "__main__":
     all_df.loc[test_indices, "used_for_testing"] = True
 
     # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
+    # (should already be applied in the presel_df_train_vars.pkl file)
     original_num_events = all_df.shape[0]
-    presel_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0") # the generic selection wc_kine_reco_Enu > 0 was already applied
+    presel_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0")
     preselected_num_events = presel_df.shape[0]
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 
