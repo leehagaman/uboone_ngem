@@ -8,6 +8,11 @@ wc_T_bdt_vars = [              # variables involved with BDT training (if you wa
     "nc_pio_score",                 # BDT score for NC pi0 selection
     "numu_cc_flag",                 # flag, -1 means not generic selected, 0 means generic selected, 1 means cut-based numuCC selected. We often use "numu_cc_flag >= 0" to apply generic neutrino selection.
     "shw_sp_n_20mev_showers",       # number of reco 20 MeV showers
+    "shw_sp_n_20br1_showers",    # number of reco 20 MeV BR1 showers
+    "single_photon_numu_score",     # BDT score for single photon numu selection
+    "single_photon_other_score",    # BDT score for single photon other selection
+    "single_photon_ncpi0_score",    # BDT score for single photon NC pi0 selection
+    "single_photon_nue_score",      # BDT score for single photon nue selection
 ]
 
 wc_T_eval_vars = [             # variables involved with low level reconstruction and truth information
@@ -58,6 +63,9 @@ wc_T_pf_vars = [               # variables involved with individual particles
     "truth_corr_nuvtxX",            # true neutrino vertex x (cm), corrected for SCE
     "truth_corr_nuvtxY",            # true neutrino vertex y (cm), corrected for SCE
     "truth_corr_nuvtxZ",            # true neutrino vertex z (cm), corrected for SCE
+    
+    "truth_muonMomentum",           # true muon momentum 4-vector (p_x, p_y, p_z, p_t), in (GeV/c, GeV/c, GeV/c, GeV)
+    "truth_single_photon",          # true single photon
 
     # These variables are related to individual true particles
     "truth_Ntrack",
