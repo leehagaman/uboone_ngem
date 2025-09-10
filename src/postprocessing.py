@@ -401,6 +401,9 @@ def add_signal_categories(all_df):
     all_df["wc_truth_1pi0"] = truth_NprimPio_arr == 1
     all_df["wc_truth_multi_pi0"] = truth_NprimPio_arr > 1
 
+    # accounting for the fact that rarely, wc_truth_NCDelta can be true for CC events, presumably due to some GENIE bug
+    all_df["wc_truth_NCDeltaRad"] = (~truth_isCC_arr) & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
+
     topological_conditions = [all_df.eval(query) for query in topological_category_queries]
     for i1, condition1 in enumerate(topological_conditions):
         for i2, condition2 in enumerate(topological_conditions):
@@ -409,14 +412,14 @@ def add_signal_categories(all_df):
                 if overlap.any():
                     print(f"Overlapping topological signal definitions: {topological_category_labels[i1]} and {topological_category_labels[i2]}")
                     row = all_df[condition1 & condition2].iloc[0]
-                    print(f"Example: {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
+                    print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
                     raise AssertionError
     all_df['topological_signal_category'] = np.select(topological_conditions, topological_category_labels, default="other")
     uncategorized_df = all_df[all_df['topological_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
         print(f"Uncategorized topological signal categories!")
         row = uncategorized_df.iloc[0]
-        print(f"Example: {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}")
+        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
         raise AssertionError
     all_df["topological_signal_category"] = np.select(topological_conditions, topological_category_labels, default="other")
 
@@ -438,14 +441,14 @@ def add_signal_categories(all_df):
                 if overlap.any():
                     print(f"Overlapping physics signal definitions: {physics_category_labels[i1]} and {physics_category_labels[i2]}")
                     row = all_df[condition1 & condition2].iloc[0]
-                    print(f"Example: {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
+                    print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}, {row['wc_truth_NCDelta']=}")
                     raise AssertionError
     all_df["physics_signal_category"] = np.select(physics_conditions, physics_category_labels, default="other")
     uncategorized_df = all_df[all_df['physics_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
         print(f"Uncategorized physics signal categories!")
         row = uncategorized_df.iloc[0]
-        print(f"Example: {row['wc_truth_inFV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_NCDelta']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_nueCC']=}")
+        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}, {row['wc_truth_NCDelta']=}")
         raise AssertionError
     
     if print_categories:

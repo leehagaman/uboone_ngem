@@ -112,6 +112,7 @@ def process_root_file(filename, frac_events = 1):
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
 
+    all_df["filename"] = filename
     all_df["filetype"] = filetype
 
     end_time = time.time()
@@ -135,8 +136,8 @@ if __name__ == "__main__":
     if args.frac_events < 1.0:
         print(f"Loading {args.frac_events} fraction of events from each file")
 
+    print("Starting loop over root files...")
     all_df = pd.DataFrame()
-
     all_ncpi0_POTs = []
     all_nu_POTs = []
     all_nue_POTs = []
