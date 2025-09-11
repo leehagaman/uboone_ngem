@@ -11,7 +11,7 @@ import os
 import argparse
 import time
 
-from signal_categories import topological_category_labels, topological_category_colors
+from signal_categories import topological_category_labels, physics_category_labels
 from variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
 from file_locations import intermediate_files_location
@@ -22,6 +22,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--training_vars", type=str, default="combined")
+    parser.add_argument("--signal_categories", type=str, default="topological")
     parser.add_argument("--early_stopping_rounds", type=int, default=50,
                         help="Stop training if validation metric doesn't improve for this many rounds")
     args = parser.parse_args()
@@ -40,6 +41,15 @@ if __name__ == "__main__":
         training_vars = lantern_training_vars
     else:
         raise ValueError(f"Invalid training_vars: {args.training_vars}")
+
+    if args.signal_categories == "topological":
+        signal_category_labels = topological_category_labels
+        signal_category_var = "topological_signal_category"
+    elif args.signal_categories == "physics":
+        signal_category_labels = physics_category_labels
+        signal_category_var = "physics_signal_category"
+    else:
+        raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
 
     # Delete the directory if it exists
     if (PROJECT_ROOT / 'training_outputs' / args.name).exists():
@@ -75,26 +85,26 @@ if __name__ == "__main__":
     x = presel_df[training_vars].to_numpy()
     w = presel_df["wc_net_weight"].to_numpy()
 
-    num_categories = len(topological_category_labels)
+    num_categories = len(signal_category_labels)
     print(f"{num_categories=}")
 
     presel_train_df = presel_df.query("used_for_training == True")
     presel_test_df = presel_df.query("used_for_testing == True")
 
-    topological_signal_category_mapping = {cat: i for i, cat in enumerate(topological_category_labels)}
+    signal_category_mapping = {cat: i for i, cat in enumerate(signal_category_labels)}
 
     x_train = presel_train_df[training_vars].to_numpy()
     x_train = x_train.astype(np.float64)
     x_train[(x_train > 1e10) | (x_train < -1e10)] = np.nan
 
-    y_train = presel_train_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
+    y_train = presel_train_df[signal_category_var].map(signal_category_mapping).to_numpy()
     w_train = presel_train_df["wc_net_weight"].to_numpy()
 
     x_test = presel_test_df[training_vars].to_numpy()
     x_test = x_test.astype(np.float64)
     x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
 
-    y_test = presel_test_df["topological_signal_category"].map(topological_signal_category_mapping).to_numpy()
+    y_test = presel_test_df[signal_category_var].map(signal_category_mapping).to_numpy()
     w_test = presel_test_df["wc_net_weight"].to_numpy()
 
     num_training_vars = len(training_vars)
@@ -178,8 +188,8 @@ if __name__ == "__main__":
     plt.figure(figsize=(20, 12))
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
-    category_names = {v: k for k, v in topological_signal_category_mapping.items()}
-    n_categories = len(topological_signal_category_mapping)
+    category_names = {v: k for k, v in signal_category_mapping.items()}
+    n_categories = len(signal_category_mapping)
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
     bins = np.linspace(0, 1, 21)
@@ -202,7 +212,7 @@ if __name__ == "__main__":
     print("Creating confusion matrix...")
     plt.figure(figsize=(20, 6))
     # Ensure confusion matrix includes all expected categories, even if they have zero events
-    expected_labels = list(range(len(topological_signal_category_mapping)))
+    expected_labels = list(range(len(signal_category_mapping)))
     cm = confusion_matrix(y_test, y_pred, sample_weight=w_test, labels=expected_labels)
     # Handle division by zero for normalization
     row_sums = cm.sum(axis=1)
