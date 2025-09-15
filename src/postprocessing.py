@@ -58,16 +58,13 @@ def do_wc_postprocessing(df):
     energy_lists = df["wc_kine_energy_particle"].to_numpy()
     pdg_lists = df["wc_kine_particle_type"].to_numpy()
     for i in tqdm(range(df.shape[0]), desc="Adding WC reco particle multiplicity"):
-
         proton_num = 0
         other_track_num = 0
         energy_list = energy_lists[i]
-
         if isinstance(energy_list, float) and np.isnan(energy_list):
             proton_nums.append(np.nan)
             other_track_nums.append(np.nan)
             continue
-
         pdg_list = pdg_lists[i]
         for i in range(len(energy_list)):
             if abs(pdg_list[i]) == 2212:
@@ -82,23 +79,100 @@ def do_wc_postprocessing(df):
     df["wc_reco_num_other_tracks"] = other_track_nums
 
     # Extra truth variables
-    max_prim_proton_energies = []
+    has_photonuclear_absorption_flags = []
+    max_true_prim_proton_energies = []
+    sum_true_prim_proton_energies = []
+    true_leading_shower_energies = []
+    true_leading_shower_costhetas = []
+    true_leading_pi0_energies = []
+    true_leading_pi0_costhetas = []
+    true_outgoing_lepton_energies = []
+    true_nums_prim_protons = []
+    true_nums_prim_protons_35 = []
+    truth_ids = df["wc_truth_id"].to_numpy()
     truth_pdgs = df["wc_truth_pdg"].to_numpy()
     truth_mothers = df["wc_truth_mother"].to_numpy()
     truth_startMomentums = df["wc_truth_startMomentum"].to_numpy()
-    for i in tqdm(range(df.shape[0]), desc="Adding WC truth primary proton energy"):
-        max_prim_proton_energy = 0
+    for i in tqdm(range(df.shape[0])):
+        max_true_prim_proton_energy = -1
+        sum_true_prim_proton_energy = 0
+        max_shower_energy = -1.
+        max_shower_costheta = -2.
+        max_pi0_energy = -1.
+        max_pi0_costheta = -2.
+        true_num_prim_protons = 0
+        true_num_prim_protons_35 = 0
+        true_outgoing_lepton_energy = -1.
+        truth_id_list = truth_ids[i]
         truth_pdg_list = truth_pdgs[i]
         truth_mother_list = truth_mothers[i]
         truth_startMomentum_list = truth_startMomentums[i]
-        if isinstance(truth_pdg_list, float) and np.isnan(truth_pdg_list): # doesn't have a truth Geant4 particle tree
-            max_prim_proton_energies.append(-1)
-            continue
-        for j in range(len(truth_pdg_list)):
+        if isinstance(truth_id_list, float) and np.isnan(truth_id_list):
+            num_particles = 0
+        else:
+            num_particles = len(truth_id_list)
+        has_photonuclear_absorption = False
+        for j in range(num_particles):
+            if truth_pdg_list[j] == 22: # photon
+                truth_photon_parent_id = truth_id_list[j]
+                for k in range(len(truth_pdg_list)):
+                    if truth_id_list[k] == truth_photon_parent_id:
+                        parent_pdg = truth_pdg_list[k]
+                if parent_pdg == 111: # pi0 photon
+                    # now, focusing on the pi0 daughter decay products
+                    photon_daughter_pdgs = []
+                    for k in range(num_particles):
+                        if truth_mother_list[k] == truth_id_list[j]:
+                            photon_daughter_pdgs.append(truth_pdg_list[k])
+
+                    for pdg in photon_daughter_pdgs:
+                        if pdg >= 1_000_000_000: # ten digit nuclear PDG code
+                            has_photonuclear_absorption = True
+
+            if truth_pdg_list[j] == 22 or abs(truth_pdg_list[j]) == 11: # photon, electron, or positron
+                if truth_startMomentum_list[j][3] * 1000. > max_shower_energy:
+                    max_shower_energy = truth_startMomentum_list[j][3] * 1000.
+                    max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+
+            if truth_pdg_list[j] == 111: # pi0
+                curr_pi0_energy = truth_startMomentum_list[j][3] * 1000. - 134.9768
+                if curr_pi0_energy > max_pi0_energy:
+                    max_pi0_energy = curr_pi0_energy
+                    max_tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
+                    max_z_momentum = truth_startMomentum_list[j][2]
+                    max_pi0_costheta = max_z_momentum / max_tot_momentum
+
             if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2212: # primary proton
-                max_prim_proton_energy = max(truth_startMomentum_list[j][3] * 1000. - 938.272089, max_prim_proton_energy)
-        max_prim_proton_energies.append(max_prim_proton_energy)
-    df["wc_true_max_prim_proton_energy"] = max_prim_proton_energies
+                true_num_prim_protons += 1
+                if truth_startMomentum_list[j][3] * 1000. - 938.272088 > 35.:
+                    true_num_prim_protons_35 += 1
+                max_true_prim_proton_energy = max(max_true_prim_proton_energy, truth_startMomentum_list[j][3] * 1000. - 938.272088)
+                sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
+
+            if truth_mother_list[j] == 0 and 11 <= abs(truth_pdg_list[j]) <= 16: # lepton
+                true_outgoing_lepton_energy = truth_startMomentum_list[j][3] * 1000.
+
+        max_true_prim_proton_energies.append(max_true_prim_proton_energy)
+        sum_true_prim_proton_energies.append(sum_true_prim_proton_energy)
+        true_outgoing_lepton_energies.append(true_outgoing_lepton_energy)
+        true_nums_prim_protons.append(true_num_prim_protons)
+        true_nums_prim_protons_35.append(true_num_prim_protons_35)
+        true_leading_shower_energies.append(max_shower_energy)
+        true_leading_shower_costhetas.append(max_shower_costheta)
+        true_leading_pi0_energies.append(max_pi0_energy)
+        true_leading_pi0_costhetas.append(max_pi0_costheta)
+        has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
+
+    df["wc_true_max_prim_proton_energy"] = max_true_prim_proton_energies
+    df["wc_true_sum_prim_proton_energy"] = sum_true_prim_proton_energies
+    df["wc_true_outgoing_lepton_energy"] = true_outgoing_lepton_energies
+    df["wc_true_num_prim_protons"] = true_nums_prim_protons
+    df["wc_true_num_prim_protons_35"] = true_nums_prim_protons_35
+    df["wc_true_leading_shower_energy"] = true_leading_shower_energies
+    df["wc_true_leading_shower_costheta"] = true_leading_shower_costhetas
+    df["wc_true_leading_pi0_energy"] = true_leading_pi0_energies
+    df["wc_true_leading_pi0_costheta"] = true_leading_pi0_costhetas
+    df["wc_true_has_photonuclear_absorption"] = has_photonuclear_absorption_flags
 
     # extra primary shower position and angle variables
     shower_thetas = []
