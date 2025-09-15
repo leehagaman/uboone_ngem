@@ -74,3 +74,4 @@ filetype_category_colors = [cat[2] for cat in filetype_categories]
 
 # TODO: add categories that separate out events with vertex blips and neutron blips
 # Maybe use some variable for "true effective vertex blip energy", as a sum of all charged particle energies produced at the vertex after accounting for quenching?
+# Add category for photonuclear absorption
