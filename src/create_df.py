@@ -144,6 +144,10 @@ if __name__ == "__main__":
     all_dirt_POTs = []
     all_ext_POTs = []
     for filename in os.listdir(data_files_location):
+
+        if filename == "partial_100_file_del1g_test.root" or filename == "partial_100_file_iso1g_test.root":
+            continue # test events, not used for analysis
+
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
         if filetype == "nc_pi0_overlay":
             all_ncpi0_POTs.append(curr_POT)

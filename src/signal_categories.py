@@ -21,6 +21,25 @@ topological_category_queries = [cat[1] for cat in topological_categories]
 topological_category_labels = [cat[0] for cat in topological_categories]
 topological_category_colors = [cat[2] for cat in topological_categories]
 
+topological_category_labels_latex = [
+    r"$1\gamma Np$",
+    r"$1\gamma 0p$",
+    r"$1\gamma Np 1\mu$",
+    r"$1\gamma 0p 1\mu$",
+    r"$1\gamma$ out FV",
+    r"$2\gamma Np$",
+    r"$2\gamma 0p$",
+    r"$2\gamma Np 1\mu$",
+    r"$2\gamma 0p 1\mu$",
+    r"$2\gamma$ out FV",
+    r"$1e Np$",
+    r"$1e 0p$",
+    r"$0\gamma$",
+    r"$3+\gamma$",
+    r"dirt",
+    r"ext",
+]
+
 physics_categories = [
     ("NCDeltaRad_1gNp", "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_Np",                                           "xkcd:yellow"),
     ("NCDeltaRad_1g0p", "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_0p",                                           "xkcd:orange"),
