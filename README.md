@@ -31,6 +31,5 @@ python src/train.py --name first_wc_training --training_vars wc
 python src/train.py --name first_lantern_training --training_vars lantern
 
 python src/train.py --name first_combined_physics_training --signal_categories physics
-
 ```
 
