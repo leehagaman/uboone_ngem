@@ -453,7 +453,8 @@ wc_training_vars = wc_T_BDT_training_vars + wc_T_KINEvars_training_vars
 wc_training_vars = [f"wc_{var}" for var in wc_training_vars]
 wc_training_vars += ["wc_reco_num_protons", "wc_reco_num_other_tracks"]
 
-wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC", "wc_reco_num_protons", "wc_reco_num_other_tracks"] + kine_scalar_vars]
+wc_prefix_kine_scalar_vars = [f"wc_{var}" for var in kine_scalar_vars]
+wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC", "wc_reco_num_protons", "wc_reco_num_other_tracks"] + wc_prefix_kine_scalar_vars]
 
 wc_T_BDT_including_training_vars = list(set(wc_T_bdt_vars + wc_T_BDT_training_vars))
 wc_T_KINEvars_including_training_vars = list(set(wc_T_kine_vars + wc_T_KINEvars_training_vars))
