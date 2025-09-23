@@ -17,6 +17,7 @@ from postprocessing import do_wc_postprocessing, do_blip_postprocessing, do_lant
 from file_locations import data_files_location, intermediate_files_location
 
 def process_root_file(filename, frac_events = 1):
+
     if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower(): # EXT file
         filetype = "ext"
     elif "nu_overlay" in filename.lower():
@@ -27,6 +28,10 @@ def process_root_file(filename, frac_events = 1):
         filetype = "dirt_overlay"
     elif "nc_pi0" in filename.lower() or "ncpi0" in filename.lower() or "nc_pio" in filename.lower() or "ncpio" in filename.lower():
         filetype = "nc_pi0_overlay"
+    elif "delete_one_gamma" in filename.lower():
+        filetype = "delete_one_gamma_overlay"
+    elif "isotropic_one_gamma" in filename.lower():
+        filetype = "isotropic_one_gamma_overlay"
     else:
         raise ValueError("Unknown filetype!", filename)
     
@@ -43,15 +48,23 @@ def process_root_file(filename, frac_events = 1):
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
+    curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
+    curr_wc_T_pf_vars = wc_T_pf_vars
+    if filetype == "delete_one_gamma_overlay" or filetype == "isotropic_one_gamma_overlay":
+        print(f"    TEMPORARY: NOT LOADING EXISTING WC POST-PROCESSING BDT SCORES FOR {filetype}")
+        print(f"    TEMPORARY: NOT LOADING NANOSECOND TIMING VARIABLES FOR {filetype}")
+        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if var not in ["single_photon_numu_score", "single_photon_other_score", "single_photon_ncpi0_score", "single_photon_nue_score", "nc_delta_score", "nc_pio_score"]]
+        curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var not in ["evtTimeNS_cor"]]
+
     # loading Wire-Cell variables
     dic = {}
-    dic.update(f["wcpselection"]["T_BDTvars"].arrays(wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_BDTvars"].arrays(curr_wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
     dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
     if filetype == "ext" or filetype == "data":
         dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
         dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
     else:
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_vars, library="np", **slice_kwargs))
+        dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
         dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     for col in dic:
@@ -143,10 +156,16 @@ if __name__ == "__main__":
     all_nue_POTs = []
     all_dirt_POTs = []
     all_ext_POTs = []
+    all_delete_one_gamma_POTs = []
+    all_isotropic_one_gamma_POTs = []
     for filename in os.listdir(data_files_location):
 
         if filename == "partial_100_file_del1g_test.root" or filename == "partial_100_file_iso1g_test.root":
             continue # test events, not used for analysis
+
+        #if "one_gamma" not in filename.lower():
+        #    print(f"TEMPORARY: skipping {filename}")
+        #     continue
 
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
         if filetype == "nc_pi0_overlay":
@@ -159,6 +178,10 @@ if __name__ == "__main__":
             all_dirt_POTs.append(curr_POT)
         elif filetype == "ext":
             all_ext_POTs.append(curr_POT)
+        elif filetype == "delete_one_gamma_overlay":
+            all_delete_one_gamma_POTs.append(curr_POT)
+        elif filetype == "isotropic_one_gamma_overlay":
+            all_isotropic_one_gamma_POTs.append(curr_POT)
         else:
             raise ValueError("Unknown filetype!", filetype)
 
@@ -175,6 +198,8 @@ if __name__ == "__main__":
         "nue_overlay": sum(all_nue_POTs),
         "dirt_overlay": sum(all_dirt_POTs),
         "ext": sum(all_ext_POTs),
+        "delete_one_gamma_overlay": sum(all_delete_one_gamma_POTs),
+        "isotropic_one_gamma_overlay": sum(all_isotropic_one_gamma_POTs),
     }
 
     print("doing post-processing...")

@@ -444,9 +444,10 @@ kine_scalar_vars = [
 #     (did not include match_isFC or kine_reco_Enu)
 
 # All variables used for all WC BDTs, including match_isFC and kine_reco_Enu, doesn't include nue_score, numu_score, nc_delta_score, or nc_pio_score
-wc_T_BDT_training_vars = all_numu_scalars + all_nue_scalars[:-2] + numu_bdt_score_variables + nue_bdt_score_variables
+wc_T_BDT_training_vars = all_numu_scalars[:-2] + all_nue_scalars[:-2] + numu_bdt_score_variables + nue_bdt_score_variables
+wc_T_eval_training_vars = ["match_isFC"]
 wc_T_KINEvars_training_vars = kine_scalar_vars
-wc_training_vars = wc_T_BDT_training_vars + wc_T_KINEvars_training_vars
+wc_training_vars = wc_T_BDT_training_vars + wc_T_KINEvars_training_vars + wc_T_eval_training_vars
 
 # adding in particle multiplicities for this multi-class BDT, rather than cutting on them later
 # add wc prefix to wc_training_vars

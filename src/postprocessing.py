@@ -3,7 +3,8 @@ import pandas as pd
 from tqdm import tqdm
 
 from signal_categories import topological_category_queries, topological_category_labels
-from signal_categories import physics_category_queries, physics_category_labels
+from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
+from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21):
 
@@ -17,14 +18,15 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
     nu_overlay_other_mask = (df["filetype"] == 'nu_overlay') & ~((df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1))
     dirt_mask = df["filetype"] == 'dirt_overlay'
     ext_mask = df["filetype"] == 'ext'
+    del1g_mask = df["filetype"] == 'delete_one_gamma_overlay'
+    iso1g_mask = df["filetype"] == 'isotropic_one_gamma_overlay'
 
     # setting the POTs in order to combine the NC Pi0 overlay and nu overlay files without throwing away MC statistics
     df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
     df.loc[nu_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
 
-
     # Filter out unwanted events by keeping only the events we want
-    combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask | ext_mask
+    combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask | ext_mask | del1g_mask | iso1g_mask
     
     # Use boolean indexing instead of drop for more reliable filtering
     df = df[combined_mask].copy()
@@ -434,7 +436,9 @@ def add_extra_true_photon_variables(df):
 def add_signal_categories(all_df):
 
     filetype_arr = all_df["filetype"].to_numpy()
-    all_df["normal_overlay"] = ~(filetype_arr == "dirt_overlay") & ~(filetype_arr == "ext")
+    all_df["normal_overlay"] = (filetype_arr == "nu_overlay") | (filetype_arr == "nue_overlay") | (filetype_arr == "nc_pi0_overlay") | (filetype_arr == "cc_pi0_overlay")
+    all_df["del1g_overlay"] = filetype_arr == "delete_one_gamma_overlay"
+    all_df["iso1g_overlay"] = filetype_arr == "isotropic_one_gamma_overlay"
 
     truth_inFV_arr = all_df["wc_truth_vtxInside"].to_numpy().astype(bool)
     all_df["wc_truth_inFV"] = truth_inFV_arr
@@ -475,8 +479,11 @@ def add_signal_categories(all_df):
     all_df["wc_truth_1pi0"] = truth_NprimPio_arr == 1
     all_df["wc_truth_multi_pi0"] = truth_NprimPio_arr > 1
 
-    # accounting for the fact that rarely, wc_truth_NCDelta can be true for CC events, presumably due to some GENIE bug
+    # wc_truth_NCDelta actually means true NC Delta radiative or true CC Delta radiative
+    # see https://microboone.slack.com/archives/C08LHGZSXC4/p1757450436839739
     all_df["wc_truth_NCDeltaRad"] = (~truth_isCC_arr) & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
+    all_df["wc_truth_numuCCDeltaRad"] = truth_numuCC_arr & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
+    all_df["wc_truth_nueCCDeltaRad"] = truth_nueCC_arr & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
 
     topological_conditions = [all_df.eval(query) for query in topological_category_queries]
     for i1, condition1 in enumerate(topological_conditions):
@@ -496,42 +503,46 @@ def add_signal_categories(all_df):
         print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
         raise AssertionError
     all_df["topological_signal_category"] = np.select(topological_conditions, topological_category_labels, default="other")
-
-
-    print_categories = False
+    print_categories = True
     if print_categories:
         print("\ntopological signal categories:")
-        for topological_signal_category in all_df['topological_signal_category'].unique():
+        for topological_signal_category in topological_category_labels:
             curr_df = all_df[all_df['topological_signal_category'] == topological_signal_category]
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
-    physics_conditions = [all_df.eval(query) for query in physics_category_queries]
-    for i1, condition1 in enumerate(physics_conditions):
-        for i2, condition2 in enumerate(physics_conditions):
-            if i1 != i2:
-                overlap = condition1 & condition2
-                if overlap.any():
-                    print(f"Overlapping physics signal definitions: {physics_category_labels[i1]} and {physics_category_labels[i2]}")
-                    row = all_df[condition1 & condition2].iloc[0]
-                    print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}, {row['wc_truth_NCDelta']=}")
-                    raise AssertionError
-    all_df["physics_signal_category"] = np.select(physics_conditions, physics_category_labels, default="other")
-    uncategorized_df = all_df[all_df['physics_signal_category'] == 'other']
+    del1g_detailed_conditions = [all_df.eval(query) for query in del1g_detailed_category_queries]
+    all_df["del1g_detailed_signal_category"] = np.select(del1g_detailed_conditions, del1g_detailed_category_labels, default="other")
+    uncategorized_df = all_df[all_df['del1g_detailed_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
-        print(f"Uncategorized physics signal categories!")
+        print(f"Uncategorized detailed del1g signal categories!")
         row = uncategorized_df.iloc[0]
-        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}, {row['wc_truth_NCDelta']=}")
+        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['del1g_overlay']=}, {row['iso1g_overlay']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
         raise AssertionError
-    
     if print_categories:
-        print("\nphysics signal categories:")
-        for physics_signal_category in all_df['physics_signal_category'].unique():
-            curr_df = all_df[all_df['physics_signal_category'] == physics_signal_category]
+        print("\ndel1g detailed signal categories:")
+        for del1g_detailed_signal_category in del1g_detailed_category_labels:
+            curr_df = all_df[all_df['del1g_detailed_signal_category'] == del1g_detailed_signal_category]
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
-            print(f"    {physics_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+            print(f"    {del1g_detailed_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+
+    del1g_simple_conditions = [all_df.eval(query) for query in del1g_simple_category_queries]
+    all_df["del1g_simple_signal_category"] = np.select(del1g_simple_conditions, del1g_simple_category_labels, default="other")
+    uncategorized_df = all_df[all_df['del1g_simple_signal_category'] == 'other']
+    if len(uncategorized_df) > 0:
+        print(f"Uncategorized simple del1g signal categories!")
+        row = uncategorized_df.iloc[0]
+        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['del1g_overlay']=}, {row['iso1g_overlay']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}, {row['wc_truth_numuCC']=}, {row['wc_truth_nueCC']=}, {row['wc_truth_0pi0']=}, {row['wc_truth_1pi0']=}, {row['wc_truth_NCDelta']=}, {row['wc_truth_numuCCDeltaRad']=}, {row['wc_truth_NCDeltaRad']=}")
+        raise AssertionError
+    if print_categories:
+        print("\ndel1g simple signal categories:")
+        for del1g_simple_signal_category in del1g_simple_category_labels:
+            curr_df = all_df[all_df['del1g_simple_signal_category'] == del1g_simple_signal_category]
+            unweighted_num = curr_df.shape[0]
+            weighted_num = curr_df['wc_net_weight'].sum()
+            print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
     return all_df
 
@@ -1031,7 +1042,9 @@ def do_lantern_postprocessing(df):
             diphoton_energy = photon_1_energy + photon_2_energy
             diphoton_momentum = photon_1_energy * photon_1_dir + photon_2_energy * photon_2_dir
 
-            diphoton_opening_angle = np.arccos(np.dot(photon_1_dir, photon_2_dir)) * 180 / np.pi
+            dot_product = np.dot(photon_1_dir, photon_2_dir)
+            dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
+            diphoton_opening_angle = np.arccos(dot_product) * 180 / np.pi
             diphoton_costheta = diphoton_momentum[2] / diphoton_energy
             diphoton_mass_squared = diphoton_energy**2 - diphoton_momentum[0]**2 - diphoton_momentum[1]**2 - diphoton_momentum[2]**2
             diphoton_mass_squared = np.clip(diphoton_mass_squared, 0.0, None) # accounting for floating point errors near 0

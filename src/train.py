@@ -11,7 +11,7 @@ import os
 import argparse
 import time
 
-from signal_categories import topological_category_labels, physics_category_labels
+from signal_categories import topological_category_labels, del1g_simple_category_labels
 from variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
 from file_locations import intermediate_files_location
@@ -45,9 +45,9 @@ if __name__ == "__main__":
     if args.signal_categories == "topological":
         signal_category_labels = topological_category_labels
         signal_category_var = "topological_signal_category"
-    elif args.signal_categories == "physics":
-        signal_category_labels = physics_category_labels
-        signal_category_var = "physics_signal_category"
+    elif args.signal_categories == "del1g_simple":
+        signal_category_labels = del1g_simple_category_labels
+        signal_category_var = "del1g_simple_signal_category"
     else:
         raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
 
