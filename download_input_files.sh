@@ -36,6 +36,7 @@ FILES_TO_COPY=(
 
     # run 4c files
     "/exp/uboone/data/uboonepro/MCC9.10/run4c_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run4c_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4c_v10_04_07_13_BNB_intrinsic_nue_overlay_surprise_redo_reco2_hist.root"
 
     # run 4d files
     "/exp/uboone/data/uboonepro/MCC9.10/run4d_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4a4c4d5_v10_04_07_13_BNB_intrinsic_nue_overlay_surprise_reco2_hist_4d.root"
@@ -44,6 +45,10 @@ FILES_TO_COPY=(
     # run 5 files
     "/exp/uboone/data/uboonepro/MCC9.10/run5_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4a4c4d5_v10_04_07_13_BNB_intrinsic_nue_overlay_surprise_reco2_hist_5.root"
     "/exp/uboone/data/uboonepro/MCC9.10/run5_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_5.root"
+
+    # test runs 4-5 signal sample files
+    "/exp/uboone/data/users/lhagaman/delete_one_gamma_run45_1k.root"
+    "/exp/uboone/data/users/lhagaman/isotropic_one_gamma_run45_1k.root"
 )
 
 for FILE in "${FILES_TO_COPY[@]}"; do

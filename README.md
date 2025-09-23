@@ -25,11 +25,15 @@ nohup python -u src/create_df.py > nohup.out 2>&1 &
 ```
 
 ## Training Multi-Class BDT
+
+I've also occasionally run out of memory here, again you can ssh into hopper.nevis.columbia.edu from houston.nevis.columbia.edu for quadruple the RAM.
+
 ```
 python src/train.py --name first_combined_training
 python src/train.py --name first_wc_training --training_vars wc
 python src/train.py --name first_lantern_training --training_vars lantern
 
-python src/train.py --name first_combined_physics_training --signal_categories physics
+python src/train.py --name first_mixed_del1g_iso_training --signal_categories del1g_simple
+
 ```
 
