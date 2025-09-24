@@ -48,13 +48,16 @@ def process_root_file(filename, frac_events = 1):
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
-    curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     curr_wc_T_pf_vars = wc_T_pf_vars
     if filetype == "delete_one_gamma_overlay" or filetype == "isotropic_one_gamma_overlay":
-        print(f"    TEMPORARY: NOT LOADING EXISTING WC POST-PROCESSING BDT SCORES FOR {filetype}")
         print(f"    TEMPORARY: NOT LOADING NANOSECOND TIMING VARIABLES FOR {filetype}")
-        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if var not in ["single_photon_numu_score", "single_photon_other_score", "single_photon_ncpi0_score", "single_photon_nue_score", "nc_delta_score", "nc_pio_score"]]
         curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var not in ["evtTimeNS_cor"]]
+
+    curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
+    if "v10_04_07_09" in filename:
+        print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
+        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
+            
 
     # loading Wire-Cell variables
     dic = {}
@@ -160,12 +163,8 @@ if __name__ == "__main__":
     all_isotropic_one_gamma_POTs = []
     for filename in os.listdir(data_files_location):
 
-        if filename == "partial_100_file_del1g_test.root" or filename == "partial_100_file_iso1g_test.root":
-            continue # test events, not used for analysis
-
-        #if "one_gamma" not in filename.lower():
-        #    print(f"TEMPORARY: skipping {filename}")
-        #     continue
+        if "UNUSED" in filename:
+            continue
 
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
         if filetype == "nc_pi0_overlay":

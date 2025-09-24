@@ -47,8 +47,12 @@ FILES_TO_COPY=(
     "/exp/uboone/data/uboonepro/MCC9.10/run5_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_5.root"
 
     # test runs 4-5 signal sample files
-    "/exp/uboone/data/users/lhagaman/delete_one_gamma_run45_1k.root"
-    "/exp/uboone/data/users/lhagaman/isotropic_one_gamma_run45_1k.root"
+    "/exp/uboone/data/users/eyandel/combined_reco/processed_checkout_rootfiles/delete_one_gamma_run45_1k.root"
+    "/exp/uboone/data/users/eyandel/combined_reco/processed_checkout_rootfiles/isotropic_one_gamma_run45_1k.root"
+
+    # without wc post-processing:
+    # "/exp/uboone/data/users/lhagaman/delete_one_gamma_run45_1k.root"
+    # "/exp/uboone/data/users/lhagaman/isotropic_one_gamma_run45_1k.root"
 )
 
 for FILE in "${FILES_TO_COPY[@]}"; do

@@ -13,6 +13,20 @@ wc_T_bdt_vars = [              # variables involved with BDT training (if you wa
     "single_photon_other_score",    # BDT score for single photon other selection
     "single_photon_ncpi0_score",    # BDT score for single photon NC pi0 selection
     "single_photon_nue_score",      # BDT score for single photon nue selection
+
+    "WCPMTInfoPePred",
+    "WCPMTInfoPeMeas",
+    "WCPMTInfoPeMeasErr",
+    "WCPMTInfoTPCClusterID",
+    "WCPMTInfoFlashID",
+    "WCPMTInfoStrength",
+    "WCPMTInfoEventType",
+    "WCPMTInfoKSDistance",
+    "WCPMTInfoChi2",
+    "WCPMTInfoNDF",
+    "WCPMTInfoClusterLength",
+    "WCPMTInfoNeutrinoType",
+    "WCPMTInfoFlashTime",
 ]
 
 wc_T_eval_vars = [             # variables involved with low level reconstruction and truth information
