@@ -5,6 +5,7 @@ from tqdm import tqdm
 from signal_categories import topological_category_queries, topological_category_labels
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
+from signal_categories import filetype_category_queries, filetype_category_labels
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21):
 
@@ -543,6 +544,22 @@ def add_signal_categories(all_df):
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+
+    filetype_conditions = [all_df.eval(query) for query in filetype_category_queries]
+    all_df["filetype_signal_category"] = np.select(filetype_conditions, filetype_category_labels, default="other")
+    uncategorized_df = all_df[all_df['filetype_signal_category'] == 'other']
+    if len(uncategorized_df) > 0:
+        print(f"Uncategorized filetype signal categories!")
+        row = uncategorized_df.iloc[0]
+        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
+        raise AssertionError
+    if print_categories:
+        print("\nfiletype signal categories:")
+        for filetype_signal_category in filetype_category_labels:
+            curr_df = all_df[all_df['filetype_signal_category'] == filetype_signal_category]
+            unweighted_num = curr_df.shape[0]
+            weighted_num = curr_df['wc_net_weight'].sum()
+            print(f"    {filetype_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
     return all_df
 

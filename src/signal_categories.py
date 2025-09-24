@@ -60,23 +60,22 @@ def get_cut_from_del1g(name):
     raise ValueError(f"Category not found in del1g_detailed_categories! {name}")
 
 del1g_simple_categories = [
-    ("1gNp",        f"({get_cut_from_del1g('del1g_Np')}) or ({get_cut_from_del1g('NCDeltaRad_1gNp')})",                                         "xkcd:yellow", None),
-    ("1g0p",        f"({get_cut_from_del1g('del1g_0p')}) or ({get_cut_from_del1g('NCDeltaRad_1g0p')}) or ({get_cut_from_del1g('iso1g')})",      "xkcd:orange", None),
-    ("1gNp1mu",     f"({get_cut_from_del1g('del1g_1muNp')}) or ({get_cut_from_del1g('numuCCDeltaRad_1gNp')})",                                  "xkcd:cyan", None),
-    ("1g0p1mu",     f"({get_cut_from_del1g('del1g_1mu0p')}) or ({get_cut_from_del1g('numuCCDeltaRad_1g0p')})",                                  "xkcd:aqua", None),
-    ("1g_outFV",    f"({get_cut_from_del1g('del1g_outFV')}) or ({get_cut_from_del1g('iso1g_outFV')})",                                          "xkcd:pink", None),
-    ("NC1pi0_Np",       "normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_Np",                                         "xkcd:red", None),
-    ("NC1pi0_0p",       "normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_0p",                                         "xkcd:salmon", None),
-    ("numuCC1pi0_Np",   "normal_overlay and wc_truth_inFV and wc_truth_numuCC and not wc_truth_numuCCDeltaRad and wc_truth_1pi0 and wc_truth_Np",                                   "xkcd:blue", None),
-    ("numuCC1pi0_0p",   "normal_overlay and wc_truth_inFV and wc_truth_numuCC and not wc_truth_numuCCDeltaRad and wc_truth_1pi0 and wc_truth_0p",                                   "xkcd:lightblue", None),
-    ("1pi0_outFV",      "normal_overlay and not (wc_truth_inFV) and wc_truth_1pi0",                                                                                                 "xkcd:light pink", None),
-    ("nueCC_Np",        "normal_overlay and wc_truth_inFV and wc_truth_nueCC and wc_truth_Np",                                                                                      "xkcd:seafoam", None),
-    ("nueCC_0p",        "normal_overlay and wc_truth_inFV and wc_truth_nueCC and wc_truth_0p",                                                                                      "xkcd:electric green", None),
-    ("multi_pi0",       "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and (wc_truth_multi_pi0 or (wc_truth_1pi0 and (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)))",  "xkcd:ice blue", None), # also includes pi0 + Delta radiative
-    ("0pi0",            "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and wc_truth_0pi0 and not (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)",                        "xkcd:azure", None),
-    ("other_outFV",     "normal_overlay and not (wc_truth_inFV) and not (wc_truth_1pi0)",                                                                                           "xkcd:bright purple", None),
-    ("dirt",        "filetype == 'dirt_overlay'",                                                                               "xkcd:brown", None),
-    ("ext",         "filetype == 'ext'",                                                                                        "xkcd:green", None),
+    ("1gNp",                f"({get_cut_from_del1g('del1g_Np')}) or ({get_cut_from_del1g('NCDeltaRad_1gNp')})",                                         "xkcd:yellow", None),
+    ("1g0p",                f"({get_cut_from_del1g('del1g_0p')}) or ({get_cut_from_del1g('NCDeltaRad_1g0p')}) or ({get_cut_from_del1g('iso1g')})",      "xkcd:orange", None),
+    ("1gNp1mu",             f"({get_cut_from_del1g('del1g_1muNp')}) or ({get_cut_from_del1g('numuCCDeltaRad_1gNp')})",                                  "xkcd:cyan", None),
+    ("1g0p1mu",             f"({get_cut_from_del1g('del1g_1mu0p')}) or ({get_cut_from_del1g('numuCCDeltaRad_1g0p')})",                                  "xkcd:aqua", None),
+    ("1g_outFV",            f"({get_cut_from_del1g('del1g_outFV')}) or ({get_cut_from_del1g('iso1g_outFV')})",                                          "xkcd:pink", None),
+    ("NC1pi0_Np",               get_cut_from_del1g('NC1pi0_Np'),                                                                                        "xkcd:red", None),
+    ("NC1pi0_0p",               get_cut_from_del1g('NC1pi0_0p'),                                                                                        "xkcd:salmon", None),
+    ("numuCC1pi0_Np",           get_cut_from_del1g('numuCC1pi0_Np'),                                                                                    "xkcd:blue", None),
+    ("numuCC1pi0_0p",           get_cut_from_del1g('numuCC1pi0_0p'),                                                                                    "xkcd:lightblue", None),
+    ("1pi0_outFV",              get_cut_from_del1g('1pi0_outFV'),                                                                                       "xkcd:light pink", None),
+    ("nueCC_Np",                get_cut_from_del1g('nueCC_Np'),                                                                                         "xkcd:seafoam", None),
+    ("nueCC_0p",                get_cut_from_del1g('nueCC_0p'),                                                                                         "xkcd:electric green", None),
+    ("multi_pi0",               get_cut_from_del1g('multi_pi0'),                                                                                        "xkcd:ice blue", None), # also includes pi0 + Delta radiative
+    ("0pi0",                    get_cut_from_del1g('0pi0'),                                                                                             "xkcd:azure", None),
+    ("other_outFV_dirt",    f"({get_cut_from_del1g('other_outFV')}) or ({get_cut_from_del1g('dirt')})",                                                 "xkcd:bright purple", None),
+    ("ext",                     get_cut_from_del1g('ext'),                                                                                              "xkcd:green", None),
 ]
 del1g_simple_category_queries = [cat[1] for cat in del1g_simple_categories]
 del1g_simple_category_labels = [cat[0] for cat in del1g_simple_categories]
