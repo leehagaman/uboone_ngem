@@ -126,20 +126,20 @@ wc_T_pf_data_vars = [          # same as above, but for data files we do not att
     #"evtTimeNS_cor",  # for MC
 ]
 
-# some of these variables only exist in
+# for now, only loading minimal spacepoints for do_spacepoint_postprocessing, to check for true bad shower clustering
 wc_T_spacepoints_vars = [
-    "Trec_spacepoints_x",
-    "Trec_spacepoints_y",
-    "Trec_spacepoints_z",
-    "Trec_spacepoints_q",
-    "Treccharge_spacepoints_x",
-    "Treccharge_spacepoints_y",
-    "Treccharge_spacepoints_z",
-    "Treccharge_spacepoints_q",
+    #"Trec_spacepoints_x",
+    #"Trec_spacepoints_y",
+    #"Trec_spacepoints_z",
+    #"Trec_spacepoints_q",
+    #"Treccharge_spacepoints_x",
+    #"Treccharge_spacepoints_y",
+    #"Treccharge_spacepoints_z",
+    #"Treccharge_spacepoints_q",
     "Trecchargeblob_spacepoints_x",
     "Trecchargeblob_spacepoints_y",
     "Trecchargeblob_spacepoints_z",
-    "Trecchargeblob_spacepoints_q",
+    #"Trecchargeblob_spacepoints_q",
 ]
 
 # These are only available if the run_wcanatree.fcl ntuple making was ran with these options:
@@ -712,6 +712,7 @@ pelee_training_vars = [
 
 wc_training_vars += wc_postprocessing_training_vars
 
+# variables to throw away after postprocessing in order to make reasonable pandas df sizes
 vector_columns = [
     "wc_kine_energy_particle",
     "wc_kine_particle_type",
@@ -783,6 +784,10 @@ vector_columns = [
     "lantern_trackPiScore",
     "lantern_trackPrScore",
     "lantern_trackPID",
+
+    "wc_Trecchargeblob_spacepoints_x",
+    "wc_Trecchargeblob_spacepoints_y",
+    "wc_Trecchargeblob_spacepoints_z",
 ]
 
 combined_training_vars = wc_training_vars + glee_training_vars + pelee_training_vars + lantern_training_vars + combined_postprocessing_training_vars
