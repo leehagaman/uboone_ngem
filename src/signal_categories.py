@@ -1,10 +1,33 @@
+NC1pi0_query = "normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0"
+NC1pi0Np_query = f"{NC1pi0_query} and wc_truth_Np"
 del1g_detailed_categories = [
-    ("NCDeltaRad_1gNp", "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_Np",                                                               "xkcd:light yellow", None),
-    ("NCDeltaRad_1g0p", "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_0p",                                                               "xkcd:pumpkin", None),
-    ("numuCCDeltaRad_1gNp", "normal_overlay and wc_truth_inFV and wc_truth_numuCCDeltaRad and wc_truth_0pi0 and wc_truth_Np",                                                       "xkcd:royal blue", None),
-    ("numuCCDeltaRad_1g0p", "normal_overlay and wc_truth_inFV and wc_truth_numuCCDeltaRad and wc_truth_0pi0 and wc_truth_0p",                                                       "xkcd:baby blue", None),
-    ("NC1pi0_Np",       "normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_Np",                                         "xkcd:red", None),
-    ("NC1pi0_0p",       "normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_0p",                                         "xkcd:salmon", None),
+    ("NCDeltaRad_1gNp",                 "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_Np",                                                           "xkcd:light yellow", None),
+    ("NCDeltaRad_1g0p",                 "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_0p",                                                           "xkcd:pumpkin", None),
+    ("numuCCDeltaRad_1gNp",             "normal_overlay and wc_truth_inFV and wc_truth_numuCCDeltaRad and wc_truth_0pi0 and wc_truth_Np",                                                       "xkcd:royal blue", None),
+    ("numuCCDeltaRad_1g0p",             "normal_overlay and wc_truth_inFV and wc_truth_numuCCDeltaRad and wc_truth_0pi0 and wc_truth_0p",                                                       "xkcd:baby blue", None),
+
+    ("NC1pi0_Np_outFV_gamma",   """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_Np
+                                    and true_num_gamma_pairconvert_in_FV < 2""".strip().replace("\n", ""),                                                          "#FFE6E6", None),
+    ("NC1pi0_Np_lowE_gamma",    """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_Np
+                                    and not (true_num_gamma_pairconvert_in_FV < 2) and true_num_gamma_pairconvert_in_FV_20_MeV < 2""".strip().replace("\n", ""),    "#FFB8B8", None),
+    ("NC1pi0_Np_misclustered_gamma",    """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_Np
+                                    and not (true_num_gamma_pairconvert_in_FV < 2) and not (true_num_gamma_pairconvert_in_FV_20_MeV < 2)
+                                    and wc_true_gamma_pairconversion_spacepoint_max_min_distance > 5""".strip().replace("\n", ""),                                  "#FF8A8A", None),
+    ("NC1pi0_Np_other",         """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_Np
+                                    and not (true_num_gamma_pairconvert_in_FV < 2) and not (true_num_gamma_pairconvert_in_FV_20_MeV < 2)
+                                    and not (wc_true_gamma_pairconversion_spacepoint_max_min_distance > 5)""".strip().replace("\n", ""),                            "#FF5C5C", None),
+    
+    ("NC1pi0_0p_outFV_gamma",   """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_0p
+                                    and true_num_gamma_pairconvert_in_FV < 2""".strip().replace("\n", ""),                                                          "#FFE6E6", None),
+    ("NC1pi0_0p_lowE_gamma",    """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_0p
+                                    and not (true_num_gamma_pairconvert_in_FV < 2) and true_num_gamma_pairconvert_in_FV_20_MeV < 2""".strip().replace("\n", ""),    "#FFB8B8", None),
+    ("NC1pi0_0p_misclustered_gamma",    """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_0p
+                                    and not (true_num_gamma_pairconvert_in_FV < 2) and not (true_num_gamma_pairconvert_in_FV_20_MeV < 2)
+                                    and wc_true_gamma_pairconversion_spacepoint_max_min_distance > 5""".strip().replace("\n", ""),                                  "#FF8A8A", None),
+    ("NC1pi0_0p_other",         """normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0 and wc_truth_0p
+                                    and not (true_num_gamma_pairconvert_in_FV < 2) and not (true_num_gamma_pairconvert_in_FV_20_MeV < 2)
+                                    and not (wc_true_gamma_pairconversion_spacepoint_max_min_distance > 5)""".strip().replace("\n", ""),                            "#FF5C5C", None),
+
     ("numuCC1pi0_Np",   "normal_overlay and wc_truth_inFV and wc_truth_numuCC and not wc_truth_numuCCDeltaRad and wc_truth_1pi0 and wc_truth_Np",                                   "xkcd:blue", None),
     ("numuCC1pi0_0p",   "normal_overlay and wc_truth_inFV and wc_truth_numuCC and not wc_truth_numuCCDeltaRad and wc_truth_1pi0 and wc_truth_0p",                                   "xkcd:lightblue", None),
     ("1pi0_outFV",      "normal_overlay and not (wc_truth_inFV) and wc_truth_1pi0",                                                                                                 "xkcd:light pink", None),
@@ -17,8 +40,8 @@ del1g_detailed_categories = [
     ("ext",         "filetype == 'ext'",                                                                                                                                            "xkcd:green", None),
     ("del1g_Np",        "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_0mu",                                                                                         "xkcd:yellow", "++++"),
     ("del1g_0p",        "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_0mu",                                                                                         "xkcd:orange", "++++"),
-    ("del1g_1muNp",     "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_1mu",                                                                                         "xkcd:cyan", "++++"),
-    ("del1g_1mu0p",     "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_1mu",                                                                                         "xkcd:aqua", "++++"),
+    ("del1g_Np1mu",     "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_1mu",                                                                                         "xkcd:cyan", "++++"),
+    ("del1g_0p1mu",     "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_1mu",                                                                                         "xkcd:aqua", "++++"),
     ("del1g_outFV",     "del1g_overlay and not wc_truth_inFV",                                                                                                                      "xkcd:pink", "++++"),
     ("iso1g",           "iso1g_overlay and wc_truth_inFV",                                                                                                                          "xkcd:turquoise", "++++"),
     ("iso1g_outFV",     "iso1g_overlay and not wc_truth_inFV",                                                                                                                      "xkcd:gray", "++++"),
@@ -32,7 +55,14 @@ del1g_detailed_category_labels_latex = [
     r"NC $\Delta\rightarrow N \gamma$ $0p$",
     r"$\nu_\mu$ CC $\Delta\rightarrow N \gamma$ $Np$",
     r"$\nu_\mu$ CC $\Delta\rightarrow N \gamma$ $0p$",
-    r"NC $1\pi^0$ $Np$",
+    r"NC $1\pi^0$ $Np$ out-FV $\gamma$",
+    r"NC $1\pi^0$ $Np$ low-E $\gamma$",
+    r"NC $1\pi^0$ $Np$ misclustered $\gamma$",
+    r"NC $1\pi^0$ $Np$ other",
+    r"NC $1\pi^0$ $0p$ out-FV $\gamma$",
+    r"NC $1\pi^0$ $0p$ low-E $\gamma$",
+    r"NC $1\pi^0$ $0p$ misclustered $\gamma$",
+    r"NC $1\pi^0$ $0p$ other",
     r"NC $1\pi^0$ $0p$",
     r"$\nu_\mu$ CC $1\pi^0$ $Np$",
     r"$\nu_\mu$ CC $1\pi^0$ $0p$",
@@ -62,11 +92,11 @@ def get_cut_from_del1g(name):
 del1g_simple_categories = [
     ("1gNp",                f"({get_cut_from_del1g('del1g_Np')}) or ({get_cut_from_del1g('NCDeltaRad_1gNp')})",                                         "xkcd:yellow", None),
     ("1g0p",                f"({get_cut_from_del1g('del1g_0p')}) or ({get_cut_from_del1g('NCDeltaRad_1g0p')}) or ({get_cut_from_del1g('iso1g')})",      "xkcd:orange", None),
-    ("1gNp1mu",             f"({get_cut_from_del1g('del1g_1muNp')}) or ({get_cut_from_del1g('numuCCDeltaRad_1gNp')})",                                  "xkcd:cyan", None),
-    ("1g0p1mu",             f"({get_cut_from_del1g('del1g_1mu0p')}) or ({get_cut_from_del1g('numuCCDeltaRad_1g0p')})",                                  "xkcd:aqua", None),
+    ("1gNp1mu",             f"({get_cut_from_del1g('del1g_Np1mu')}) or ({get_cut_from_del1g('numuCCDeltaRad_1gNp')})",                                  "xkcd:cyan", None),
+    ("1g0p1mu",             f"({get_cut_from_del1g('del1g_0p1mu')}) or ({get_cut_from_del1g('numuCCDeltaRad_1g0p')})",                                  "xkcd:aqua", None),
     ("1g_outFV",            f"({get_cut_from_del1g('del1g_outFV')}) or ({get_cut_from_del1g('iso1g_outFV')})",                                          "xkcd:pink", None),
-    ("NC1pi0_Np",               get_cut_from_del1g('NC1pi0_Np'),                                                                                        "xkcd:red", None),
-    ("NC1pi0_0p",               get_cut_from_del1g('NC1pi0_0p'),                                                                                        "xkcd:salmon", None),
+    ("NC1pi0_Np",           f"({get_cut_from_del1g('NC1pi0_Np_outFV_gamma')}) or ({get_cut_from_del1g('NC1pi0_Np_lowE_gamma')}) or ({get_cut_from_del1g('NC1pi0_Np_misclustered_gamma')}) or ({get_cut_from_del1g('NC1pi0_Np_other')})", "xkcd:red", None),
+    ("NC1pi0_0p",           f"({get_cut_from_del1g('NC1pi0_0p_outFV_gamma')}) or ({get_cut_from_del1g('NC1pi0_0p_lowE_gamma')}) or ({get_cut_from_del1g('NC1pi0_0p_misclustered_gamma')}) or ({get_cut_from_del1g('NC1pi0_0p_other')})", "xkcd:red", None),
     ("numuCC1pi0_Np",           get_cut_from_del1g('numuCC1pi0_Np'),                                                                                    "xkcd:blue", None),
     ("numuCC1pi0_0p",           get_cut_from_del1g('numuCC1pi0_0p'),                                                                                    "xkcd:lightblue", None),
     ("1pi0_outFV",              get_cut_from_del1g('1pi0_outFV'),                                                                                       "xkcd:light pink", None),

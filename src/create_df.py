@@ -2,16 +2,14 @@
 import uproot
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-import pickle
 import os
 import time
 import argparse
 
 from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
-from variables import wc_T_bdt_vars, wc_T_kine_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
+from variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
 from variables import blip_vars, pelee_vars, glee_vars, lantern_vars, vector_columns
-from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, add_signal_categories
+from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_glee_postprocessing, do_combined_postprocessing
 
 from file_locations import data_files_location, intermediate_files_location
@@ -63,6 +61,7 @@ def process_root_file(filename, frac_events = 1):
     dic = {}
     dic.update(f["wcpselection"]["T_BDTvars"].arrays(curr_wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
     dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_spacepoints"].arrays(wc_T_spacepoints_vars, library="np", **slice_kwargs))
     if filetype == "ext" or filetype == "data":
         dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
         dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
@@ -205,6 +204,7 @@ if __name__ == "__main__":
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic)
     all_df = do_wc_postprocessing(all_df)
     all_df = add_extra_true_photon_variables(all_df)
+    all_df = do_spacepoint_postprocessing(all_df)
     all_df = add_signal_categories(all_df)
 
     all_df = do_blip_postprocessing(all_df)
