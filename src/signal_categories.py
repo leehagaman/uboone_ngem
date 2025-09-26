@@ -13,15 +13,15 @@ del1g_detailed_categories = [
     ("multi_pi0",       "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and (wc_truth_multi_pi0 or (wc_truth_1pi0 and (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)))",  "xkcd:ice blue", None), # also includes pi0 + Delta radiative
     ("0pi0",            "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and wc_truth_0pi0 and not (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)",                        "xkcd:azure", None),
     ("other_outFV",     "normal_overlay and not (wc_truth_inFV) and not (wc_truth_1pi0)",                                                                                           "xkcd:bright purple", None),
-    ("dirt",        "filetype == 'dirt_overlay'",                                                                               "xkcd:brown", None),
-    ("ext",         "filetype == 'ext'",                                                                                        "xkcd:green", None),
-    ("del1g_Np",        "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_0mu",                                     "xkcd:yellow", "++++"),
-    ("del1g_0p",        "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_0mu",                                     "xkcd:orange", "++++"),
-    ("del1g_1muNp",     "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_1mu",                                     "xkcd:cyan", "++++"),
-    ("del1g_1mu0p",     "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_1mu",                                     "xkcd:aqua", "++++"),
-    ("del1g_outFV",     "del1g_overlay and not wc_truth_inFV",                                                                  "xkcd:pink", "++++"),
-    ("iso1g",           "iso1g_overlay and wc_truth_inFV",                                                                      "xkcd:turquoise", "++++"),
-    ("iso1g_outFV",     "iso1g_overlay and not wc_truth_inFV",                                                                  "xkcd:gray", "++++"),
+    ("dirt",        "filetype == 'dirt_overlay'",                                                                                                                                   "xkcd:brown", None),
+    ("ext",         "filetype == 'ext'",                                                                                                                                            "xkcd:green", None),
+    ("del1g_Np",        "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_0mu",                                                                                         "xkcd:yellow", "++++"),
+    ("del1g_0p",        "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_0mu",                                                                                         "xkcd:orange", "++++"),
+    ("del1g_1muNp",     "del1g_overlay and wc_truth_inFV and wc_truth_Np and wc_truth_1mu",                                                                                         "xkcd:cyan", "++++"),
+    ("del1g_1mu0p",     "del1g_overlay and wc_truth_inFV and wc_truth_0p and wc_truth_1mu",                                                                                         "xkcd:aqua", "++++"),
+    ("del1g_outFV",     "del1g_overlay and not wc_truth_inFV",                                                                                                                      "xkcd:pink", "++++"),
+    ("iso1g",           "iso1g_overlay and wc_truth_inFV",                                                                                                                          "xkcd:turquoise", "++++"),
+    ("iso1g_outFV",     "iso1g_overlay and not wc_truth_inFV",                                                                                                                      "xkcd:gray", "++++"),
 ]
 del1g_detailed_category_queries = [cat[1] for cat in del1g_detailed_categories]
 del1g_detailed_category_labels = [cat[0] for cat in del1g_detailed_categories]
@@ -81,6 +81,24 @@ del1g_simple_category_queries = [cat[1] for cat in del1g_simple_categories]
 del1g_simple_category_labels = [cat[0] for cat in del1g_simple_categories]
 del1g_simple_category_colors = [cat[2] for cat in del1g_simple_categories]
 del1g_simple_category_hatches = [cat[3] for cat in del1g_simple_categories]
+del1g_simple_category_labels_latex = [
+    r"$1\gamma Np$",
+    r"$1\gamma 0p$",
+    r"$1\gamma Np 1\mu$",
+    r"$1\gamma 0p 1\mu$",
+    r"$1\gamma$ out FV",
+    r"$NC 1\pi^0$ $Np$",
+    r"$NC 1\pi^0$ $0p$",
+    r"$\nu_\mu$ CC $1\pi^0$ $Np$",
+    r"$\nu_\mu$ CC $1\pi^0$ $0p$",
+    r"$1\pi^0$ out FV",
+    r"$\nu_e$ CC $Np$",
+    r"$\nu_e$ CC $0p$",
+    r"multi-$\pi^0$",
+    r"$0\pi^0$",
+    r"other out-FV/dirt",
+    r"ext",
+]
 
 
 topological_categories = [
@@ -136,6 +154,7 @@ filetype_category_queries = [cat[1] for cat in filetype_categories]
 filetype_category_labels = [cat[0] for cat in filetype_categories]
 filetype_category_colors = [cat[2] for cat in filetype_categories]
 filetype_category_hatches = [cat[3] for cat in filetype_categories]
+filetype_category_labels_latex = [cat[0] for cat in filetype_categories]
 
 # TODO: add categories that separate out events with vertex blips and neutron blips
 # Maybe use some variable for "true effective vertex blip energy", as a sum of all charged particle energies produced at the vertex after accounting for quenching?
