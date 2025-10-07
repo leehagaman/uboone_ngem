@@ -49,6 +49,7 @@ FILES_TO_COPY=(
     # test runs 4-5 signal sample files
     "/exp/uboone/data/users/eyandel/combined_reco/processed_checkout_rootfiles/delete_one_gamma_run45_1k.root"
     "/exp/uboone/data/users/eyandel/combined_reco/processed_checkout_rootfiles/isotropic_one_gamma_run45_1k.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist.root"
 
     # without wc post-processing:
     # "/exp/uboone/data/users/lhagaman/delete_one_gamma_run45_1k.root"
@@ -63,6 +64,7 @@ for FILE in "${FILES_TO_COPY[@]}"; do
     fi
     echo "Downloading $FILE..."
     scp "${USERNAME}@${REMOTE_HOST}:${FILE}" "${LOCAL_DEST}/"
+
 done
 
 echo "All files downloaded"

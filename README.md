@@ -6,7 +6,7 @@
 # kinit -f {YOUR_USERNAME}@FNAL.GOV
 
 source download_input_files.sh {YOUR_USERNAME} {LOCATION_WHERE_YOU_WANT_DATA_FILES}
-source download_input_files.sh lhagaman /nevis/riverside/data/lhagaman/ngem/data_files
+source download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/ngem/data_files
 ```
 
 ## Python environment

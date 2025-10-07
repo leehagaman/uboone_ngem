@@ -99,7 +99,7 @@ def do_wc_postprocessing(df):
     truth_pdgs = df["wc_truth_pdg"].to_numpy()
     truth_mothers = df["wc_truth_mother"].to_numpy()
     truth_startMomentums = df["wc_truth_startMomentum"].to_numpy()
-    for i in tqdm(range(df.shape[0]), mininterval=1):
+    for i in tqdm(range(df.shape[0]), desc="Adding WC truth particle variables", mininterval=1):
         max_true_prim_proton_energy = -1
         sum_true_prim_proton_energy = 0
         max_shower_energy = -1.
@@ -123,7 +123,7 @@ def do_wc_postprocessing(df):
         has_photonuclear_absorption = False
         for j in range(num_particles):
             if truth_pdg_list[j] == 22: # photon
-                truth_photon_parent_id = truth_id_list[j]
+                truth_photon_parent_id = truth_mother_list[j]
                 for k in range(len(truth_pdg_list)):
                     if truth_id_list[k] == truth_photon_parent_id:
                         parent_pdg = truth_pdg_list[k]
@@ -133,7 +133,6 @@ def do_wc_postprocessing(df):
                     for k in range(num_particles):
                         if truth_mother_list[k] == truth_id_list[j]:
                             photon_daughter_pdgs.append(truth_pdg_list[k])
-
                     for pdg in photon_daughter_pdgs:
                         if pdg >= 1_000_000_000: # ten digit nuclear PDG code
                             has_photonuclear_absorption = True
@@ -316,6 +315,7 @@ def add_extra_true_photon_variables(df):
     true_num_gamma_pairconvert = []
     true_num_gamma_pairconvert_in_FV = []
     true_num_gamma_pairconvert_in_FV_20_MeV = []
+    true_num_prim_gamma = []
 
     truth_pdg_arr = df["wc_truth_pdg"].to_numpy()
     truth_id_arr = df["wc_truth_id"].to_numpy()
@@ -336,6 +336,7 @@ def add_extra_true_photon_variables(df):
             true_num_gamma_pairconvert.append(np.nan)
             true_num_gamma_pairconvert_in_FV.append(np.nan)
             true_num_gamma_pairconvert_in_FV_20_MeV.append(np.nan)
+            true_num_prim_gamma.append(np.nan)
             continue
 
         num_particles = len(truth_id_arr[event_i])
@@ -348,6 +349,7 @@ def add_extra_true_photon_variables(df):
         curr_true_num_gamma_pairconvert = 0
         curr_true_num_gamma_pairconvert_in_FV = 0
         curr_true_num_gamma_pairconvert_in_FV_20_MeV = 0
+        curr_true_num_prim_gamma = 0
 
         pi0_ids = []
         for i in range(num_particles):
@@ -356,12 +358,17 @@ def add_extra_true_photon_variables(df):
 
         primary_or_pi0_gamma_ids = []
         for i in range(num_particles):
+
             if truth_mother_arr[event_i][i] in pi0_ids or truth_mother_arr[event_i][i] == 0: # this is a daughter of a pi0 or a primary particle
                 if truth_pdg_arr[event_i][i] == 22: # this is a photon from a pi0 or a primary photon (most likely from an eta or Delta radiative)
 
                     curr_true_num_gamma += 1
                     curr_true_gamma_energies.append(truth_startMomentum_arr[event_i][i][3])
                     primary_or_pi0_gamma_ids.append(truth_id_arr[event_i][i])
+
+                    if truth_mother_arr[event_i][i] == 0:
+                        curr_true_num_prim_gamma += 1
+
 
         # looking for the first point where the photon transfers more than half its energy to daughter charged particles
         # should be 100% for pair production, but compton scatters can also effectively cause the start of a shower
@@ -449,6 +456,7 @@ def add_extra_true_photon_variables(df):
         true_num_gamma_pairconvert.append(curr_true_num_gamma_pairconvert)
         true_num_gamma_pairconvert_in_FV.append(curr_true_num_gamma_pairconvert_in_FV)
         true_num_gamma_pairconvert_in_FV_20_MeV.append(curr_true_num_gamma_pairconvert_in_FV_20_MeV)
+        true_num_prim_gamma.append(curr_true_num_prim_gamma)
 
     if num_infinite_loops_broken > 0:
         print(f"Broke infinite loops in the true gamma daughter search {num_infinite_loops_broken} / {df.shape[0]} times")
@@ -462,6 +470,7 @@ def add_extra_true_photon_variables(df):
     df["true_num_gamma_pairconvert_in_FV"] = true_num_gamma_pairconvert_in_FV
     df["true_num_gamma_pairconvert_in_FV_20_MeV"] = true_num_gamma_pairconvert_in_FV_20_MeV
     df["true_one_pairconvert_in_FV_20_MeV"] = true_num_gamma_pairconvert_in_FV_20_MeV == 1
+    df["true_num_prim_gamma"] = true_num_prim_gamma
 
     return df
 
