@@ -127,12 +127,27 @@ def process_root_file(filename, frac_events = 1):
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
 
+    detailed_run_period = "?"
+    if "4a" in filename:
+        detailed_run_period = "4a"
+    elif "4b" in filename:
+        detailed_run_period = "4b"
+    elif "4c" in filename:
+        detailed_run_period = "4c"
+    elif "4d" in filename:
+        detailed_run_period = "4d"
+    elif "run45" in filename:
+        detailed_run_period = "45"
+    else:
+        raise ValueError("Invalid detailed run period!", filename)
+
+    all_df["detailed_run_period"] = detailed_run_period
     all_df["filename"] = filename
     all_df["filetype"] = filetype
 
     end_time = time.time()
 
-    progress_str = f"loaded {filetype:<20} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    progress_str = f"loaded {filetype:<20} {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
