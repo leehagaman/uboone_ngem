@@ -37,7 +37,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21)
     weight_spline_arr = df["wc_weight_spline"].to_numpy()
     file_POTs = df["wc_file_POT"].to_numpy()
     net_weights = []
-    for i in tqdm(range(len(weight_cv_arr)), desc="Adding POT weighting", mininterval=1):
+    for i in tqdm(range(len(weight_cv_arr)), desc="Adding POT weighting", mininterval=10):
         file_POT = file_POTs[i]
         weight_temp = weight_cv_arr[i] * weight_spline_arr[i]
         if weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp) or np.isinf(weight_temp): # something went wrong with the saved GENIE weights, set it to one
@@ -60,7 +60,7 @@ def do_wc_postprocessing(df):
     other_track_nums = []
     energy_lists = df["wc_kine_energy_particle"].to_numpy()
     pdg_lists = df["wc_kine_particle_type"].to_numpy()
-    for i in tqdm(range(df.shape[0]), desc="Adding WC reco particle multiplicity", mininterval=1):
+    for i in tqdm(range(df.shape[0]), desc="Adding WC reco particle multiplicity", mininterval=10):
         proton_num = 0
         other_track_num = 0
         energy_list = energy_lists[i]
@@ -81,132 +81,141 @@ def do_wc_postprocessing(df):
     df["wc_reco_num_protons"] = proton_nums
     df["wc_reco_num_other_tracks"] = other_track_nums
 
-    # Extra truth variables
-    has_photonuclear_absorption_flags = []
-    max_true_prim_proton_energies = []
-    sum_true_prim_proton_energies = []
-    true_leading_shower_energies = []
-    true_leading_shower_costhetas = []
-    true_subleading_shower_energies = []
-    true_subleading_shower_costhetas = []
-    true_leading_pi0_energies = []
-    true_leading_pi0_costhetas = []
-    true_leading_pi0_opening_angles = []
-    true_outgoing_lepton_energies = []
-    true_nums_prim_protons = []
-    true_nums_prim_protons_35 = []
-    truth_ids = df["wc_truth_id"].to_numpy()
-    truth_pdgs = df["wc_truth_pdg"].to_numpy()
-    truth_mothers = df["wc_truth_mother"].to_numpy()
-    truth_startMomentums = df["wc_truth_startMomentum"].to_numpy()
-    for i in tqdm(range(df.shape[0]), desc="Adding WC truth particle variables", mininterval=1):
-        max_true_prim_proton_energy = -1
-        sum_true_prim_proton_energy = 0
-        max_shower_energy = -1.
-        max_shower_costheta = -2.
-        second_max_shower_energy = -1.
-        second_max_shower_costheta = -2.
-        max_pi0_energy = -1.
-        max_pi0_costheta = -2.
-        max_pi0_opening_angle = -1.
-        true_num_prim_protons = 0
-        true_num_prim_protons_35 = 0
-        true_outgoing_lepton_energy = -1.
-        truth_id_list = truth_ids[i]
-        truth_pdg_list = truth_pdgs[i]
-        truth_mother_list = truth_mothers[i]
-        truth_startMomentum_list = truth_startMomentums[i]
-        if isinstance(truth_id_list, float) and np.isnan(truth_id_list):
-            num_particles = 0
-        else:
-            num_particles = len(truth_id_list)
-        has_photonuclear_absorption = False
-        for j in range(num_particles):
-            if truth_pdg_list[j] == 22: # photon
-                truth_photon_parent_id = truth_mother_list[j]
-                for k in range(len(truth_pdg_list)):
-                    if truth_id_list[k] == truth_photon_parent_id:
-                        parent_pdg = truth_pdg_list[k]
-                if parent_pdg == 111: # pi0 photon
-                    # now, focusing on the pi0 daughter decay products
-                    photon_daughter_pdgs = []
-                    for k in range(num_particles):
-                        if truth_mother_list[k] == truth_id_list[j]:
-                            photon_daughter_pdgs.append(truth_pdg_list[k])
-                    for pdg in photon_daughter_pdgs:
-                        if pdg >= 1_000_000_000: # ten digit nuclear PDG code
-                            has_photonuclear_absorption = True
+    if "wc_truth_id" in df.columns: # don't run this for a df that only has EXT for example
 
-            if truth_pdg_list[j] == 22 or abs(truth_pdg_list[j]) == 11: # photon, electron, or positron
-                if truth_startMomentum_list[j][3] * 1000. > max_shower_energy:
-                    second_max_shower_energy = max_shower_energy
-                    second_max_shower_costheta = max_shower_costheta
-                    max_shower_energy = truth_startMomentum_list[j][3] * 1000.
-                    max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
-                elif truth_startMomentum_list[j][3] * 1000. > second_max_shower_energy:
-                    second_max_shower_energy = truth_startMomentum_list[j][3] * 1000.
-                    second_max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+        # Extra truth variables
+        has_photonuclear_absorption_flags = []
+        max_true_prim_proton_energies = []
+        sum_true_prim_proton_energies = []
+        true_leading_shower_energies = []
+        true_leading_shower_costhetas = []
+        true_subleading_shower_energies = []
+        true_subleading_shower_costhetas = []
+        true_leading_pi0_energies = []
+        true_leading_pi0_costhetas = []
+        true_leading_pi0_opening_angles = []
+        true_outgoing_lepton_energies = []
+        true_nums_prim_protons = []
+        true_nums_prim_protons_35 = []
+        truth_ids = df["wc_truth_id"].to_numpy()
+        truth_pdgs = df["wc_truth_pdg"].to_numpy()
+        truth_mothers = df["wc_truth_mother"].to_numpy()
+        truth_startMomentums = df["wc_truth_startMomentum"].to_numpy()
+        for i in tqdm(range(df.shape[0]), desc="Adding WC truth particle variables", mininterval=10):
+            max_true_prim_proton_energy = -1
+            sum_true_prim_proton_energy = 0
+            max_shower_energy = -1.
+            max_shower_costheta = -2.
+            second_max_shower_energy = -1.
+            second_max_shower_costheta = -2.
+            max_pi0_energy = -1.
+            max_pi0_costheta = -2.
+            max_pi0_opening_angle = -1.
+            true_num_prim_protons = 0
+            true_num_prim_protons_35 = 0
+            true_outgoing_lepton_energy = -1.
+            truth_id_list = truth_ids[i]
+            truth_pdg_list = truth_pdgs[i]
+            truth_mother_list = truth_mothers[i]
+            truth_startMomentum_list = truth_startMomentums[i]
+            if isinstance(truth_id_list, float) and np.isnan(truth_id_list):
+                num_particles = 0
+            else:
+                num_particles = len(truth_id_list)
+            has_photonuclear_absorption = False
+            for j in range(num_particles):
+                if truth_pdg_list[j] == 22: # photon
+                    truth_photon_parent_id = truth_mother_list[j]
+                    parent_pdg = -1 # default value if the photon has no parent
+                    for k in range(len(truth_pdg_list)):
+                        if truth_id_list[k] == truth_photon_parent_id:
+                            parent_pdg = truth_pdg_list[k]
+                    if parent_pdg == 111: # pi0 photon
+                        # now, focusing on the pi0 daughter decay products
+                        photon_daughter_pdgs = []
+                        for k in range(num_particles):
+                            if truth_mother_list[k] == truth_id_list[j]:
+                                photon_daughter_pdgs.append(truth_pdg_list[k])
+                        for pdg in photon_daughter_pdgs:
+                            if pdg >= 1_000_000_000: # ten digit nuclear PDG code
+                                has_photonuclear_absorption = True
 
-            if truth_pdg_list[j] == 111: # pi0
-                curr_pi0_energy = truth_startMomentum_list[j][3] * 1000. - 134.9768
-                if curr_pi0_energy > max_pi0_energy:
-                    max_pi0_energy = curr_pi0_energy
-                    max_tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
-                    max_z_momentum = truth_startMomentum_list[j][2]
-                    max_pi0_costheta = max_z_momentum / max_tot_momentum
+                if truth_pdg_list[j] == 22 or abs(truth_pdg_list[j]) == 11: # photon, electron, or positron
+                    if truth_startMomentum_list[j][3] * 1000. > max_shower_energy:
+                        second_max_shower_energy = max_shower_energy
+                        second_max_shower_costheta = max_shower_costheta
+                        max_shower_energy = truth_startMomentum_list[j][3] * 1000.
+                        max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                    elif truth_startMomentum_list[j][3] * 1000. > second_max_shower_energy:
+                        second_max_shower_energy = truth_startMomentum_list[j][3] * 1000.
+                        second_max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
 
-                    pi0_daughter_indices = []
-                    for k in range(num_particles):
-                        if truth_mother_list[k] == truth_id_list[j]:
-                            pi0_daughter_indices.append(k)
-                    if len(pi0_daughter_indices) != 2: # Dalitz decay, or otherwise weird Geant4 info
-                        continue
-                    pi0_daughter_1_momentum = truth_startMomentum_list[pi0_daughter_indices[0]][:3]
-                    pi0_daughter_2_momentum = truth_startMomentum_list[pi0_daughter_indices[1]][:3]
-                    pi0_daughter_1_dir = pi0_daughter_1_momentum / np.linalg.norm(pi0_daughter_1_momentum)
-                    pi0_daughter_2_dir = pi0_daughter_2_momentum / np.linalg.norm(pi0_daughter_2_momentum)
-                    dot_product = np.dot(pi0_daughter_1_dir, pi0_daughter_2_dir)
-                    dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
-                    max_pi0_opening_angle = np.arccos(dot_product) * 180 / np.pi
+                if truth_pdg_list[j] == 111: # pi0
+                    curr_pi0_energy = truth_startMomentum_list[j][3] * 1000. - 134.9768
+                    if curr_pi0_energy > max_pi0_energy:
+                        max_pi0_energy = curr_pi0_energy
+                        max_tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
+                        max_z_momentum = truth_startMomentum_list[j][2]
+                        max_pi0_costheta = max_z_momentum / max_tot_momentum
+
+                        pi0_daughter_indices = []
+                        for k in range(num_particles):
+                            if truth_mother_list[k] == truth_id_list[j]:
+                                pi0_daughter_indices.append(k)
+                        if len(pi0_daughter_indices) != 2: # Dalitz decay, or otherwise weird Geant4 info
+                            continue
+                        pi0_daughter_1_momentum = truth_startMomentum_list[pi0_daughter_indices[0]][:3]
+                        pi0_daughter_2_momentum = truth_startMomentum_list[pi0_daughter_indices[1]][:3]
+                        pi0_daughter_1_dir = pi0_daughter_1_momentum / np.linalg.norm(pi0_daughter_1_momentum)
+                        pi0_daughter_2_dir = pi0_daughter_2_momentum / np.linalg.norm(pi0_daughter_2_momentum)
+                        dot_product = np.dot(pi0_daughter_1_dir, pi0_daughter_2_dir)
+                        dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
+                        max_pi0_opening_angle = np.arccos(dot_product) * 180 / np.pi
 
 
-            if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2212: # primary proton
-                true_num_prim_protons += 1
-                if truth_startMomentum_list[j][3] * 1000. - 938.272088 > 35.:
-                    true_num_prim_protons_35 += 1
-                max_true_prim_proton_energy = max(max_true_prim_proton_energy, truth_startMomentum_list[j][3] * 1000. - 938.272088)
-                sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
+                if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2212: # primary proton
+                    true_num_prim_protons += 1
+                    if truth_startMomentum_list[j][3] * 1000. - 938.272088 > 35.:
+                        true_num_prim_protons_35 += 1
+                    max_true_prim_proton_energy = max(max_true_prim_proton_energy, truth_startMomentum_list[j][3] * 1000. - 938.272088)
+                    sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
 
-            if truth_mother_list[j] == 0 and 11 <= abs(truth_pdg_list[j]) <= 16: # lepton
-                true_outgoing_lepton_energy = truth_startMomentum_list[j][3] * 1000.
+                if truth_mother_list[j] == 0 and 11 <= abs(truth_pdg_list[j]) <= 16: # lepton
+                    true_outgoing_lepton_energy = truth_startMomentum_list[j][3] * 1000.
 
-        max_true_prim_proton_energies.append(max_true_prim_proton_energy)
-        sum_true_prim_proton_energies.append(sum_true_prim_proton_energy)
-        true_outgoing_lepton_energies.append(true_outgoing_lepton_energy)
-        true_nums_prim_protons.append(true_num_prim_protons)
-        true_nums_prim_protons_35.append(true_num_prim_protons_35)
-        true_leading_shower_energies.append(max_shower_energy)
-        true_leading_shower_costhetas.append(max_shower_costheta)
-        true_subleading_shower_energies.append(second_max_shower_energy)
-        true_subleading_shower_costhetas.append(second_max_shower_costheta)
-        true_leading_pi0_energies.append(max_pi0_energy)
-        true_leading_pi0_costhetas.append(max_pi0_costheta)
-        true_leading_pi0_opening_angles.append(max_pi0_opening_angle)
-        has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
+            max_true_prim_proton_energies.append(max_true_prim_proton_energy)
+            sum_true_prim_proton_energies.append(sum_true_prim_proton_energy)
+            true_outgoing_lepton_energies.append(true_outgoing_lepton_energy)
+            true_nums_prim_protons.append(true_num_prim_protons)
+            true_nums_prim_protons_35.append(true_num_prim_protons_35)
+            true_leading_shower_energies.append(max_shower_energy)
+            true_leading_shower_costhetas.append(max_shower_costheta)
+            true_subleading_shower_energies.append(second_max_shower_energy)
+            true_subleading_shower_costhetas.append(second_max_shower_costheta)
+            true_leading_pi0_energies.append(max_pi0_energy)
+            true_leading_pi0_costhetas.append(max_pi0_costheta)
+            true_leading_pi0_opening_angles.append(max_pi0_opening_angle)
+            has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
 
-    df["wc_true_max_prim_proton_energy"] = max_true_prim_proton_energies
-    df["wc_true_sum_prim_proton_energy"] = sum_true_prim_proton_energies
-    df["wc_true_outgoing_lepton_energy"] = true_outgoing_lepton_energies
-    df["wc_true_num_prim_protons"] = true_nums_prim_protons
-    df["wc_true_num_prim_protons_35"] = true_nums_prim_protons_35
-    df["wc_true_leading_shower_energy"] = true_leading_shower_energies
-    df["wc_true_leading_shower_costheta"] = true_leading_shower_costhetas
-    df["wc_true_subleading_shower_energy"] = true_subleading_shower_energies
-    df["wc_true_subleading_shower_costheta"] = true_subleading_shower_costhetas
-    df["wc_true_leading_pi0_energy"] = true_leading_pi0_energies
-    df["wc_true_leading_pi0_costheta"] = true_leading_pi0_costhetas
-    df["wc_true_leading_pi0_opening_angle"] = true_leading_pi0_opening_angles
-    df["wc_true_has_photonuclear_absorption"] = has_photonuclear_absorption_flags
+        df["wc_true_max_prim_proton_energy"] = max_true_prim_proton_energies
+        df["wc_true_sum_prim_proton_energy"] = sum_true_prim_proton_energies
+        df["wc_true_outgoing_lepton_energy"] = true_outgoing_lepton_energies
+        df["wc_true_num_prim_protons"] = true_nums_prim_protons
+        df["wc_true_num_prim_protons_35"] = true_nums_prim_protons_35
+        df["wc_true_leading_shower_energy"] = true_leading_shower_energies
+        df["wc_true_leading_shower_costheta"] = true_leading_shower_costhetas
+        df["wc_true_subleading_shower_energy"] = true_subleading_shower_energies
+        df["wc_true_subleading_shower_costheta"] = true_subleading_shower_costhetas
+        df["wc_true_leading_pi0_energy"] = true_leading_pi0_energies
+        df["wc_true_leading_pi0_costheta"] = true_leading_pi0_costhetas
+        df["wc_true_leading_pi0_opening_angle"] = true_leading_pi0_opening_angles
+        df["wc_true_has_photonuclear_absorption"] = pd.Series(has_photonuclear_absorption_flags, dtype=bool)
+
+    # Ensure this column exists and is boolean for all filetypes (e.g., EXT)
+    if "wc_true_has_photonuclear_absorption" not in df.columns:
+        df["wc_true_has_photonuclear_absorption"] = False
+    else:
+        df["wc_true_has_photonuclear_absorption"] = df["wc_true_has_photonuclear_absorption"].fillna(False).astype(bool)
 
     # extra primary shower position and angle variables
     shower_thetas = []
@@ -217,7 +226,7 @@ def do_wc_postprocessing(df):
     reco_nu_vtx_x = df["wc_reco_showervtxX"].to_numpy()
     reco_nu_vtx_y = df["wc_reco_showervtxY"].to_numpy()
     reco_nu_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
-    for i in tqdm(range(df.shape[0]), desc="Adding WC shower position and angle variables", mininterval=1):
+    for i in tqdm(range(df.shape[0]), desc="Adding WC shower position and angle variables", mininterval=10):
 
         if isinstance(reco_shower_momentum[i], float) and np.isnan(reco_shower_momentum[i]):
             shower_thetas.append(np.nan)
@@ -307,6 +316,9 @@ def do_wc_postprocessing(df):
 
 def add_extra_true_photon_variables(df):
 
+    if not "wc_truth_pdg" in df.columns: # don't add these variables if the whole df is EXT, for example
+        return df
+
     true_num_gamma = []
     true_gamma_energies = []
     true_gamma_pairconversion_xs = []
@@ -325,7 +337,7 @@ def add_extra_true_photon_variables(df):
 
     num_infinite_loops_broken = 0
 
-    for event_i in tqdm(range(df.shape[0]), desc="Adding true photon variables", mininterval=1):
+    for event_i in tqdm(range(df.shape[0]), desc="Adding true photon variables", mininterval=10):
 
         if isinstance(truth_id_arr[event_i], float) and np.isnan(truth_id_arr[event_i]):
             true_num_gamma.append(np.nan)
@@ -475,6 +487,10 @@ def add_extra_true_photon_variables(df):
     return df
 
 def do_spacepoint_postprocessing(df):
+
+    if not "wc_truth_pdg" in df.columns: # don't add these variables if the whole df is EXT, for example
+        return df
+
     # min distance from true pair conversion vertex to any WC reco spacepoint
     true_gamma_pairconversion_xs_events = df["true_gamma_pairconversion_xs"].to_numpy()
     true_gamma_pairconversion_ys_events = df["true_gamma_pairconversion_ys"].to_numpy()
@@ -483,7 +499,7 @@ def do_spacepoint_postprocessing(df):
     spacepoint_ys_events = df["wc_Trecchargeblob_spacepoints_y"].to_numpy()
     spacepoint_zs_events = df["wc_Trecchargeblob_spacepoints_z"].to_numpy()
     min_distances_events = []
-    for event_i in tqdm(range(len(true_gamma_pairconversion_xs_events)), desc="Adding spacepoint postprocessing variables", mininterval=1):
+    for event_i in tqdm(range(len(true_gamma_pairconversion_xs_events)), desc="Adding spacepoint postprocessing variables", mininterval=10):
         true_gamma_pairconversion_xs = true_gamma_pairconversion_xs_events[event_i]
         true_gamma_pairconversion_ys = true_gamma_pairconversion_ys_events[event_i]
         true_gamma_pairconversion_zs = true_gamma_pairconversion_zs_events[event_i]
@@ -570,7 +586,53 @@ def add_signal_categories(all_df):
     all_df["wc_truth_numuCCDeltaRad"] = truth_numuCC_arr & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
     all_df["wc_truth_nueCCDeltaRad"] = truth_nueCC_arr & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
 
-    topological_conditions = [all_df.eval(query) for query in topological_category_queries]
+    def _debug_print_failed_query(category_label, query_text, dataframe, exception):
+        import re
+        print("\n[add_signal_categories] Failed to evaluate category:", category_label)
+        print("Query:", query_text)
+        print("Exception:", repr(exception))
+
+        # Identify identifiers following logical negation and show their dtypes
+        suspect_cols = set()
+        for pattern in [r"\bnot\s+([A-Za-z_][A-Za-z0-9_]*)", r"~\s*([A-Za-z_][A-Za-z0-9_]*)"]:
+            for m in re.finditer(pattern, query_text):
+                suspect_cols.add(m.group(1))
+
+        if len(suspect_cols) > 0:
+            print("Potentially negated identifiers and their dtypes:")
+            for col in sorted(suspect_cols):
+                if col in dataframe.columns:
+                    print(f"  - {col}: dtype={dataframe[col].dtype}")
+                else:
+                    print(f"  - {col}: NOT A COLUMN")
+
+        # Also list all column identifiers referenced in the query and their dtypes
+        tokens = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", query_text))
+        keywords = {"and", "or", "not", "True", "False"}
+        referenced_cols = sorted([t for t in tokens if t in dataframe.columns and t not in keywords])
+        if len(referenced_cols) > 0:
+            print("All referenced columns and dtypes:")
+            for col in referenced_cols[:50]:  # cap to avoid extremely long output
+                print(f"  - {col}: dtype={dataframe[col].dtype}")
+
+        # Show a quick sample of values for suspect columns to spot floats/NaNs
+        if len(suspect_cols) > 0:
+            print("Sample values for potentially negated identifiers (first 5 rows):")
+            for col in sorted(suspect_cols):
+                if col in dataframe.columns:
+                    try:
+                        print(f"  - {col}:", dataframe[col].head().to_list())
+                    except Exception as _:
+                        pass
+
+    # Evaluate topological queries one by one so we can emit helpful debug on failure
+    topological_conditions = []
+    for query_text, label in zip(topological_category_queries, topological_category_labels):
+        try:
+            topological_conditions.append(all_df.eval(query_text))
+        except Exception as e:
+            _debug_print_failed_query(label, query_text, all_df, e)
+            raise
     for i1, condition1 in enumerate(topological_conditions):
         for i2, condition2 in enumerate(topological_conditions):
             if i1 != i2:
@@ -597,7 +659,13 @@ def add_signal_categories(all_df):
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
-    del1g_detailed_conditions = [all_df.eval(query) for query in del1g_detailed_category_queries]
+    del1g_detailed_conditions = []
+    for query_text, label in zip(del1g_detailed_category_queries, del1g_detailed_category_labels):
+        try:
+            del1g_detailed_conditions.append(all_df.eval(query_text))
+        except Exception as e:
+            _debug_print_failed_query(label, query_text, all_df, e)
+            raise
     all_df["del1g_detailed_signal_category"] = np.select(del1g_detailed_conditions, del1g_detailed_category_labels, default="other")
     uncategorized_df = all_df[all_df['del1g_detailed_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
@@ -613,7 +681,13 @@ def add_signal_categories(all_df):
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {del1g_detailed_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
-    del1g_simple_conditions = [all_df.eval(query) for query in del1g_simple_category_queries]
+    del1g_simple_conditions = []
+    for query_text, label in zip(del1g_simple_category_queries, del1g_simple_category_labels):
+        try:
+            del1g_simple_conditions.append(all_df.eval(query_text))
+        except Exception as e:
+            _debug_print_failed_query(label, query_text, all_df, e)
+            raise
     all_df["del1g_simple_signal_category"] = np.select(del1g_simple_conditions, del1g_simple_category_labels, default="other")
     uncategorized_df = all_df[all_df['del1g_simple_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
@@ -629,7 +703,13 @@ def add_signal_categories(all_df):
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
-    filetype_conditions = [all_df.eval(query) for query in filetype_category_queries]
+    filetype_conditions = []
+    for query_text, label in zip(filetype_category_queries, filetype_category_labels):
+        try:
+            filetype_conditions.append(all_df.eval(query_text))
+        except Exception as e:
+            _debug_print_failed_query(label, query_text, all_df, e)
+            raise
     all_df["filetype_signal_category"] = np.select(filetype_conditions, filetype_category_labels, default="other")
     uncategorized_df = all_df[all_df['filetype_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
@@ -670,7 +750,7 @@ def do_blip_postprocessing(df):
     closest_upstream_blip_energy = []
     closest_upstream_blip_dx = []
     closest_upstream_blip_dw = []
-    for event_index in tqdm(range(len(df)), desc="Finding closest upstream blip", mininterval=1):
+    for event_index in tqdm(range(len(df)), desc="Finding closest upstream blip", mininterval=10):
 
         curr_closest_upstream_blip_distance = np.inf
         curr_closest_upstream_blip_angle = np.nan
@@ -738,7 +818,7 @@ def do_glee_postprocessing(df):
     glee_ssv_3d_score = df["glee_sss3d_shower_score"].to_numpy()
     max_ssv_scores = []
     max_ssv_3d_scores = []
-    for event_i in tqdm(range(len(glee_ssv_score)), desc="Analyzing gLEE ssv scores", mininterval=1):
+    for event_i in tqdm(range(len(glee_ssv_score)), desc="Analyzing gLEE ssv scores", mininterval=10):
         if len(glee_ssv_score[event_i]) == 0:
             max_ssv_scores.append(np.nan)
             max_ssv_3d_scores.append(np.nan)
@@ -878,7 +958,7 @@ def do_lantern_postprocessing(df):
     showerStartDirX = df["lantern_showerStartDirX"].to_numpy()
     showerStartDirY = df["lantern_showerStartDirY"].to_numpy()
     showerStartDirZ = df["lantern_showerStartDirZ"].to_numpy()
-    for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN showers", mininterval=1):
+    for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN showers", mininterval=10):
         curr_nShowers = nShowers[event_i]
         curr_showerIsSecondary = showerIsSecondary[event_i]
         curr_showerPID = showerPID[event_i]
@@ -1335,7 +1415,7 @@ def do_lantern_postprocessing(df):
     trackPiScore = df["lantern_trackPiScore"].to_numpy()
     trackPrScore = df["lantern_trackPrScore"].to_numpy()
 
-    for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN tracks", mininterval=1):
+    for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN tracks", mininterval=10):
         curr_nTracks = nTracks[event_i]
         curr_trackIsSecondary = trackIsSecondary[event_i]
         curr_trackClassified = trackClassified[event_i]

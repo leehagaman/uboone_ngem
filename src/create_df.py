@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import time
 import argparse
+import threading
 
 from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
 from variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
@@ -13,6 +14,46 @@ from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_tru
 from postprocessing import do_wc_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_glee_postprocessing, do_combined_postprocessing
 
 from file_locations import data_files_location, intermediate_files_location
+
+def _get_system_memory_usage_gb():
+    try:
+        with open("/proc/meminfo", "r") as f:
+            lines = f.readlines()
+        meminfo_kb = {}
+        for line in lines:
+            parts = line.split(":")
+            if len(parts) < 2:
+                continue
+            key = parts[0]
+            value_tokens = parts[1].strip().split()
+            if not value_tokens:
+                continue
+            # Values are reported in kB
+            meminfo_kb[key] = int(value_tokens[0])
+
+        total_kb = meminfo_kb.get("MemTotal")
+        avail_kb = meminfo_kb.get("MemAvailable")
+        if total_kb is None or avail_kb is None:
+            return None
+        used_kb = total_kb - avail_kb
+        used_gb = used_kb / (1024 * 1024)
+        total_gb = total_kb / (1024 * 1024)
+        percent = (used_kb / total_kb) * 100.0
+        return used_gb, total_gb, percent
+    except Exception:
+        return None
+
+def _memory_logger_loop(interval_seconds: int = 10):
+    while True:
+        usage = _get_system_memory_usage_gb()
+        if usage is not None:
+            used_gb, total_gb, percent = usage
+            print(f"[mem] {used_gb:5.2f}/{total_gb:5.2f} GB ({percent:5.1f}%)", flush=True)
+        time.sleep(interval_seconds)
+
+def start_memory_logger(interval_seconds: int = 10):
+    t = threading.Thread(target=_memory_logger_loop, args=(interval_seconds,), daemon=True)
+    t.start()
 
 def process_root_file(filename, frac_events = 1):
 
@@ -128,15 +169,25 @@ def process_root_file(filename, frac_events = 1):
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
 
     detailed_run_period = "?"
-    if "4a" in filename:
+    if "4a.root" in filename:
         detailed_run_period = "4a"
-    elif "4b" in filename:
+    elif "4b.root" in filename:
         detailed_run_period = "4b"
-    elif "4c" in filename:
+    elif "4c.root" in filename:
         detailed_run_period = "4c"
-    elif "4d" in filename:
+    elif "4d.root" in filename:
         detailed_run_period = "4d"
-    elif "run45" in filename:
+    elif "5.root" in filename:
+        detailed_run_period = "5"
+    elif "run4b" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+        detailed_run_period = "4b"
+    elif "run4c" in filename.lower():
+        detailed_run_period = "4c"
+    elif "run4d" in filename.lower():
+        detailed_run_period = "4d"
+    elif "run5" in filename.lower():
+        detailed_run_period = "5"
+    elif "run45" in filename.lower():
         detailed_run_period = "45"
     else:
         raise ValueError("Invalid detailed run period!", filename)
@@ -147,7 +198,7 @@ def process_root_file(filename, frac_events = 1):
 
     end_time = time.time()
 
-    progress_str = f"loaded {filetype:<20} {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    progress_str = f"\nloaded {filetype:<20}   Run {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
@@ -157,6 +208,7 @@ def process_root_file(filename, frac_events = 1):
 
 if __name__ == "__main__":
     main_start_time = time.time()
+    start_memory_logger(10)
 
     parser = argparse.ArgumentParser(description="Create merged dataframe from SURPRISE 4b ROOT files")
     parser.add_argument("-f", "--frac_events", type=float, default=1.0,
@@ -198,10 +250,31 @@ if __name__ == "__main__":
         else:
             raise ValueError("Unknown filetype!", filetype)
 
-        all_df = pd.concat([all_df, curr_df])
-        all_df.reset_index(drop=True, inplace=True)
 
+        print("doing post-processing that requires vector variables...")
+
+        curr_df = do_wc_postprocessing(curr_df)
+        curr_df = add_extra_true_photon_variables(curr_df)
+        curr_df = do_spacepoint_postprocessing(curr_df)
+        curr_df = do_blip_postprocessing(curr_df)
+        curr_df = do_lantern_postprocessing(curr_df)
+        curr_df = do_glee_postprocessing(curr_df)
+
+        print("removing vector variables...")
+        save_columns = [col for col in curr_df.columns if col not in vector_columns]
+        curr_df = curr_df[save_columns]
+
+        if all_df.empty:
+            all_df = curr_df
+        else:
+            # Drop columns that are entirely NA to avoid pandas FutureWarning during concat
+            curr_df_no_all_na = curr_df.loc[:, curr_df.notna().any(axis=0)]
+            all_df = pd.concat([all_df, curr_df_no_all_na])
+        all_df.reset_index(drop=True, inplace=True)
+    
     del curr_df # should save a bit of memory
+
+    print(f"finished looping over root files, all_df.shape={all_df.shape}")
 
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
@@ -215,28 +288,17 @@ if __name__ == "__main__":
         "isotropic_one_gamma_overlay": sum(all_isotropic_one_gamma_POTs),
     }
 
-    print("doing post-processing...")
-    all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic)
-    all_df = do_wc_postprocessing(all_df)
-    all_df = add_extra_true_photon_variables(all_df)
-    all_df = do_spacepoint_postprocessing(all_df)
-    all_df = add_signal_categories(all_df)
+    print("doing post-processing that doesn't require vector variables...")
 
-    all_df = do_blip_postprocessing(all_df)
-    all_df = do_lantern_postprocessing(all_df)
-    all_df = do_glee_postprocessing(all_df)
     all_df = do_combined_postprocessing(all_df)
+    all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic)
+    all_df = add_signal_categories(all_df)
 
     file_RSEs = []
     for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
         file_RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
         file_RSEs.append(file_RSE)
     assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/run/subrun/event!"
-
-    print("removing vector variables (they were only used for pre-processing)...")
-    save_columns = [col for col in all_df.columns if col not in vector_columns]
-    all_df = all_df[save_columns]
-
 
     print(f"saving {intermediate_files_location}/presel_df_train_vars.pkl...", end="", flush=True)
     start_time = time.time()
