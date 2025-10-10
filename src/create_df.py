@@ -241,10 +241,6 @@ if __name__ == "__main__":
     all_data_POTs = []
     for filename in os.listdir(data_files_location):
 
-        # TEMPORARY: Skip all but real data
-        if not ("beam_on" in filename.lower() or filename == "MCC9.10_Run4b_v10_04_07_09_BNB_nue_overlay_surprise_reco2_hist.root"):
-            continue
-
         if "UNUSED" in filename:
             continue
 

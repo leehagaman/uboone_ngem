@@ -50,6 +50,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     df = df[combined_mask].copy()
     df.reset_index(drop=True, inplace=True)
 
+    filetype_arr = df["filetype"].to_numpy()
     weight_cv_arr = df["wc_weight_cv"].to_numpy()
     weight_spline_arr = df["wc_weight_spline"].to_numpy()
     file_POTs = df["wc_file_POT"].to_numpy()
@@ -57,7 +58,9 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     for i in tqdm(range(len(weight_cv_arr)), desc="Adding POT weighting", mininterval=10):
         file_POT = file_POTs[i]
         weight_temp = weight_cv_arr[i] * weight_spline_arr[i]
-        if weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp) or np.isinf(weight_temp): # something went wrong with the saved GENIE weights, set it to one
+        if filetype_arr[i] == "data" or filetype_arr[i] == "ext":
+            weight_temp = 1.
+        elif weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp) or np.isinf(weight_temp): # something went wrong with the saved GENIE weights, set it to one
             weight_temp = 1.
         net_weights.append(weight_temp * normalizing_POT / file_POT)
 

@@ -11,7 +11,7 @@ import os
 import argparse
 import time
 
-from signal_categories import topological_category_labels, del1g_simple_category_labels
+from signal_categories import topological_category_labels, del1g_simple_category_labels, train_category_labels
 from variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
 from file_locations import intermediate_files_location
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         signal_category_labels = topological_category_labels
         signal_category_var = "topological_signal_category"
     elif args.signal_categories == "del1g_simple":
-        signal_category_labels = del1g_simple_category_labels
+        signal_category_labels = train_category_labels
         signal_category_var = "del1g_simple_signal_category"
     else:
         raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
@@ -69,14 +69,17 @@ if __name__ == "__main__":
 
     all_df = pd.read_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
 
+    # splitting into train and test, then re-making all_df
     no_data_df = all_df.query("filetype != 'data'")
     data_df = all_df.query("filetype == 'data'")
-
     train_indices, test_indices = train_test_split(np.arange(len(no_data_df)), test_size=0.5, random_state=42)
+    data_df["used_for_training"] = False
+    data_df["used_for_testing"] = False
     no_data_df["used_for_training"] = False
     no_data_df["used_for_testing"] = False
     no_data_df.loc[train_indices, "used_for_training"] = True
     no_data_df.loc[test_indices, "used_for_testing"] = True
+    all_df = pd.concat([no_data_df, data_df])
 
     # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
     # (should already be applied in the presel_df_train_vars.pkl file)

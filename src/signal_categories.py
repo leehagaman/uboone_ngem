@@ -199,6 +199,19 @@ del1g_simple_category_labels_latex = [
     r"data",
 ]
 
+train_category_queries = []
+train_category_labels = []
+train_category_colors = []
+train_category_hatches = []
+train_category_labels_latex = []
+for i in range(len(del1g_simple_category_labels)):
+    if 'data' not in del1g_simple_category_labels[i]:
+        train_category_queries.append(del1g_simple_category_queries[i])
+        train_category_labels.append(del1g_simple_category_labels[i])
+        train_category_colors.append(del1g_simple_category_colors[i])
+        train_category_hatches.append(del1g_simple_category_hatches[i])
+        train_category_labels_latex.append(del1g_simple_category_labels_latex[i])
+
 
 topological_categories = [
     ("1gNp",        "(normal_overlay or del1g_overlay or iso1g_overlay) and wc_truth_inFV and wc_truth_0e and wc_truth_1g and wc_truth_Np and wc_truth_0mu",    "xkcd:yellow", None),
