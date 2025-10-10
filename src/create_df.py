@@ -71,6 +71,8 @@ def process_root_file(filename, frac_events = 1):
         filetype = "delete_one_gamma_overlay"
     elif "isotropic_one_gamma" in filename.lower():
         filetype = "isotropic_one_gamma_overlay"
+    elif "beam_on" in filename.lower():
+        filetype = "data"
     else:
         raise ValueError("Unknown filetype!", filename)
     
@@ -88,9 +90,9 @@ def process_root_file(filename, frac_events = 1):
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
     curr_wc_T_pf_vars = wc_T_pf_vars
-    if filetype == "delete_one_gamma_overlay" or filetype == "isotropic_one_gamma_overlay":
-        print(f"    TEMPORARY: NOT LOADING NANOSECOND TIMING VARIABLES FOR {filetype}")
-        curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var not in ["evtTimeNS_cor"]]
+    #if filetype == "delete_one_gamma_overlay" or filetype == "isotropic_one_gamma_overlay":
+    #    print(f"    TEMPORARY: NOT LOADING NANOSECOND TIMING VARIABLES FOR {filetype}")
+    #    curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var not in ["evtTimeNS_cor"]]
 
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     if "v10_04_07_09" in filename:
@@ -125,6 +127,11 @@ def process_root_file(filename, frac_events = 1):
             file_POT_total = corresponding_data_POT * ext_num_triggers / corresponding_data_num_triggers
         else:
             raise ValueError("Invalid EXT file, num triggers not found!")
+    elif filetype == "data":
+        if filename == "MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root":
+            file_POT_total = 1.332e20
+        else:
+            raise ValueError("Invalid data file!")
     
     file_POT = file_POT_total * frac_events
     wc_df["file_POT"] = file_POT
@@ -208,12 +215,16 @@ def process_root_file(filename, frac_events = 1):
 
 if __name__ == "__main__":
     main_start_time = time.time()
-    start_memory_logger(10)
-
+    
     parser = argparse.ArgumentParser(description="Create merged dataframe from SURPRISE 4b ROOT files")
     parser.add_argument("-f", "--frac_events", type=float, default=1.0,
                         help="Fraction of events (and POT) to load from each file, in (0,1]. Default: 1.0")
+    parser.add_argument("-m", "--memory_logger", action="store_true", default=False,
+                        help="Start a memory logger thread")
     args = parser.parse_args()
+
+    if args.memory_logger:
+        start_memory_logger(10)
 
     if args.frac_events < 1.0:
         print(f"Loading {args.frac_events} fraction of events from each file")
@@ -227,7 +238,12 @@ if __name__ == "__main__":
     all_ext_POTs = []
     all_delete_one_gamma_POTs = []
     all_isotropic_one_gamma_POTs = []
+    all_data_POTs = []
     for filename in os.listdir(data_files_location):
+
+        # TEMPORARY: Skip all but real data
+        if not ("beam_on" in filename.lower() or filename == "MCC9.10_Run4b_v10_04_07_09_BNB_nue_overlay_surprise_reco2_hist.root"):
+            continue
 
         if "UNUSED" in filename:
             continue
@@ -247,6 +263,8 @@ if __name__ == "__main__":
             all_delete_one_gamma_POTs.append(curr_POT)
         elif filetype == "isotropic_one_gamma_overlay":
             all_isotropic_one_gamma_POTs.append(curr_POT)
+        elif filetype == "data":
+            all_data_POTs.append(curr_POT)
         else:
             raise ValueError("Unknown filetype!", filetype)
 
@@ -286,12 +304,17 @@ if __name__ == "__main__":
         "ext": sum(all_ext_POTs),
         "delete_one_gamma_overlay": sum(all_delete_one_gamma_POTs),
         "isotropic_one_gamma_overlay": sum(all_isotropic_one_gamma_POTs),
+        "data": sum(all_data_POTs),
     }
 
     print("doing post-processing that doesn't require vector variables...")
 
     all_df = do_combined_postprocessing(all_df)
-    all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic)
+    if pot_dic["data"] > 0:
+        normalizing_POT = pot_dic["data"]
+    else:
+        normalizing_POT = 1.11e21
+    all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
     all_df = add_signal_categories(all_df)
 
     file_RSEs = []

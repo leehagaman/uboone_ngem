@@ -93,6 +93,7 @@ del1g_detailed_categories = [
     ("del1g_outFV",     "del1g_overlay and not wc_truth_inFV",                                                                                                                          "xkcd:pink", "++++"),
     ("iso1g",           "iso1g_overlay and wc_truth_inFV",                                                                                                                              "xkcd:turquoise", "++++"),
     ("iso1g_outFV",     "iso1g_overlay and not wc_truth_inFV",                                                                                                                          "xkcd:gray", "++++"),
+    ("data",         "filetype == 'data'",                                                                                                                                              "xkcd:black", None),
 ]
 del1g_detailed_category_queries = [cat[1] for cat in del1g_detailed_categories]
 del1g_detailed_category_labels = [cat[0] for cat in del1g_detailed_categories]
@@ -144,6 +145,7 @@ del1g_detailed_category_labels_latex = [
     r"del1g $1\gamma$ out FV",
     r"iso1g $1\gamma 0p$",
     r"iso1g $1\gamma$ out FV",
+    r"data",
 ]
 
 def get_cut_from_del1g(name):
@@ -170,6 +172,7 @@ del1g_simple_categories = [
     ("0pi0",                    get_cut_from_del1g('0pi0'),                                                                                             "xkcd:azure", None),
     ("other_outFV_dirt",    f"({get_cut_from_del1g('other_outFV')}) or ({get_cut_from_del1g('dirt')})",                                                 "xkcd:bright purple", None),
     ("ext",                     get_cut_from_del1g('ext'),                                                                                              "xkcd:green", None),
+    ("data",                    get_cut_from_del1g('data'),                                                                                             "xkcd:black", None),
 ]
 del1g_simple_category_queries = [cat[1] for cat in del1g_simple_categories]
 del1g_simple_category_labels = [cat[0] for cat in del1g_simple_categories]
@@ -193,6 +196,7 @@ del1g_simple_category_labels_latex = [
     r"$0\pi^0$",
     r"other out-FV/dirt",
     r"ext",
+    r"data",
 ]
 
 
@@ -213,6 +217,7 @@ topological_categories = [
     ("3plusg",      "(normal_overlay or del1g_overlay or iso1g_overlay) and wc_truth_0e and wc_truth_3plusg",                                                   "xkcd:beige", None),
     ("dirt",        "filetype == 'dirt_overlay'",                                                                           "xkcd:brown", None),
     ("ext",         "filetype == 'ext'",                                                                                    "xkcd:green", None),
+    ("data",        "filetype == 'data'",                                                                                   "xkcd:black", None),
 ]
 topological_category_queries = [cat[1] for cat in topological_categories]
 topological_category_labels = [cat[0] for cat in topological_categories]
@@ -235,15 +240,18 @@ topological_category_labels_latex = [
     r"$3+\gamma$",
     r"dirt",
     r"ext",
+    r"data",
 ]
 
 filetype_categories = [
     ("nc_pi0_overlay", "filetype == 'nc_pi0_overlay'", "xkcd:red", None),
     ("nu_overlay",     "filetype == 'nu_overlay'",     "xkcd:blue", None),
+    ("nue_overlay",     "filetype == 'nue_overlay'",     "xkcd:green", None),
     ("dirt_overlay",   "filetype == 'dirt_overlay'",   "xkcd:brown", None),
-    ("ext",            "filetype == 'ext'",            "xkcd:green", None),
+    ("ext",            "filetype == 'ext'",            "xkcd:bright green", None),
     ("del1g_overlay",   "filetype == 'delete_one_gamma_overlay'",   "xkcd:yellow", "++++"),
     ("iso1g_overlay",   "filetype == 'isotropic_one_gamma_overlay'",   "xkcd:turquoise", "++++"),
+    ("data",           "filetype == 'data'",                            "xkcd:black", None),
 ]
 filetype_category_queries = [cat[1] for cat in filetype_categories]
 filetype_category_labels = [cat[0] for cat in filetype_categories]

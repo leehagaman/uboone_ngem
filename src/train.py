@@ -69,16 +69,19 @@ if __name__ == "__main__":
 
     all_df = pd.read_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
 
-    train_indices, test_indices = train_test_split(np.arange(len(all_df)), test_size=0.5, random_state=42)
-    all_df["used_for_training"] = False
-    all_df["used_for_testing"] = False
-    all_df.loc[train_indices, "used_for_training"] = True
-    all_df.loc[test_indices, "used_for_testing"] = True
+    no_data_df = all_df.query("filetype != 'data'")
+    data_df = all_df.query("filetype == 'data'")
+
+    train_indices, test_indices = train_test_split(np.arange(len(no_data_df)), test_size=0.5, random_state=42)
+    no_data_df["used_for_training"] = False
+    no_data_df["used_for_testing"] = False
+    no_data_df.loc[train_indices, "used_for_training"] = True
+    no_data_df.loc[test_indices, "used_for_testing"] = True
 
     # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
     # (should already be applied in the presel_df_train_vars.pkl file)
-    original_num_events = all_df.shape[0]
-    presel_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0")
+    original_num_events = no_data_df.shape[0]
+    presel_df = no_data_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0")
     preselected_num_events = presel_df.shape[0]
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 

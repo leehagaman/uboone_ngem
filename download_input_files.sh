@@ -33,6 +33,7 @@ FILES_TO_COPY=(
     "/exp/uboone/data/uboonepro/MCC9.10/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_09_BNB_dirt_surpise_reco2_hist.root"
     "/exp/uboone/data/uboonepro/MCC9.10/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_09_BNB_NC_pi0_overlay_surprise_reco2_hist.root"
     "/exp/uboone/data/uboonepro/MCC9.10/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_09_Run4b_BNB_beam_off_surprise_reco2_hist.root"
+    "/exp/uboone/data/uboonepro/MCC9.10/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root"
 
     # run 4c files
     "/exp/uboone/data/uboonepro/MCC9.10/run4c_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root"

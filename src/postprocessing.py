@@ -7,27 +7,44 @@ from signal_categories import del1g_detailed_category_queries, del1g_detailed_ca
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
 from signal_categories import filetype_category_queries, filetype_category_labels
 
-def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT=1.11e21):
+def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
     original_length = df.shape[0]
 
     summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
+    summed_POT_nue_cc = pot_dic['nue_overlay'] + pot_dic['nu_overlay']
 
     # Get masks for different event types
     nc_pi0_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nc_pi0_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
     nu_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nu_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
-    nu_overlay_other_mask = (df["filetype"] == 'nu_overlay') & ~((df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1))
+
+    nue_overlay_true_nue_cc_mask = (df["filetype"] == 'nue_overlay') & (df["wc_truth_isCC"] == 1) & (abs(df["wc_truth_nuPdg"]) == 12) & (df["wc_truth_vtxInside"] == 1)
+    nu_overlay_true_nue_cc_mask = (df["filetype"] == 'nu_overlay') & (df["wc_truth_isCC"] == 1) & (abs(df["wc_truth_nuPdg"]) == 12) & (df["wc_truth_vtxInside"] == 1)
+
+    nu_overlay_other_mask = ((df["filetype"] == 'nu_overlay')
+                         & ~((df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1))
+                         & ~((df["wc_truth_isCC"] == 1) & (abs(df["wc_truth_nuPdg"]) == 12) & (df["wc_truth_vtxInside"] == 1)))
+
     dirt_mask = df["filetype"] == 'dirt_overlay'
     ext_mask = df["filetype"] == 'ext'
     del1g_mask = df["filetype"] == 'delete_one_gamma_overlay'
     iso1g_mask = df["filetype"] == 'isotropic_one_gamma_overlay'
+    data_mask = df["filetype"] == 'data'
 
     # setting the POTs in order to combine the NC Pi0 overlay and nu overlay files without throwing away MC statistics
     df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
     df.loc[nu_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
 
+    # setting the POTs in order to combine the nue overlay and nu overlay files without throwing away MC statistics
+    df.loc[nue_overlay_true_nue_cc_mask, "wc_file_POT"] = summed_POT_nue_cc
+    df.loc[nu_overlay_true_nue_cc_mask, "wc_file_POT"] = summed_POT_nue_cc
+
+
     # Filter out unwanted events by keeping only the events we want
-    combined_mask = nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask | nu_overlay_other_mask | dirt_mask | ext_mask | del1g_mask | iso1g_mask
+    combined_mask = (nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask
+                     | nue_overlay_true_nue_cc_mask | nu_overlay_true_nue_cc_mask
+                     | nu_overlay_other_mask
+                     | dirt_mask | ext_mask | del1g_mask | iso1g_mask | data_mask)
     
     # Use boolean indexing instead of drop for more reliable filtering
     df = df[combined_mask].copy()
@@ -586,53 +603,10 @@ def add_signal_categories(all_df):
     all_df["wc_truth_numuCCDeltaRad"] = truth_numuCC_arr & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
     all_df["wc_truth_nueCCDeltaRad"] = truth_nueCC_arr & all_df["wc_truth_NCDelta"].to_numpy().astype(bool)
 
-    def _debug_print_failed_query(category_label, query_text, dataframe, exception):
-        import re
-        print("\n[add_signal_categories] Failed to evaluate category:", category_label)
-        print("Query:", query_text)
-        print("Exception:", repr(exception))
-
-        # Identify identifiers following logical negation and show their dtypes
-        suspect_cols = set()
-        for pattern in [r"\bnot\s+([A-Za-z_][A-Za-z0-9_]*)", r"~\s*([A-Za-z_][A-Za-z0-9_]*)"]:
-            for m in re.finditer(pattern, query_text):
-                suspect_cols.add(m.group(1))
-
-        if len(suspect_cols) > 0:
-            print("Potentially negated identifiers and their dtypes:")
-            for col in sorted(suspect_cols):
-                if col in dataframe.columns:
-                    print(f"  - {col}: dtype={dataframe[col].dtype}")
-                else:
-                    print(f"  - {col}: NOT A COLUMN")
-
-        # Also list all column identifiers referenced in the query and their dtypes
-        tokens = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", query_text))
-        keywords = {"and", "or", "not", "True", "False"}
-        referenced_cols = sorted([t for t in tokens if t in dataframe.columns and t not in keywords])
-        if len(referenced_cols) > 0:
-            print("All referenced columns and dtypes:")
-            for col in referenced_cols[:50]:  # cap to avoid extremely long output
-                print(f"  - {col}: dtype={dataframe[col].dtype}")
-
-        # Show a quick sample of values for suspect columns to spot floats/NaNs
-        if len(suspect_cols) > 0:
-            print("Sample values for potentially negated identifiers (first 5 rows):")
-            for col in sorted(suspect_cols):
-                if col in dataframe.columns:
-                    try:
-                        print(f"  - {col}:", dataframe[col].head().to_list())
-                    except Exception as _:
-                        pass
-
     # Evaluate topological queries one by one so we can emit helpful debug on failure
     topological_conditions = []
-    for query_text, label in zip(topological_category_queries, topological_category_labels):
-        try:
-            topological_conditions.append(all_df.eval(query_text))
-        except Exception as e:
-            _debug_print_failed_query(label, query_text, all_df, e)
-            raise
+    for query_text in topological_category_queries:
+        topological_conditions.append(all_df.eval(query_text))
     for i1, condition1 in enumerate(topological_conditions):
         for i2, condition2 in enumerate(topological_conditions):
             if i1 != i2:
@@ -660,12 +634,8 @@ def add_signal_categories(all_df):
             print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
     del1g_detailed_conditions = []
-    for query_text, label in zip(del1g_detailed_category_queries, del1g_detailed_category_labels):
-        try:
-            del1g_detailed_conditions.append(all_df.eval(query_text))
-        except Exception as e:
-            _debug_print_failed_query(label, query_text, all_df, e)
-            raise
+    for query_text in del1g_detailed_category_queries:
+        del1g_detailed_conditions.append(all_df.eval(query_text))
     all_df["del1g_detailed_signal_category"] = np.select(del1g_detailed_conditions, del1g_detailed_category_labels, default="other")
     uncategorized_df = all_df[all_df['del1g_detailed_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
@@ -682,12 +652,8 @@ def add_signal_categories(all_df):
             print(f"    {del1g_detailed_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
     del1g_simple_conditions = []
-    for query_text, label in zip(del1g_simple_category_queries, del1g_simple_category_labels):
-        try:
-            del1g_simple_conditions.append(all_df.eval(query_text))
-        except Exception as e:
-            _debug_print_failed_query(label, query_text, all_df, e)
-            raise
+    for query_text in del1g_simple_category_queries:
+        del1g_simple_conditions.append(all_df.eval(query_text))
     all_df["del1g_simple_signal_category"] = np.select(del1g_simple_conditions, del1g_simple_category_labels, default="other")
     uncategorized_df = all_df[all_df['del1g_simple_signal_category'] == 'other']
     if len(uncategorized_df) > 0:
@@ -704,12 +670,8 @@ def add_signal_categories(all_df):
             print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
 
     filetype_conditions = []
-    for query_text, label in zip(filetype_category_queries, filetype_category_labels):
-        try:
-            filetype_conditions.append(all_df.eval(query_text))
-        except Exception as e:
-            _debug_print_failed_query(label, query_text, all_df, e)
-            raise
+    for query_text in filetype_category_queries:
+        filetype_conditions.append(all_df.eval(query_text))
     all_df["filetype_signal_category"] = np.select(filetype_conditions, filetype_category_labels, default="other")
     uncategorized_df = all_df[all_df['filetype_signal_category'] == 'other']
     if len(uncategorized_df) > 0:

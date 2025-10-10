@@ -15,7 +15,7 @@ uv pip install numpy pandas matplotlib uproot umap-learn tqdm xgboost
 ```
 
 ## Creating Dataframes
-You can add --frac_events (-f) 0.05 to load only 5% of the events from each file, making this faster (and less RAM consuming) for small tests.
+You can add --frac_events (-f) 0.05 to load only 5% of the events from each file, making this faster (and less RAM consuming) for small tests. You can also add -m to add memory logging printouts, to check if you're running out of memory.
 
 This takes a bit of time, might want to run it in the background.
 
