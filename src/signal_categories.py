@@ -5,8 +5,6 @@ import numpy as np
 red_hex_colors = [mpl.colors.rgb2hex(color) for color in plt.cm.Reds(np.linspace(0, 1, 10))]
 blue_hex_colors = [mpl.colors.rgb2hex(color) for color in plt.cm.Blues(np.linspace(0, 1, 10))]
 
-NC1pi0_query = "normal_overlay and wc_truth_inFV and wc_truth_isNC and not wc_truth_NCDeltaRad and wc_truth_1pi0"
-NC1pi0Np_query = f"{NC1pi0_query} and wc_truth_Np"
 del1g_detailed_categories = [
     ("NCDeltaRad_1gNp",                 "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_Np",                                                           "xkcd:light yellow", None),
     ("NCDeltaRad_1g0p",                 "normal_overlay and wc_truth_inFV and wc_truth_NCDeltaRad and wc_truth_0pi0 and wc_truth_0p",                                                           "xkcd:pumpkin", None),
