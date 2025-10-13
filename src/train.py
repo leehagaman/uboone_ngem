@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--training_vars", type=str, default="combined")
-    parser.add_argument("--signal_categories", type=str, default="topological")
+    parser.add_argument("--signal_categories", type=str, default="del1g_simple")
     parser.add_argument("--early_stopping_rounds", type=int, default=50,
                         help="Stop training if validation metric doesn't improve for this many rounds")
     args = parser.parse_args()

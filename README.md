@@ -11,7 +11,13 @@ source download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/ngem/da
 
 ## Python environment
 ```
-uv pip install numpy pandas matplotlib uproot umap-learn tqdm xgboost
+uv pip install numpy pandas matplotlib uproot umap-learn tqdm xgboost nbconvert
+```
+
+To avoid making ipynb plots visible on github:
+
+```
+git config --global filter.strip-notebook-output.clean 'jupyter nbconvert --ClearOutputPreprocessor.enabled=True --to=notebook --stdin --stdout --log-level=ERROR'
 ```
 
 ## Creating Dataframes
@@ -32,6 +38,8 @@ python src/train.py --name first_wc_training --training_vars wc
 python src/train.py --name first_lantern_training --training_vars lantern
 
 python src/train.py --name mixed_del1g_iso_training --signal_categories del1g_simple
+
+python src/train.py --name mixed_wc_training --training_vars wc
 
 ```
 
