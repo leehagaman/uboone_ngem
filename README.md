@@ -40,6 +40,7 @@ python src/train.py --name first_lantern_training --training_vars lantern
 python src/train.py --name mixed_del1g_iso_training --signal_categories del1g_simple
 
 python src/train.py --name mixed_wc_training --training_vars wc
+python src/train.py --name mixed_lantern_training --training_vars lantern
 
 ```
 
