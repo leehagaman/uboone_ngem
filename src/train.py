@@ -48,6 +48,10 @@ if __name__ == "__main__":
     elif args.signal_categories == "del1g_simple":
         signal_category_labels = train_category_labels
         signal_category_var = "del1g_simple_signal_category"
+    elif args.signal_categories == "nue_only":
+        # Binary classification: 0 -> not_nue, 1 -> nue
+        signal_category_labels = ["not_nue", "nue"]
+        signal_category_var = "del1g_simple_signal_category"
     else:
         raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
 
@@ -70,8 +74,8 @@ if __name__ == "__main__":
     all_df = pd.read_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
 
     # splitting into train and test, then re-making all_df
-    no_data_df = all_df.query("filetype != 'data'")
-    data_df = all_df.query("filetype == 'data'")
+    no_data_df = all_df.query("filetype != 'data'").copy()
+    data_df = all_df.query("filetype == 'data'").copy()
     train_indices, test_indices = train_test_split(np.arange(len(no_data_df)), test_size=0.5, random_state=42)
     data_df["used_for_training"] = False
     data_df["used_for_testing"] = False
@@ -98,6 +102,27 @@ if __name__ == "__main__":
     presel_test_df = presel_df.query("used_for_testing == True")
 
     signal_category_mapping = {cat: i for i, cat in enumerate(signal_category_labels)}
+
+    if args.signal_categories == "nue_only":
+        signal_category_mapping = {
+            "1gNp": 0,
+            "1g0p": 0,
+            "1gNp1mu": 0,
+            "1g0p1mu": 0,
+            "1g_outFV": 0,
+            "NC1pi0_Np": 0,
+            "NC1pi0_0p": 0,
+            "numuCC1pi0_Np": 0,
+            "numuCC1pi0_0p": 0,
+            "1pi0_outFV": 0,
+            "nueCC_Np": 1,
+            "nueCC_0p": 1,
+            "multi_pi0": 0,
+            "eta_other": 0,
+            "0pi0": 0,
+            "other_outFV_dirt": 0,
+            "ext": 0,
+        }
 
     x_train = presel_train_df[training_vars].to_numpy()
     x_train = x_train.astype(np.float64)
@@ -126,12 +151,22 @@ if __name__ == "__main__":
     eval_set = [(x_train, y_train), (x_test, y_test)]
     eval_weights = [w_train, w_test]
 
-    model = xgb.XGBClassifier(
-        num_class=num_categories,
-        n_estimators=200,
-        eval_metric=['mlogloss', 'merror'],
-        early_stopping_rounds=args.early_stopping_rounds,
-    )
+    # Configure model and metrics for binary vs multi-class
+    if num_categories == 2:
+        model = xgb.XGBClassifier(
+            objective='binary:logistic',
+            n_estimators=200,
+            eval_metric=['logloss', 'error'],
+            early_stopping_rounds=args.early_stopping_rounds,
+        )
+    else:
+        model = xgb.XGBClassifier(
+            objective='multi:softprob',
+            num_class=num_categories,
+            n_estimators=200,
+            eval_metric=['mlogloss', 'merror'],
+            early_stopping_rounds=args.early_stopping_rounds,
+        )
 
     model.fit(
         x_train, y_train, 
@@ -167,8 +202,11 @@ if __name__ == "__main__":
     print("Creating training curves...")
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
-    plt.plot(model.evals_result()['validation_0']['mlogloss'], label='Train Loss', linewidth=2)
-    plt.plot(model.evals_result()['validation_1']['mlogloss'], label='Test Loss', linewidth=2)
+    evals_result = model.evals_result()
+    loss_key = 'mlogloss' if num_categories > 2 else 'logloss'
+    err_key = 'merror' if num_categories > 2 else 'error'
+    plt.plot(evals_result['validation_0'][loss_key], label='Train Loss', linewidth=2)
+    plt.plot(evals_result['validation_1'][loss_key], label='Test Loss', linewidth=2)
     plt.xlabel('Iteration')
     plt.ylabel('Multi-class Log Loss')
     plt.title('Training Loss Curves')
@@ -176,8 +214,8 @@ if __name__ == "__main__":
     plt.grid(True, alpha=0.3)
     plt.axvline(model.best_iteration, linestyle='--', color='k', alpha=0.6, label='Best iteration')
     plt.subplot(1, 2, 2)
-    train_acc = [1 - err for err in model.evals_result()['validation_0']['merror']]
-    test_acc = [1 - err for err in model.evals_result()['validation_1']['merror']]
+    train_acc = [1 - err for err in evals_result['validation_0'][err_key]]
+    test_acc = [1 - err for err in evals_result['validation_1'][err_key]]
     plt.plot(train_acc, label='Train Accuracy', linewidth=2)
     plt.plot(test_acc, label='Test Accuracy', linewidth=2)
     plt.xlabel('Iteration')
@@ -194,8 +232,12 @@ if __name__ == "__main__":
     plt.figure(figsize=(20, 12))
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
-    category_names = {v: k for k, v in signal_category_mapping.items()}
-    n_categories = len(signal_category_mapping)
+    # Map class index -> display name
+    if args.signal_categories == "nue_only":
+        category_names = {0: "not_nue", 1: "nue"}
+    else:
+        category_names = {v: k for k, v in signal_category_mapping.items()}
+    n_categories = num_categories
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
     bins = np.linspace(0, 1, 21)
@@ -218,7 +260,7 @@ if __name__ == "__main__":
     print("Creating confusion matrix...")
     plt.figure(figsize=(20, 6))
     # Ensure confusion matrix includes all expected categories, even if they have zero events
-    expected_labels = list(range(len(signal_category_mapping)))
+    expected_labels = list(range(n_categories))
     cm = confusion_matrix(y_test, y_pred, sample_weight=w_test, labels=expected_labels)
     # Handle division by zero for normalization
     row_sums = cm.sum(axis=1)
@@ -286,8 +328,8 @@ if __name__ == "__main__":
     prediction_df['event'] = all_df['event']
     prediction_df['used_for_training'] = all_df['used_for_training']
     prediction_df['used_for_testing'] = all_df['used_for_testing']
-    for i, category_name in enumerate(category_names.values()):
-        prediction_df[f'prob_{category_name}'] = all_probabilities[:, i]
+    for i in range(n_categories):
+        prediction_df[f'prob_{category_names[i]}'] = all_probabilities[:, i]
 
     print("Saving predictions...")
     prediction_df.to_pickle(output_dir / "predictions.pkl")
