@@ -39,6 +39,25 @@ if __name__ == "__main__":
         training_vars = wc_training_vars
     elif args.training_vars == "lantern":
         training_vars = lantern_training_vars
+    elif args.training_vars == "lantern_first_half":
+        training_vars = lantern_training_vars[:len(lantern_training_vars)//2]
+    elif args.training_vars == "lantern_key_vars":
+        training_vars = [
+            "lantern_max_electron_shower_PrimaryScore",
+            "lantern_max_electron_shower_el_normedscore",
+            "lantern_max_electron_shower_FromChargedScore",
+            "lantern_max_electron_shower_ElScore",
+        ]
+    elif args.training_vars == "lantern_key_2_vars":
+        training_vars = [
+            "lantern_max_electron_shower_PrimaryScore",
+            "lantern_max_electron_shower_el_normedscore",
+        ]
+    elif args.training_vars == "lantern_key_other_2_vars":
+        training_vars = [
+            "lantern_max_electron_shower_FromChargedScore",
+            "lantern_max_electron_shower_ElScore",
+        ]
     else:
         raise ValueError(f"Invalid training_vars: {args.training_vars}")
 

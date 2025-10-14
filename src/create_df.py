@@ -244,6 +244,13 @@ if __name__ == "__main__":
         if "UNUSED" in filename:
             continue
 
+        # TEMPORARY
+        if filename not in [
+            "checkout_MCC9.10_Run4a4c4d5_v10_04_07_13_BNB_intrinsic_nue_overlay_surprise_reco2_hist_4a.root",
+            "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root"
+        ]:
+            continue
+
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
         if filetype == "nc_pi0_overlay":
             all_ncpi0_POTs.append(curr_POT)

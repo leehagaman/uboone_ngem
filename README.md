@@ -42,7 +42,11 @@ python src/train.py --name mixed_del1g_iso_training --signal_categories del1g_si
 python src/train.py --name mixed_wc_training --training_vars wc
 python src/train.py --name mixed_lantern_training --training_vars lantern
 
-python src/train.py --name nue_only_lantern_training --training_vars lantern --signal_categories nue_only
+python src/train.py --name nue_only_lantern_training --training_vars lantern --signal_categories nue_only # perfect performance, data/pred difference
+python src/train.py --name nue_only_lantern_first_half_training --training_vars lantern_first_half --signal_categories nue_only # perfect performance, data/pred difference
+python src/train.py --name nue_only_lantern_key_training --training_vars lantern_key_vars --signal_categories nue_only # perfect performance, data/pred difference
+python src/train.py --name nue_only_lantern_key_2_training --training_vars lantern_key_2_vars --signal_categories nue_only # good performance, data/pred consistent
+python src/train.py --name nue_only_lantern_key_other_2_training --training_vars lantern_key_other_2_vars --signal_categories nue_only
 
 ```
 
