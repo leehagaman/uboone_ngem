@@ -76,30 +76,158 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 def do_wc_postprocessing(df):
 
     # Extra reco variables
-    proton_nums = []
-    other_track_nums = []
+    proton_nums_5_MeV  = []
+    proton_nums_10_MeV = []
+    proton_nums_15_MeV = []
+    proton_nums_20_MeV = []
+    proton_nums_25_MeV = []
+    proton_nums_30_MeV = []
+    proton_nums_35_MeV = []
+    proton_nums_40_MeV = []
+    proton_nums_45_MeV = []
+    proton_nums_50_MeV = []
+    other_track_nums_5_MeV  = []
+    other_track_nums_10_MeV = []
+    other_track_nums_15_MeV = []
+    other_track_nums_20_MeV = []
+    other_track_nums_25_MeV = []
+    other_track_nums_30_MeV = []
+    other_track_nums_35_MeV = []
+    other_track_nums_40_MeV = []
+    other_track_nums_45_MeV = []
+    other_track_nums_50_MeV = []
     energy_lists = df["wc_kine_energy_particle"].to_numpy()
     pdg_lists = df["wc_kine_particle_type"].to_numpy()
     for i in tqdm(range(df.shape[0]), desc="Adding WC reco particle multiplicity", mininterval=10):
-        proton_num = 0
-        other_track_num = 0
+        proton_num_5_MeV = 0
+        proton_num_10_MeV = 0
+        proton_num_15_MeV = 0
+        proton_num_20_MeV = 0
+        proton_num_25_MeV = 0
+        proton_num_30_MeV = 0
+        proton_num_35_MeV = 0
+        proton_num_40_MeV = 0
+        proton_num_45_MeV = 0
+        proton_num_50_MeV = 0
+        other_track_num_5_MeV = 0
+        other_track_num_10_MeV = 0
+        other_track_num_15_MeV = 0
+        other_track_num_20_MeV = 0
+        other_track_num_25_MeV = 0
+        other_track_num_30_MeV = 0
+        other_track_num_35_MeV = 0
+        other_track_num_40_MeV = 0
+        other_track_num_45_MeV = 0
+        other_track_num_50_MeV = 0
+
         energy_list = energy_lists[i]
         if isinstance(energy_list, float) and np.isnan(energy_list):
-            proton_nums.append(np.nan)
-            other_track_nums.append(np.nan)
+            proton_nums_5_MeV.append(np.nan)
+            proton_nums_10_MeV.append(np.nan)
+            proton_nums_15_MeV.append(np.nan)
+            proton_nums_20_MeV.append(np.nan)
+            proton_nums_25_MeV.append(np.nan)
+            proton_nums_30_MeV.append(np.nan)
+            proton_nums_35_MeV.append(np.nan)
+            proton_nums_40_MeV.append(np.nan)
+            proton_nums_45_MeV.append(np.nan)
+            other_track_nums_5_MeV.append(np.nan)
+            other_track_nums_10_MeV.append(np.nan)
+            other_track_nums_15_MeV.append(np.nan)
+            other_track_nums_20_MeV.append(np.nan)
+            other_track_nums_25_MeV.append(np.nan)
+            other_track_nums_30_MeV.append(np.nan)
+            other_track_nums_35_MeV.append(np.nan)
+            other_track_nums_40_MeV.append(np.nan)
+            other_track_nums_45_MeV.append(np.nan)
+            other_track_nums_50_MeV.append(np.nan)
             continue
         pdg_list = pdg_lists[i]
         for i in range(len(energy_list)):
             if abs(pdg_list[i]) == 2212:
-                if energy_list[i] > 35: # 35 MeV reco proton kinetic energy threshold
-                    proton_num += 1
+                if energy_list[i] > 5:
+                    proton_num_5_MeV += 1
+                if energy_list[i] > 10:
+                    proton_num_10_MeV += 1
+                if energy_list[i] > 15:
+                    proton_num_15_MeV += 1
+                if energy_list[i] > 20:
+                    proton_num_20_MeV += 1
+                if energy_list[i] > 25:
+                    proton_num_25_MeV += 1
+                if energy_list[i] > 30:
+                    proton_num_30_MeV += 1
+                if energy_list[i] > 35:
+                    proton_num_35_MeV += 1
+                if energy_list[i] > 40:
+                    proton_num_40_MeV += 1
+                if energy_list[i] > 45:
+                    proton_num_45_MeV += 1
+                if energy_list[i] > 50:
+                    proton_num_50_MeV += 1
             if abs(pdg_list[i]) == 13 or abs(pdg_list[i]) == 211: # see N_tracks at https://github.com/BNLIF/wcp-uboone-bdt/blob/main/inc/WCPLEEANA/cuts.h
-                if energy_list[i] > 10.:
-                    other_track_num += 1
-        proton_nums.append(proton_num)
-        other_track_nums.append(other_track_num)
-    df["wc_reco_num_protons"] = proton_nums
-    df["wc_reco_num_other_tracks"] = other_track_nums
+                if energy_list[i] > 5:
+                    other_track_num_5_MeV += 1
+                if energy_list[i] > 10:
+                    other_track_num_10_MeV += 1
+                if energy_list[i] > 15:
+                    other_track_num_15_MeV += 1
+                if energy_list[i] > 20:
+                    other_track_num_20_MeV += 1
+                if energy_list[i] > 25:
+                    other_track_num_25_MeV += 1
+                if energy_list[i] > 30:
+                    other_track_num_30_MeV += 1
+                if energy_list[i] > 35:
+                    other_track_num_35_MeV += 1
+                if energy_list[i] > 40:
+                    other_track_num_40_MeV += 1
+                if energy_list[i] > 45:
+                    other_track_num_45_MeV += 1
+                if energy_list[i] > 50:
+                    other_track_num_50_MeV += 1
+
+        proton_nums_5_MeV.append(proton_num_5_MeV)
+        proton_nums_10_MeV.append(proton_num_10_MeV)
+        proton_nums_15_MeV.append(proton_num_15_MeV)
+        proton_nums_20_MeV.append(proton_num_20_MeV)
+        proton_nums_25_MeV.append(proton_num_25_MeV)
+        proton_nums_30_MeV.append(proton_num_30_MeV)
+        proton_nums_35_MeV.append(proton_num_35_MeV)
+        proton_nums_40_MeV.append(proton_num_40_MeV)
+        proton_nums_45_MeV.append(proton_num_45_MeV)
+        proton_nums_50_MeV.append(proton_num_50_MeV)
+        other_track_nums_5_MeV.append(other_track_num_5_MeV)
+        other_track_nums_10_MeV.append(other_track_num_10_MeV)
+        other_track_nums_15_MeV.append(other_track_num_15_MeV)
+        other_track_nums_20_MeV.append(other_track_num_20_MeV)
+        other_track_nums_25_MeV.append(other_track_num_25_MeV)
+        other_track_nums_30_MeV.append(other_track_num_30_MeV)
+        other_track_nums_35_MeV.append(other_track_num_35_MeV)
+        other_track_nums_40_MeV.append(other_track_num_40_MeV)
+        other_track_nums_45_MeV.append(other_track_num_45_MeV)
+        other_track_nums_50_MeV.append(other_track_num_50_MeV)
+
+    df["wc_reco_num_protons_5_MeV"] = proton_nums_5_MeV
+    df["wc_reco_num_protons_10_MeV"] = proton_nums_10_MeV
+    df["wc_reco_num_protons_15_MeV"] = proton_nums_15_MeV
+    df["wc_reco_num_protons_20_MeV"] = proton_nums_20_MeV
+    df["wc_reco_num_protons_25_MeV"] = proton_nums_25_MeV
+    df["wc_reco_num_protons_30_MeV"] = proton_nums_30_MeV
+    df["wc_reco_num_protons_35_MeV"] = proton_nums_35_MeV
+    df["wc_reco_num_protons_40_MeV"] = proton_nums_40_MeV
+    df["wc_reco_num_protons_45_MeV"] = proton_nums_45_MeV
+    df["wc_reco_num_protons_50_MeV"] = proton_nums_50_MeV
+    df["wc_reco_num_other_tracks_5_MeV"] = other_track_nums_5_MeV
+    df["wc_reco_num_other_tracks_10_MeV"] = other_track_nums_10_MeV
+    df["wc_reco_num_other_tracks_15_MeV"] = other_track_nums_15_MeV
+    df["wc_reco_num_other_tracks_20_MeV"] = other_track_nums_20_MeV
+    df["wc_reco_num_other_tracks_25_MeV"] = other_track_nums_25_MeV
+    df["wc_reco_num_other_tracks_30_MeV"] = other_track_nums_30_MeV
+    df["wc_reco_num_other_tracks_35_MeV"] = other_track_nums_35_MeV
+    df["wc_reco_num_other_tracks_40_MeV"] = other_track_nums_40_MeV
+    df["wc_reco_num_other_tracks_45_MeV"] = other_track_nums_45_MeV
+    df["wc_reco_num_other_tracks_50_MeV"] = other_track_nums_50_MeV
 
     if "wc_truth_id" in df.columns: # don't run this for a df that only has EXT for example
 
@@ -1706,131 +1834,134 @@ def do_lantern_postprocessing(df):
         curr_max_piscore = np.nan
         
         for track_i in range(curr_nTracks):
+
             if curr_trackIsSecondary[track_i] != 0: # only considering primary tracks
                 continue
 
-            if curr_trackClassified[track_i] != 0: # only considering classified tracks
+            if curr_trackClassified[track_i] != 1: # only considering classified tracks
                 continue
 
             min_charge, min_completeness, min_purity = 0, 0, 0
             if curr_trackCharge[track_i] < min_charge or curr_trackComp[track_i] < min_completeness or curr_trackPurity[track_i] < min_purity:
                 continue
 
+            curr_trackRecoE_curr_track = curr_trackRecoE[track_i]
+
             if curr_trackPID[track_i] == 13: # muon
                 curr_num_muons += 1
-                if curr_trackRecoE > 5:
+                if curr_trackRecoE_curr_track > 5:
                     curr_num_muons_5MeV += 1
-                if curr_trackRecoE > 10:
+                if curr_trackRecoE_curr_track > 10:
                     curr_num_muons_10MeV += 1
-                if curr_trackRecoE > 15:
+                if curr_trackRecoE_curr_track > 15:
                     curr_num_muons_15MeV += 1
-                if curr_trackRecoE > 20:
+                if curr_trackRecoE_curr_track > 20:
                     curr_num_muons_20MeV += 1
-                if curr_trackRecoE > 25:
+                if curr_trackRecoE_curr_track > 25:
                     curr_num_muons_25MeV += 1
-                if curr_trackRecoE > 30:
+                if curr_trackRecoE_curr_track > 30:
                     curr_num_muons_30MeV += 1
-                if curr_trackRecoE > 35:
+                if curr_trackRecoE_curr_track > 35:
                     curr_num_muons_35MeV += 1
-                if curr_trackRecoE > 40:
+                if curr_trackRecoE_curr_track > 40:
                     curr_num_muons_40MeV += 1
-                if curr_trackRecoE > 45:
+                if curr_trackRecoE_curr_track > 45:
                     curr_num_muons_45MeV += 1
-                if curr_trackRecoE > 50:
+                if curr_trackRecoE_curr_track > 50:
                     curr_num_muons_50MeV += 1
                 if curr_trackMuScore[track_i] > curr_max_muscore or curr_max_muscore is np.nan:
                     curr_max_muscore = curr_trackMuScore[track_i]
             elif curr_trackPID[track_i] == 2212: # proton
                 curr_num_protons += 1
-                if curr_trackRecoE > 5:
+                if curr_trackRecoE_curr_track > 5:
                     curr_num_protons_5MeV += 1
-                if curr_trackRecoE > 10:
+                if curr_trackRecoE_curr_track > 10:
                     curr_num_protons_10MeV += 1
-                if curr_trackRecoE > 15:
+                if curr_trackRecoE_curr_track > 15:
                     curr_num_protons_15MeV += 1
-                if curr_trackRecoE > 20:
+                if curr_trackRecoE_curr_track > 20:
                     curr_num_protons_20MeV += 1
-                if curr_trackRecoE > 25:
+                if curr_trackRecoE_curr_track > 25:
                     curr_num_protons_25MeV += 1
-                if curr_trackRecoE > 30:
+                if curr_trackRecoE_curr_track > 30:
                     curr_num_protons_30MeV += 1
-                if curr_trackRecoE > 35:
+                if curr_trackRecoE_curr_track > 35:
                     curr_num_protons_35MeV += 1
-                if curr_trackRecoE > 40:
+                if curr_trackRecoE_curr_track > 40:
                     curr_num_protons_40MeV += 1
-                if curr_trackRecoE > 45:
+                if curr_trackRecoE_curr_track > 45:
                     curr_num_protons_45MeV += 1
-                if curr_trackRecoE > 50:
+                if curr_trackRecoE_curr_track > 50:
                     curr_num_protons_50MeV += 1
                 if curr_trackPrScore[track_i] > curr_max_prscore or curr_max_prscore is np.nan:
                     curr_max_prscore = curr_trackPrScore[track_i]
             elif curr_trackPID[track_i] == 211: # charged pion
                 curr_num_charged_pions += 1
-                if curr_trackRecoE > 5:
+                if curr_trackRecoE_curr_track > 5:
                     curr_num_charged_pions_5MeV += 1
-                if curr_trackRecoE > 10:
+                if curr_trackRecoE_curr_track > 10:
                     curr_num_charged_pions_10MeV += 1
-                if curr_trackRecoE > 15:
+                if curr_trackRecoE_curr_track > 15:
                     curr_num_charged_pions_15MeV += 1
-                if curr_trackRecoE > 20:
+                if curr_trackRecoE_curr_track > 20:
                     curr_num_charged_pions_20MeV += 1
-                if curr_trackRecoE > 25:
+                if curr_trackRecoE_curr_track > 25:
                     curr_num_charged_pions_25MeV += 1
-                if curr_trackRecoE > 30:
+                if curr_trackRecoE_curr_track > 30:
                     curr_num_charged_pions_30MeV += 1
-                if curr_trackRecoE > 35:
+                if curr_trackRecoE_curr_track > 35:
                     curr_num_charged_pions_35MeV += 1
-                if curr_trackRecoE > 40:
+                if curr_trackRecoE_curr_track > 40:
                     curr_num_charged_pions_40MeV += 1
-                if curr_trackRecoE > 45:
+                if curr_trackRecoE_curr_track > 45:
                     curr_num_charged_pions_45MeV += 1
-                if curr_trackRecoE > 50:
+                if curr_trackRecoE_curr_track > 50:
                     curr_num_charged_pions_50MeV += 1
                 if curr_trackPiScore[track_i] > curr_max_piscore or curr_max_piscore is np.nan:
                     curr_max_piscore = curr_trackPiScore[track_i]
             elif curr_trackPID[track_i] == 22: # photon
                 curr_num_photons += 1
-                if curr_trackRecoE > 5:
+                if curr_trackRecoE_curr_track > 5:
                     curr_num_photons_5MeV += 1
-                if curr_trackRecoE > 10:
+                if curr_trackRecoE_curr_track > 10:
                     curr_num_photons_10MeV += 1
-                if curr_trackRecoE > 15:
+                if curr_trackRecoE_curr_track > 15:
                     curr_num_photons_15MeV += 1
-                if curr_trackRecoE > 20:
+                if curr_trackRecoE_curr_track > 20:
                     curr_num_photons_20MeV += 1
-                if curr_trackRecoE > 25:
+                if curr_trackRecoE_curr_track > 25:
                     curr_num_photons_25MeV += 1
-                if curr_trackRecoE > 30:
+                if curr_trackRecoE_curr_track > 30:
                     curr_num_photons_30MeV += 1
-                if curr_trackRecoE > 35:
+                if curr_trackRecoE_curr_track > 35:
                     curr_num_photons_35MeV += 1
-                if curr_trackRecoE > 40:
+                if curr_trackRecoE_curr_track > 40:
                     curr_num_photons_40MeV += 1
-                if curr_trackRecoE > 45:
+                if curr_trackRecoE_curr_track > 45:
                     curr_num_photons_45MeV += 1
-                if curr_trackRecoE > 50:
+                if curr_trackRecoE_curr_track > 50:
                     curr_num_photons_50MeV += 1
             elif curr_trackPID[track_i] == 11: # electron
                 curr_num_electrons += 1
-                if curr_trackRecoE > 5:
+                if curr_trackRecoE_curr_track > 5:
                     curr_num_electrons_5MeV += 1
-                if curr_trackRecoE > 10:
+                if curr_trackRecoE_curr_track > 10:
                     curr_num_electrons_10MeV += 1
-                if curr_trackRecoE > 15:
+                if curr_trackRecoE_curr_track > 15:
                     curr_num_electrons_15MeV += 1
-                if curr_trackRecoE > 20:
+                if curr_trackRecoE_curr_track > 20:
                     curr_num_electrons_20MeV += 1
-                if curr_trackRecoE > 25:
+                if curr_trackRecoE_curr_track > 25:
                     curr_num_electrons_25MeV += 1
-                if curr_trackRecoE > 30:
+                if curr_trackRecoE_curr_track > 30:
                     curr_num_electrons_30MeV += 1
-                if curr_trackRecoE > 35:
+                if curr_trackRecoE_curr_track > 35:
                     curr_num_electrons_35MeV += 1
-                if curr_trackRecoE > 40:
+                if curr_trackRecoE_curr_track > 40:
                     curr_num_electrons_40MeV += 1
-                if curr_trackRecoE > 45:
+                if curr_trackRecoE_curr_track > 45:
                     curr_num_electrons_45MeV += 1
-                if curr_trackRecoE > 50:
+                if curr_trackRecoE_curr_track > 50:
                     curr_num_electrons_50MeV += 1
             else:
                 assert False, "Invalid track PID"

@@ -452,6 +452,27 @@ kine_scalar_vars = [
     "kine_pio_angle"
 ]
 
+wc_reco_particle_multiplicity_vars = [
+    "wc_reco_num_protons_5_MeV",
+    "wc_reco_num_protons_10_MeV",
+    "wc_reco_num_protons_15_MeV",
+    "wc_reco_num_protons_20_MeV",
+    "wc_reco_num_protons_25_MeV",
+    "wc_reco_num_protons_30_MeV",
+    "wc_reco_num_protons_35_MeV",
+    "wc_reco_num_protons_40_MeV",
+    "wc_reco_num_protons_45_MeV",
+    "wc_reco_num_protons_50_MeV",
+    "wc_reco_num_other_tracks_5_MeV",
+    "wc_reco_num_other_tracks_10_MeV",
+    "wc_reco_num_other_tracks_15_MeV",
+    "wc_reco_num_other_tracks_20_MeV",
+    "wc_reco_num_other_tracks_25_MeV",
+    "wc_reco_num_other_tracks_30_MeV",
+    "wc_reco_num_other_tracks_35_MeV",
+    "wc_reco_num_other_tracks_40_MeV",
+]
+
 # The WC nueCC BDT was trained with all_nue_scalars + nue_bdt_score_variables
 # The WC numuCC BDT was trained with all_numu_scalars + numu_bdt_score_variables
 # The WC NC Delta BDT was trained with: all_numu_scalars[:-2] + all_nue_scalars[:-2] + numu_bdt_score_variables + nue_bdt_score_variables + kine_scalar_vars
@@ -466,10 +487,10 @@ wc_training_vars = wc_T_BDT_training_vars + wc_T_KINEvars_training_vars + wc_T_e
 # adding in particle multiplicities for this multi-class BDT, rather than cutting on them later
 # add wc prefix to wc_training_vars
 wc_training_vars = [f"wc_{var}" for var in wc_training_vars]
-wc_training_vars += ["wc_reco_num_protons", "wc_reco_num_other_tracks"]
+wc_training_vars += wc_reco_particle_multiplicity_vars
 
 wc_prefix_kine_scalar_vars = [f"wc_{var}" for var in kine_scalar_vars]
-wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC", "wc_reco_num_protons", "wc_reco_num_other_tracks"] + wc_prefix_kine_scalar_vars]
+wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC"] + wc_prefix_kine_scalar_vars + wc_reco_particle_multiplicity_vars]
 
 wc_T_BDT_including_training_vars = list(set(wc_T_bdt_vars + wc_T_BDT_training_vars))
 wc_T_KINEvars_including_training_vars = list(set(wc_T_kine_vars + wc_T_KINEvars_training_vars))
@@ -699,7 +720,7 @@ lantern_postprocessing_training_vars = [
     "lantern_prim_track_muon_num",
     "lantern_prim_track_charged_pion_num",
     "lantern_prim_track_proton_num",
-    
+
     "lantern_prim_track_photon_num_5MeV",
     "lantern_prim_track_electron_num_5MeV",
     "lantern_prim_track_muon_num_5MeV",
