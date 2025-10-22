@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from collections import defaultdict
+
+from ntuple_variables.variables import pandora_vector_vars_with_prefix
 from signal_categories import topological_category_queries, topological_category_labels
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
@@ -902,26 +905,136 @@ def do_blip_postprocessing(df):
     
     return df
 
+def do_pandora_postprocessing(df):
+
+    vector_var_dic = {}
+    for var in pandora_vector_vars_with_prefix:
+        vector_var_dic[var] = df[var].to_numpy()
+    
+    processed_var_dic = defaultdict(list)
+
+    num_events = len(vector_var_dic[pandora_vector_vars_with_prefix[0]])
+    for event_i in tqdm(range(num_events), desc="Analyzing pandora pfps", mininterval=10):
+        curr_event_vector_var_dic = {}
+        for var in pandora_vector_vars_with_prefix:
+            curr_event_vector_var_dic[var] = vector_var_dic[var][event_i]
+
+        curr_event_processed_var_dic = {}
+
+        for var in pandora_vector_vars_with_prefix:
+            curr_event_processed_var_dic[f"pandora_max3_len_trk_{var[8:]}"] = np.nan
+            curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"] = np.nan
+            curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"] = np.nan
+        
+        max_pfp_len = 0
+        max2_pfp_len = -1
+        max3_pfp_len = -2
+        for pfp_i in range(len(curr_event_vector_var_dic[pandora_vector_vars_with_prefix[0]])):
+            curr_pfp_len = curr_event_vector_var_dic["pandora_trk_len_v"][pfp_i]
+            if curr_pfp_len > max_pfp_len:
+                for var in pandora_vector_vars_with_prefix:
+                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var[8:]}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
+                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"] = curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"]
+                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"] = curr_event_vector_var_dic[var][pfp_i]
+            elif curr_pfp_len > max2_pfp_len:
+                for var in pandora_vector_vars_with_prefix:
+                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var[8:]}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
+                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"] = curr_event_vector_var_dic[var][pfp_i]
+            elif curr_pfp_len > max3_pfp_len:
+                for var in pandora_vector_vars_with_prefix:
+                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"] = curr_event_vector_var_dic[var][pfp_i]
+        
+        for processed_var in curr_event_processed_var_dic.keys():
+            processed_var_dic[processed_var].append(curr_event_processed_var_dic[processed_var])
+
+    return pd.concat([df, pd.DataFrame(processed_var_dic)], axis=1)
+
+
+
 def do_glee_postprocessing(df):
 
-    # TODO: add more gLEE variables here, make sure this max SSV score variable is the correct method
-    # Seems to always give NaN for now?
+    isolation_min_dist_trk_shr = df["glee_isolation_min_dist_trk_shr"].to_numpy()
+    isolation_min_dist_trk_unassoc = df["glee_isolation_min_dist_trk_unassoc"].to_numpy()
+    isolation_nearest_shr_hit_to_trk_time = df["glee_isolation_nearest_shr_hit_to_trk_time"].to_numpy()
+    isolation_nearest_shr_hit_to_trk_wire = df["glee_isolation_nearest_shr_hit_to_trk_wire"].to_numpy()
+    isolation_nearest_unassoc_hit_to_trk_time = df["glee_isolation_nearest_unassoc_hit_to_trk_time"].to_numpy()
+    isolation_nearest_unassoc_hit_to_trk_wire = df["glee_isolation_nearest_unassoc_hit_to_trk_wire"].to_numpy()
+    isolation_num_shr_hits_win_10cm_trk = df["glee_isolation_num_shr_hits_win_10cm_trk"].to_numpy()
+    isolation_num_shr_hits_win_1cm_trk = df["glee_isolation_num_shr_hits_win_1cm_trk"].to_numpy()
+    isolation_num_shr_hits_win_2cm_trk = df["glee_isolation_num_shr_hits_win_2cm_trk"].to_numpy()
+    isolation_num_shr_hits_win_5cm_trk = df["glee_isolation_num_shr_hits_win_5cm_trk"].to_numpy()
+    isolation_num_unassoc_hits_win_10cm_trk = df["glee_isolation_num_unassoc_hits_win_10cm_trk"].to_numpy()
+    isolation_num_unassoc_hits_win_1cm_trk = df["glee_isolation_num_unassoc_hits_win_1cm_trk"].to_numpy()
+    isolation_num_unassoc_hits_win_2cm_trk = df["glee_isolation_num_unassoc_hits_win_2cm_trk"].to_numpy()
+    isolation_num_unassoc_hits_win_5cm_trk = df["glee_isolation_num_unassoc_hits_win_5cm_trk"].to_numpy()
 
-    glee_ssv_score = df["glee_sss_candidate_veto_score"].to_numpy()
-    glee_ssv_3d_score = df["glee_sss3d_shower_score"].to_numpy()
-    max_ssv_scores = []
-    max_ssv_3d_scores = []
-    for event_i in tqdm(range(len(glee_ssv_score)), desc="Analyzing gLEE ssv scores", mininterval=10):
-        if len(glee_ssv_score[event_i]) == 0:
-            max_ssv_scores.append(np.nan)
-            max_ssv_3d_scores.append(np.nan)
+    min_isolation_min_dist_trk_shr = []
+    min_isolation_min_dist_trk_unassoc = []
+    min_isolation_nearest_shr_hit_to_trk_time = []
+    min_isolation_nearest_shr_hit_to_trk_wire = []
+    min_isolation_nearest_unassoc_hit_to_trk_time = []
+    min_isolation_nearest_unassoc_hit_to_trk_wire = []
+    sum_isolation_num_shr_hits_win_10cm_trk = []
+    sum_isolation_num_shr_hits_win_1cm_trk = []
+    sum_isolation_num_shr_hits_win_2cm_trk = []
+    sum_isolation_num_shr_hits_win_5cm_trk = []
+    sum_isolation_num_unassoc_hits_win_10cm_trk = []
+    sum_isolation_num_unassoc_hits_win_1cm_trk = []
+    sum_isolation_num_unassoc_hits_win_2cm_trk = []
+    sum_isolation_num_unassoc_hits_win_5cm_trk = []
+
+    for event_i in tqdm(range(len(isolation_min_dist_trk_shr)), desc="Analyzing gLEE isolation variables", mininterval=10):
+        if len(isolation_min_dist_trk_shr[event_i]) == 0:
+            min_isolation_min_dist_trk_shr.append(np.nan)
+            min_isolation_min_dist_trk_unassoc.append(np.nan)
+            min_isolation_nearest_shr_hit_to_trk_time.append(np.nan)
+            min_isolation_nearest_shr_hit_to_trk_wire.append(np.nan)
+            min_isolation_nearest_unassoc_hit_to_trk_time.append(np.nan)
+            min_isolation_nearest_unassoc_hit_to_trk_wire.append(np.nan)
+            sum_isolation_num_shr_hits_win_10cm_trk.append(np.nan)
+            sum_isolation_num_shr_hits_win_1cm_trk.append(np.nan)
+            sum_isolation_num_shr_hits_win_2cm_trk.append(np.nan)
+            sum_isolation_num_shr_hits_win_5cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_10cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_1cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_2cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_5cm_trk.append(np.nan)
         else:
-            print("nonzero length, max_ssv_scores: ", np.max(glee_ssv_score[event_i]))
-            max_ssv_scores.append(np.max(glee_ssv_score[event_i]))
-            max_ssv_3d_scores.append(np.max(glee_ssv_3d_score[event_i]))
-    df["glee_max_ssv_score"] = max_ssv_scores
-    df["glee_max_3d_shower_score"] = max_ssv_3d_scores
+            min_isolation_min_dist_trk_shr.append(np.min(isolation_min_dist_trk_shr[event_i]))
+            min_isolation_min_dist_trk_unassoc.append(np.min(isolation_min_dist_trk_unassoc[event_i]))
+            min_isolation_nearest_shr_hit_to_trk_time.append(np.min(isolation_nearest_shr_hit_to_trk_time[event_i]))
+            min_isolation_nearest_shr_hit_to_trk_wire.append(np.min(isolation_nearest_shr_hit_to_trk_wire[event_i]))
+            min_isolation_nearest_unassoc_hit_to_trk_time.append(np.min(isolation_nearest_unassoc_hit_to_trk_time[event_i]))
+            min_isolation_nearest_unassoc_hit_to_trk_wire.append(np.min(isolation_nearest_unassoc_hit_to_trk_wire[event_i]))
+            sum_isolation_num_shr_hits_win_10cm_trk.append(np.sum(isolation_num_shr_hits_win_10cm_trk[event_i]))
+            sum_isolation_num_shr_hits_win_1cm_trk.append(np.sum(isolation_num_shr_hits_win_1cm_trk[event_i]))
+            sum_isolation_num_shr_hits_win_2cm_trk.append(np.sum(isolation_num_shr_hits_win_2cm_trk[event_i]))
+            sum_isolation_num_shr_hits_win_5cm_trk.append(np.sum(isolation_num_shr_hits_win_5cm_trk[event_i]))
+            sum_isolation_num_unassoc_hits_win_10cm_trk.append(np.sum(isolation_num_unassoc_hits_win_10cm_trk[event_i]))
+            sum_isolation_num_unassoc_hits_win_1cm_trk.append(np.sum(isolation_num_unassoc_hits_win_1cm_trk[event_i]))
+            sum_isolation_num_unassoc_hits_win_2cm_trk.append(np.sum(isolation_num_unassoc_hits_win_2cm_trk[event_i]))
+            sum_isolation_num_unassoc_hits_win_5cm_trk.append(np.sum(isolation_num_unassoc_hits_win_5cm_trk[event_i]))
+
+    glee_isolation_df = pd.DataFrame({
+        "glee_min_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_shr,
+        "glee_min_isolation_min_dist_trk_unassoc": min_isolation_min_dist_trk_unassoc,
+        "glee_min_isolation_nearest_shr_hit_to_trk_time": min_isolation_nearest_shr_hit_to_trk_time,
+        "glee_min_isolation_nearest_shr_hit_to_trk_wire": min_isolation_nearest_shr_hit_to_trk_wire,
+        "glee_min_isolation_nearest_unassoc_hit_to_trk_time": min_isolation_nearest_unassoc_hit_to_trk_time,
+        "glee_min_isolation_nearest_unassoc_hit_to_trk_wire": min_isolation_nearest_unassoc_hit_to_trk_wire,
+        "glee_sum_isolation_num_shr_hits_win_10cm_trk": sum_isolation_num_shr_hits_win_10cm_trk,
+        "glee_sum_isolation_num_shr_hits_win_1cm_trk": sum_isolation_num_shr_hits_win_1cm_trk,
+        "glee_sum_isolation_num_shr_hits_win_2cm_trk": sum_isolation_num_shr_hits_win_2cm_trk,
+        "glee_sum_isolation_num_shr_hits_win_5cm_trk": sum_isolation_num_shr_hits_win_5cm_trk,
+        "glee_sum_isolation_num_unassoc_hits_win_10cm_trk": sum_isolation_num_unassoc_hits_win_10cm_trk,
+        "glee_sum_isolation_num_unassoc_hits_win_1cm_trk": sum_isolation_num_unassoc_hits_win_1cm_trk,
+        "glee_sum_isolation_num_unassoc_hits_win_2cm_trk": sum_isolation_num_unassoc_hits_win_2cm_trk,
+        "glee_sum_isolation_num_unassoc_hits_win_5cm_trk": sum_isolation_num_unassoc_hits_win_5cm_trk,
+    })
+    df = pd.concat([df, glee_isolation_df], axis=1)
+
     return df
+
 
 def do_lantern_postprocessing(df):
 
@@ -2125,12 +2238,12 @@ def do_combined_postprocessing(df):
     wc_vtx_x = df["wc_reco_nuvtxX"].to_numpy()
     wc_vtx_y = df["wc_reco_nuvtxY"].to_numpy()
     wc_vtx_z = df["wc_reco_nuvtxZ"].to_numpy()
-    pandora_vtx_x = df["pelee_reco_nu_vtx_x"].to_numpy()
-    pandora_vtx_y = df["pelee_reco_nu_vtx_y"].to_numpy()
-    pandora_vtx_z = df["pelee_reco_nu_vtx_z"].to_numpy()
-    #pandora_vtx_sce_x = df["pelee_reco_nu_vtx_sce_x"].to_numpy()
-    #pandora_vtx_sce_y = df["pelee_reco_nu_vtx_sce_y"].to_numpy()
-    #pandora_vtx_sce_z = df["pelee_reco_nu_vtx_sce_z"].to_numpy()
+    pandora_vtx_x = df["pandora_reco_nu_vtx_x"].to_numpy()
+    pandora_vtx_y = df["pandora_reco_nu_vtx_y"].to_numpy()
+    pandora_vtx_z = df["pandora_reco_nu_vtx_z"].to_numpy()
+    #pandora_vtx_sce_x = df["pandora_reco_nu_vtx_sce_x"].to_numpy()
+    #pandora_vtx_sce_y = df["pandora_reco_nu_vtx_sce_y"].to_numpy()
+    #pandora_vtx_sce_z = df["pandora_reco_nu_vtx_sce_z"].to_numpy()
     lantern_vtx_x = df["lantern_vtxX"].to_numpy()
     lantern_vtx_y = df["lantern_vtxY"].to_numpy()
     lantern_vtx_z = df["lantern_vtxZ"].to_numpy()

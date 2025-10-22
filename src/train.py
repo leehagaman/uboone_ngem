@@ -12,7 +12,7 @@ import argparse
 import time
 
 from signal_categories import topological_category_labels, del1g_simple_category_labels, train_category_labels
-from variables import wc_training_vars, combined_training_vars, lantern_training_vars
+from ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
 from file_locations import intermediate_files_location
 

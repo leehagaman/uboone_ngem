@@ -7,11 +7,11 @@ import time
 import argparse
 import threading
 
-from variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
-from variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
-from variables import blip_vars, pelee_vars, glee_vars, lantern_vars, vector_columns
+from ntuple_variables.variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
+from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
+from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
-from postprocessing import do_wc_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_glee_postprocessing, do_combined_postprocessing
+from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -143,12 +143,12 @@ def process_root_file(filename, frac_events = 1):
         dic[col] = dic[col].tolist()
     blip_df = pd.DataFrame(dic)
 
-    # loading PeLEE variables
+    # loading pandora variables
     dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pelee_vars, library="np", **slice_kwargs))
+    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pandora_vars, library="np", **slice_kwargs))
     for col in dic:
         dic[col] = dic[col].tolist()
-    pelee_df = pd.DataFrame(dic)
+    pandora_df = pd.DataFrame(dic)
 
     # loading gLEE variables
     dic = {}
@@ -166,11 +166,11 @@ def process_root_file(filename, frac_events = 1):
 
     wc_df = wc_df.add_prefix("wc_")
     # blip_df = blip_df.add_prefix("blip_") # blip variables already have the "blip_" prefix
-    pelee_df = pelee_df.add_prefix("pelee_")
+    pandora_df = pandora_df.add_prefix("pandora_")
     glee_df = glee_df.add_prefix("glee_")
     lantern_df = lantern_df.add_prefix("lantern_")
 
-    all_df = pd.concat([wc_df, blip_df, pelee_df, glee_df, lantern_df], axis=1)
+    all_df = pd.concat([wc_df, blip_df, pandora_df, glee_df, lantern_df], axis=1)
 
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     all_data_POTs = []
     for filename in os.listdir(data_files_location):
 
-        if "UNUSED" in filename:
+        if "UNUSED" in filename or "older_downloads" in filename:
             continue
 
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
@@ -270,6 +270,7 @@ if __name__ == "__main__":
         curr_df = do_wc_postprocessing(curr_df)
         curr_df = add_extra_true_photon_variables(curr_df)
         curr_df = do_spacepoint_postprocessing(curr_df)
+        curr_df = do_pandora_postprocessing(curr_df)
         curr_df = do_blip_postprocessing(curr_df)
         curr_df = do_lantern_postprocessing(curr_df)
         curr_df = do_glee_postprocessing(curr_df)
@@ -285,6 +286,9 @@ if __name__ == "__main__":
             curr_df_no_all_na = curr_df.loc[:, curr_df.notna().any(axis=0)]
             all_df = pd.concat([all_df, curr_df_no_all_na])
         all_df.reset_index(drop=True, inplace=True)
+
+    if len(all_df) == 0:
+        raise ValueError("No events in the dataframe!")
     
     del curr_df # should save a bit of memory
 
