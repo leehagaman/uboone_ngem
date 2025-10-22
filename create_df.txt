@@ -1,0 +1,54 @@
+
+loaded delete_one_gamma_overlay         Run 45        2,909 events   2.59e+19 POT 1121.50 events / 1e19 POT  15.63 GB   3.33 s (f=0.01)
+
+loaded delete_one_gamma_overlay         Run 5         2,290 events   2.04e+19 POT 1124.07 events / 1e19 POT  12.31 GB   3.10 s (f=0.01)
+
+loaded isotropic_one_gamma_overlay      Run 4a          546 events   6.79e+17 POT 8044.01 events / 1e19 POT   2.25 GB   2.31 s (f=0.01)
+
+loaded isotropic_one_gamma_overlay      Run 45        2,912 events   3.61e+18 POT 8066.77 events / 1e19 POT  12.03 GB   3.23 s (f=0.01)
+
+loaded isotropic_one_gamma_overlay      Run 5         2,283 events   2.83e+18 POT 8060.78 events / 1e19 POT   9.31 GB   3.09 s (f=0.01)
+
+loaded dirt_overlay                     Run 4a          304 events   1.09e+18 POT 2794.25 events / 1e19 POT   1.42 GB   1.84 s (f=0.01)
+
+loaded dirt_overlay                     Run 4d        1,133 events   3.48e+18 POT 3258.59 events / 1e19 POT   5.32 GB   2.09 s (f=0.01)
+
+loaded dirt_overlay                     Run 5         1,154 events   3.52e+18 POT 3278.06 events / 1e19 POT   5.24 GB   2.13 s (f=0.01)
+
+loaded nue_overlay                      Run 4a          550 events   3.68e+20 POT  14.94 events / 1e19 POT   6.98 GB   2.27 s (f=0.01)
+
+loaded nue_overlay                      Run 4d        2,295 events   1.37e+21 POT  16.70 events / 1e19 POT  29.08 GB   3.78 s (f=0.01)
+
+loaded nue_overlay                      Run 5         2,601 events   1.52e+21 POT  17.14 events / 1e19 POT  32.55 GB   4.07 s (f=0.01)
+
+loaded nu_overlay                       Run 4c        3,797 events   4.70e+18 POT 8073.35 events / 1e19 POT  27.54 GB   3.89 s (f=0.01)
+
+loaded nu_overlay                       Run 5         8,100 events   1.00e+19 POT 8067.21 events / 1e19 POT  57.46 GB   6.82 s (f=0.01)
+
+loaded nc_pi0_overlay                   Run 4c          576 events   3.32e+19 POT 173.25 events / 1e19 POT   4.49 GB   1.99 s (f=0.01)
+
+loaded nc_pi0_overlay                   Run 4b          867 events   5.01e+19 POT 172.99 events / 1e19 POT   6.68 GB   2.22 s (f=0.01)
+
+loaded nu_overlay                       Run 4b        6,354 events   7.88e+18 POT 8067.13 events / 1e19 POT  45.79 GB   6.36 s (f=0.01)
+
+loaded data                             Run 4b        5,118 events   1.33e+18 POT 38423.42 events / 1e19 POT  15.82 GB   3.63 s (f=0.01)
+
+loaded nc_pi0_overlay                   Run 5         1,201 events   6.96e+19 POT 172.68 events / 1e19 POT   9.39 GB   2.55 s (f=0.01)
+
+loaded nu_overlay                       Run 4a        1,695 events   2.35e+18 POT 7215.08 events / 1e19 POT  12.23 GB   2.59 s (f=0.01)
+
+loaded dirt_overlay                     Run 4c          586 events   1.80e+18 POT 3257.60 events / 1e19 POT   2.75 GB   2.37 s (f=0.01)
+
+loaded delete_one_gamma_overlay         Run 4a          549 events   4.90e+18 POT 1121.06 events / 1e19 POT   2.95 GB   2.31 s (f=0.01)
+
+loaded nu_overlay                       Run 4d        7,236 events   8.95e+18 POT 8085.86 events / 1e19 POT  52.51 GB   6.99 s (f=0.01)
+
+loaded nue_overlay                      Run 4c        1,201 events   7.16e+20 POT  16.77 events / 1e19 POT  15.25 GB   2.86 s (f=0.01)
+
+loaded dirt_overlay                     Run 4b          996 events   3.06e+18 POT 3256.41 events / 1e19 POT   4.68 GB   2.19 s (f=0.01)
+
+loaded nue_overlay                      Run 4b        2,014 events   1.18e+21 POT  17.11 events / 1e19 POT  25.27 GB   3.60 s (f=0.01)
+
+loaded ext                              Run 4b       10,865 events   3.73e+18 POT 29127.26 events / 1e19 POT  28.32 GB   5.33 s (f=0.01)
+
+loaded nc_pi0_overlay                   Run 4d        1,120 events   6.48e+19 POT 172.84 events / 1e19 POT   8.69 GB   2.32 s (f=0.01)

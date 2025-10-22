@@ -12,6 +12,10 @@ from signal_categories import filetype_category_queries, filetype_category_label
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
+    print("pot_dic:")
+    for k, v in pot_dic.items():
+        print(f"{k}: {v}")
+
     original_length = df.shape[0]
 
     summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
@@ -2264,10 +2268,12 @@ def do_combined_postprocessing(df):
     lantern_pandora_dist = np.sqrt((lantern_vtx_x - pandora_vtx_x)**2 + (lantern_vtx_y - pandora_vtx_y)**2 + (lantern_vtx_z - pandora_vtx_z)**2)
     #lantern_pandora_sce_dist = np.sqrt((lantern_vtx_x - pandora_vtx_sce_x)**2 + (lantern_vtx_y - pandora_vtx_sce_y)**2 + (lantern_vtx_z - pandora_vtx_sce_z)**2)
 
-    df["wc_pandora_dist"] = wc_pandora_dist
-    #df["wc_pandora_sce_dist"] = wc_pandora_sce_dist
-    df["wc_lantern_dist"] = wc_lantern_dist
-    df["lantern_pandora_dist"] = lantern_pandora_dist
-    #df["lantern_pandora_sce_dist"] = lantern_pandora_sce_dist
+    distances_df = pd.DataFrame({
+        "wc_pandora_dist": wc_pandora_dist,
+        "wc_lantern_dist": wc_lantern_dist,
+        "lantern_pandora_dist": lantern_pandora_dist,
+    })
+
+    df = pd.concat([df, distances_df], axis=1)
 
     return df

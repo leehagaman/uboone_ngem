@@ -205,10 +205,15 @@ def process_root_file(filename, frac_events = 1):
 
     end_time = time.time()
 
-    progress_str = f"\nloaded {filetype:<20}   Run {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    events_per_POT = all_df.shape[0] / (file_POT / 1e19)
+
+    progress_str = f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {events_per_POT:>6.2f} events / 1e19 POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
+
+    with open("create_df.txt", "a") as f:
+        f.write(progress_str + "\n")
 
     return filetype, all_df, file_POT
 
@@ -228,6 +233,10 @@ if __name__ == "__main__":
 
     if args.frac_events < 1.0:
         print(f"Loading {args.frac_events} fraction of events from each file")
+
+    # delete create_df.txt
+    if os.path.exists("create_df.txt"):
+        os.remove("create_df.txt")
 
     print("Starting loop over root files...")
     all_df = pd.DataFrame()
@@ -325,7 +334,7 @@ if __name__ == "__main__":
 
     print(f"saving {intermediate_files_location}/presel_df_train_vars.pkl...", end="", flush=True)
     start_time = time.time()
-    presel_df = all_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0") # the generic selection wc_kine_reco_Enu > 0 was already applied
+    presel_df = all_df.query("wc_kine_reco_Enu > 0")
     presel_df.reset_index(drop=True, inplace=True)
     presel_df.to_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
     end_time = time.time()

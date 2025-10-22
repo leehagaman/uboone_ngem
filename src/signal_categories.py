@@ -79,10 +79,14 @@ del1g_detailed_categories = [
     ("1pi0_outFV",      "normal_overlay and not (wc_truth_inFV) and wc_truth_1pi0",                                                                                                     "xkcd:lavender", None),
     ("nueCC_Np",        "normal_overlay and wc_truth_inFV and wc_truth_nueCC and wc_truth_Np",                                                                                          "xkcd:seafoam", None),
     ("nueCC_0p",        "normal_overlay and wc_truth_inFV and wc_truth_nueCC and wc_truth_0p",                                                                                          "xkcd:electric green", None),
+    ("numuCC_Np",       """normal_overlay and wc_truth_inFV and wc_truth_numuCC and wc_truth_Np
+                                    and wc_truth_0pi0 and not (wc_truth_numuCCDeltaRad or true_num_prim_gamma >= 2)""".strip().replace("\n", ""),                                       "xkcd:azure", None),
+    ("numuCC_0p",       """normal_overlay and wc_truth_inFV and wc_truth_numuCC and wc_truth_0p
+                                    and wc_truth_0pi0 and not (wc_truth_numuCCDeltaRad or true_num_prim_gamma >= 2)""".strip().replace("\n", ""),                                       "xkcd:electric blue", None),
     ("multi_pi0",       "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and (wc_truth_multi_pi0 or (wc_truth_1pi0 and (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)))",      "xkcd:ice blue", None), # also includes pi0 + Delta radiative
     ("eta_other",       """normal_overlay and wc_truth_inFV and wc_truth_notnueCC and true_num_prim_gamma >= 2
-                                    and not wc_truth_multi_pi0 and not wc_truth_1pi0 and not (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)""".strip().replace("\n", ""),              "xkcd:light aqua", None),
-    ("0pi0",            "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and wc_truth_0pi0 and not (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)",                            "xkcd:azure", None),
+                                    and not wc_truth_multi_pi0 and not wc_truth_1pi0 and not (wc_truth_NCDeltaRad or wc_truth_numuCCDeltaRad)""".strip().replace("\n", ""),             "xkcd:light aqua", None),
+    ("NC_no_gamma",     "normal_overlay and wc_truth_inFV and wc_truth_notnueCC and wc_truth_notnumuCC and wc_truth_0pi0 and not wc_truth_NCDeltaRad",                                  "xkcd:burnt sienna", None),
     ("other_outFV",     "normal_overlay and not (wc_truth_inFV) and not (wc_truth_1pi0)",                                                                                               "xkcd:bright purple", None),
     ("dirt",        "filetype == 'dirt_overlay'",                                                                                                                                       "xkcd:brown", None),
     ("ext",         "filetype == 'ext'",                                                                                                                                                "xkcd:green", None),
@@ -130,11 +134,16 @@ del1g_detailed_category_labels_latex = [
     r"$\nu_\mu$ CC $1\pi^0$ $0p$ other",
     
     r"$1\pi^0$ out FV",
+
     r"$\nu_e$ CC $Np$",
     r"$\nu_e$ CC $0p$",
+
+    r"$\nu_\mu$ CC $Np$",
+    r"$\nu_\mu$ CC $0p$",
+
     r"multi $\pi^0$",
     r"Other $2\gamma$ ($\eta$)",
-    r"$0\pi^0$",
+    r"NC no $\gamma$",
     r"other out FV",
     r"dirt",
     r"ext",
@@ -167,9 +176,11 @@ del1g_simple_categories = [
     ("1pi0_outFV",              get_cut_from_del1g('1pi0_outFV'),                                                                                       "xkcd:light pink", None),
     ("nueCC_Np",                get_cut_from_del1g('nueCC_Np'),                                                                                         "xkcd:seafoam", None),
     ("nueCC_0p",                get_cut_from_del1g('nueCC_0p'),                                                                                         "xkcd:electric green", None),
+    ("numuCC_Np",               get_cut_from_del1g('numuCC_Np'),                                                                                        "xkcd:azure", None),
+    ("numuCC_0p",               get_cut_from_del1g('numuCC_0p'),                                                                                        "xkcd:electric blue", None),
     ("multi_pi0",               get_cut_from_del1g('multi_pi0'),                                                                                        "xkcd:ice blue", None), # also includes pi0 + Delta radiative
     ("eta_other",               get_cut_from_del1g('eta_other'),                                                                                        "xkcd:light aqua", None),
-    ("0pi0",                    get_cut_from_del1g('0pi0'),                                                                                             "xkcd:azure", None),
+    ("NC_no_gamma",             get_cut_from_del1g('NC_no_gamma'),                                                                                      "xkcd:burnt sienna", None),
     ("other_outFV_dirt",    f"({get_cut_from_del1g('other_outFV')}) or ({get_cut_from_del1g('dirt')})",                                                 "xkcd:bright purple", None),
     ("ext",                     get_cut_from_del1g('ext'),                                                                                              "xkcd:green", None),
     ("data",                    get_cut_from_del1g('data'),                                                                                             "xkcd:black", None),
@@ -191,9 +202,11 @@ del1g_simple_category_labels_latex = [
     r"$1\pi^0$ out FV",
     r"$\nu_e$ CC $Np$",
     r"$\nu_e$ CC $0p$",
+    r"$\nu_\mu$ CC $Np$",
+    r"$\nu_\mu$ CC $0p$",
     r"Multi-$\pi^0$",
     r"Other $2\gamma$ ($\eta$)",
-    r"$0\pi^0$",
+    r"NC no $\gamma$",
     r"Other out-FV/dirt",
     r"EXT",
     r"data",

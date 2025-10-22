@@ -7,7 +7,7 @@ wc_T_bdt_vars = [              # variables involved with BDT training (if you wa
     "nc_pio_score",                 # BDT score for NC pi0 selection
     "numu_cc_flag",                 # flag, -1 means not generic selected, 0 means generic selected, 1 means cut-based numuCC selected. We often use "numu_cc_flag >= 0" to apply generic neutrino selection.
     "shw_sp_n_20mev_showers",       # number of reco 20 MeV showers
-    "shw_sp_n_20br1_showers",    # number of reco 20 MeV BR1 showers
+    "shw_sp_n_20br1_showers",       # number of reco 20 MeV BR1 showers
     "single_photon_numu_score",     # BDT score for single photon numu selection
     "single_photon_other_score",    # BDT score for single photon other selection
     "single_photon_ncpi0_score",    # BDT score for single photon NC pi0 selection

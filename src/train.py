@@ -11,7 +11,7 @@ import os
 import argparse
 import time
 
-from signal_categories import topological_category_labels, del1g_simple_category_labels, train_category_labels
+from signal_categories import topological_category_labels, train_category_labels
 from ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars
 
 from file_locations import intermediate_files_location
@@ -41,23 +41,6 @@ if __name__ == "__main__":
         training_vars = lantern_training_vars
     elif args.training_vars == "lantern_first_half":
         training_vars = lantern_training_vars[:len(lantern_training_vars)//2]
-    elif args.training_vars == "lantern_key_vars":
-        training_vars = [
-            "lantern_max_electron_shower_PrimaryScore",
-            "lantern_max_electron_shower_el_normedscore",
-            "lantern_max_electron_shower_FromChargedScore",
-            "lantern_max_electron_shower_ElScore",
-        ]
-    elif args.training_vars == "lantern_key_2_vars":
-        training_vars = [
-            "lantern_max_electron_shower_PrimaryScore",
-            "lantern_max_electron_shower_el_normedscore",
-        ]
-    elif args.training_vars == "lantern_key_other_2_vars":
-        training_vars = [
-            "lantern_max_electron_shower_FromChargedScore",
-            "lantern_max_electron_shower_ElScore",
-        ]
     else:
         raise ValueError(f"Invalid training_vars: {args.training_vars}")
 
@@ -93,8 +76,8 @@ if __name__ == "__main__":
     all_df = pd.read_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
 
     # splitting into train and test, then re-making all_df
-    no_data_df = all_df.query("filetype != 'data'").copy()
-    data_df = all_df.query("filetype == 'data'").copy()
+    no_data_df = all_df.query("filetype != 'data'").copy().reset_index()
+    data_df = all_df.query("filetype == 'data'").copy().reset_index()
     train_indices, test_indices = train_test_split(np.arange(len(no_data_df)), test_size=0.5, random_state=42)
     data_df["used_for_training"] = False
     data_df["used_for_testing"] = False
@@ -107,7 +90,7 @@ if __name__ == "__main__":
     # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
     # (should already be applied in the presel_df_train_vars.pkl file)
     original_num_events = no_data_df.shape[0]
-    presel_df = no_data_df.query("wc_kine_reco_Enu > 0 and wc_shw_sp_n_20mev_showers > 0")
+    presel_df = no_data_df.query("wc_kine_reco_Enu > 0")
     preselected_num_events = presel_df.shape[0]
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 

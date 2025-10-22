@@ -48,5 +48,8 @@ python src/train.py --name nue_only_lantern_key_training --training_vars lantern
 python src/train.py --name nue_only_lantern_key_2_training --training_vars lantern_key_2_vars --signal_categories nue_only # good performance, data/pred consistent
 python src/train.py --name nue_only_lantern_key_other_2_training --training_vars lantern_key_other_2_vars --signal_categories nue_only
 
+python src/train.py --name with_numu_generic_pandora_glee
+
+
 ```
 
