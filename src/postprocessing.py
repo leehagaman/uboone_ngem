@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import warnings
 
 from collections import defaultdict
 
-from ntuple_variables.variables import pandora_vector_vars_with_prefix
+from ntuple_variables.variables import pandora_vector_vars_with_prefix, vector_columns
 from signal_categories import topological_category_queries, topological_category_labels
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
@@ -756,19 +757,18 @@ def add_signal_categories(all_df):
                     row = all_df[condition1 & condition2].iloc[0]
                     print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
                     raise AssertionError
-    all_df['topological_signal_category'] = np.select(topological_conditions, topological_category_labels, default="other")
-    uncategorized_df = all_df[all_df['topological_signal_category'] == 'other']
+    all_df['topological_signal_category'] = np.select(topological_conditions, np.arange(len(topological_conditions)), default=-1)
+    uncategorized_df = all_df[all_df['topological_signal_category'] == -1]
     if len(uncategorized_df) > 0:
         print(f"Uncategorized topological signal categories!")
         row = uncategorized_df.iloc[0]
         print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
         raise AssertionError
-    all_df["topological_signal_category"] = np.select(topological_conditions, topological_category_labels, default="other")
     print_categories = True
     if print_categories:
         print("\ntopological signal categories:")
-        for topological_signal_category in topological_category_labels:
-            curr_df = all_df[all_df['topological_signal_category'] == topological_signal_category]
+        for topological_signal_category_i, topological_signal_category in enumerate(topological_category_labels):
+            curr_df = all_df[all_df['topological_signal_category'] == topological_signal_category_i]
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
@@ -776,8 +776,8 @@ def add_signal_categories(all_df):
     del1g_detailed_conditions = []
     for query_text in del1g_detailed_category_queries:
         del1g_detailed_conditions.append(all_df.eval(query_text))
-    all_df["del1g_detailed_signal_category"] = np.select(del1g_detailed_conditions, del1g_detailed_category_labels, default="other")
-    uncategorized_df = all_df[all_df['del1g_detailed_signal_category'] == 'other']
+    all_df["del1g_detailed_signal_category"] = np.select(del1g_detailed_conditions, np.arange(len(del1g_detailed_conditions)), default=-1)
+    uncategorized_df = all_df[all_df['del1g_detailed_signal_category'] == -1]
     if len(uncategorized_df) > 0:
         print(f"Uncategorized detailed del1g signal categories!")
         row = uncategorized_df.iloc[0]
@@ -785,8 +785,8 @@ def add_signal_categories(all_df):
         raise AssertionError
     if print_categories:
         print("\ndel1g detailed signal categories:")
-        for del1g_detailed_signal_category in del1g_detailed_category_labels:
-            curr_df = all_df[all_df['del1g_detailed_signal_category'] == del1g_detailed_signal_category]
+        for del1g_detailed_signal_category_i, del1g_detailed_signal_category in enumerate(del1g_detailed_category_labels):
+            curr_df = all_df[all_df['del1g_detailed_signal_category'] == del1g_detailed_signal_category_i]
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {del1g_detailed_signal_category}: {weighted_num:.2f} ({unweighted_num})")
@@ -794,8 +794,8 @@ def add_signal_categories(all_df):
     del1g_simple_conditions = []
     for query_text in del1g_simple_category_queries:
         del1g_simple_conditions.append(all_df.eval(query_text))
-    all_df["del1g_simple_signal_category"] = np.select(del1g_simple_conditions, del1g_simple_category_labels, default="other")
-    uncategorized_df = all_df[all_df['del1g_simple_signal_category'] == 'other']
+    all_df["del1g_simple_signal_category"] = np.select(del1g_simple_conditions, np.arange(len(del1g_simple_conditions)), default=-1)
+    uncategorized_df = all_df[all_df['del1g_simple_signal_category'] == -1]
     if len(uncategorized_df) > 0:
         print(f"Uncategorized simple del1g signal categories!")
         row = uncategorized_df.iloc[0]
@@ -803,8 +803,8 @@ def add_signal_categories(all_df):
         raise AssertionError
     if print_categories:
         print("\ndel1g simple signal categories:")
-        for del1g_simple_signal_category in del1g_simple_category_labels:
-            curr_df = all_df[all_df['del1g_simple_signal_category'] == del1g_simple_signal_category]
+        for del1g_simple_signal_category_i, del1g_simple_signal_category in enumerate(del1g_simple_category_labels):
+            curr_df = all_df[all_df['del1g_simple_signal_category'] == del1g_simple_signal_category_i]
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
@@ -812,8 +812,8 @@ def add_signal_categories(all_df):
     filetype_conditions = []
     for query_text in filetype_category_queries:
         filetype_conditions.append(all_df.eval(query_text))
-    all_df["filetype_signal_category"] = np.select(filetype_conditions, filetype_category_labels, default="other")
-    uncategorized_df = all_df[all_df['filetype_signal_category'] == 'other']
+    all_df["filetype_signal_category"] = np.select(filetype_conditions, np.arange(len(filetype_conditions)), default=-1)
+    uncategorized_df = all_df[all_df['filetype_signal_category'] == -1]
     if len(uncategorized_df) > 0:
         print(f"Uncategorized filetype signal categories!")
         row = uncategorized_df.iloc[0]
@@ -821,8 +821,8 @@ def add_signal_categories(all_df):
         raise AssertionError
     if print_categories:
         print("\nfiletype signal categories:")
-        for filetype_signal_category in filetype_category_labels:
-            curr_df = all_df[all_df['filetype_signal_category'] == filetype_signal_category]
+        for filetype_signal_category_i, filetype_signal_category in enumerate(filetype_category_labels):
+            curr_df = all_df[all_df['filetype_signal_category'] == filetype_signal_category_i]
             unweighted_num = curr_df.shape[0]
             weighted_num = curr_df['wc_net_weight'].sum()
             print(f"    {filetype_signal_category}: {weighted_num:.2f} ({unweighted_num})")
@@ -2277,5 +2277,48 @@ def do_combined_postprocessing(df):
     })
 
     df = pd.concat([df, distances_df], axis=1)
+
+    return df
+
+
+def remove_vector_variables(df):
+
+    df["wc_reco_muonMomentum_0"] = df["wc_reco_muonMomentum"].apply(lambda x: x[0])
+    df["wc_reco_muonMomentum_1"] = df["wc_reco_muonMomentum"].apply(lambda x: x[1])
+    df["wc_reco_muonMomentum_2"] = df["wc_reco_muonMomentum"].apply(lambda x: x[2])
+    df["wc_reco_muonMomentum_3"] = df["wc_reco_muonMomentum"].apply(lambda x: x[3])
+
+    df["wc_reco_showerMomentum_0"] = df["wc_reco_showerMomentum"].apply(lambda x: x[0])
+    df["wc_reco_showerMomentum_1"] = df["wc_reco_showerMomentum"].apply(lambda x: x[1])
+    df["wc_reco_showerMomentum_2"] = df["wc_reco_showerMomentum"].apply(lambda x: x[2])
+    df["wc_reco_showerMomentum_3"] = df["wc_reco_showerMomentum"].apply(lambda x: x[3])
+
+    if "wc_truth_muonMomentum" in df.columns:
+        df["wc_truth_muonMomentum_0"] = df["wc_truth_muonMomentum"].apply(lambda x: x[0])
+        df["wc_truth_muonMomentum_1"] = df["wc_truth_muonMomentum"].apply(lambda x: x[1])
+        df["wc_truth_muonMomentum_2"] = df["wc_truth_muonMomentum"].apply(lambda x: x[2])
+        df["wc_truth_muonMomentum_3"] = df["wc_truth_muonMomentum"].apply(lambda x: x[3])
+
+    print("removing vector variables...")
+
+    save_columns = [col for col in df.columns if col not in vector_columns]
+    return df[save_columns]
+
+def compress_df(df):
+
+    # ignoring overflow warnings, we expect that occassionally
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+
+        for c in df.select_dtypes("float64"):
+            df[c] = df[c].astype("float32")
+
+        for c in df.select_dtypes("int64"):
+            df[c] = pd.to_numeric(df[c], downcast="integer")
+
+    for c in df.select_dtypes("object"):
+        unique_ratio = df[c].nunique() / len(df)
+        if unique_ratio < 0.5:
+            df[c] = df[c].astype("category")
 
     return df

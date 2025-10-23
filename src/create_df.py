@@ -12,6 +12,7 @@ from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
+from postprocessing import remove_vector_variables, compress_df
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -281,9 +282,21 @@ if __name__ == "__main__":
         curr_df = do_lantern_postprocessing(curr_df)
         curr_df = do_glee_postprocessing(curr_df)
 
-        print("removing vector variables...")
-        save_columns = [col for col in curr_df.columns if col not in vector_columns]
-        curr_df = curr_df[save_columns]
+        curr_df = remove_vector_variables(curr_df)
+
+        #print("vector columns:")
+        #for col in vector_columns:
+        #    print(f"    {col}")
+
+        # check for vector variables still in the dataframe
+        #for col in curr_df.columns:
+        #    # load the value for just the first event, check if it's a list or awkward array or numpy array
+        #    curr_value = curr_df[col].iloc[0]
+        #    curr_type = str(type(curr_value))
+        #    if curr_type == "<class 'numpy.int64'>" or curr_type == "<class 'numpy.float64'>" or curr_type == "<class 'numpy.bool'>" or curr_type == "<class 'numpy.float32'>":
+        #        continue
+        #    print(f"{col}: {str(type(curr_value))}")
+        #print(1/0)
 
         if all_df.empty:
             all_df = curr_df
@@ -331,6 +344,9 @@ if __name__ == "__main__":
         file_RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
         file_RSEs.append(file_RSE)
     assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/run/subrun/event!"
+
+    print("compressing dataframe by changing column dtypes...")
+    all_df = compress_df(all_df)
 
     print(f"saving {intermediate_files_location}/presel_df_train_vars.pkl...", end="", flush=True)
     start_time = time.time()

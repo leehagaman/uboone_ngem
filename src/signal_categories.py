@@ -156,6 +156,7 @@ del1g_detailed_category_labels_latex = [
     r"iso1g $1\gamma$ out FV",
     r"data",
 ]
+del1g_detailed_categories_dic = {i: del1g_detailed_category_labels[i] for i in range(len(del1g_detailed_category_labels))}
 
 def get_cut_from_del1g(name):
     for line in del1g_detailed_categories:
@@ -211,6 +212,7 @@ del1g_simple_category_labels_latex = [
     r"EXT",
     r"data",
 ]
+del1g_simple_categories_dic = {i: del1g_simple_category_labels[i] for i in range(len(del1g_simple_category_labels))}
 
 train_category_queries = []
 train_category_labels = []
@@ -224,7 +226,7 @@ for i in range(len(del1g_simple_category_labels)):
         train_category_colors.append(del1g_simple_category_colors[i])
         train_category_hatches.append(del1g_simple_category_hatches[i])
         train_category_labels_latex.append(del1g_simple_category_labels_latex[i])
-
+train_category_dic = {i: train_category_labels[i] for i in range(len(train_category_labels))}
 
 topological_categories = [
     ("1gNp",        "(normal_overlay or del1g_overlay or iso1g_overlay) and wc_truth_inFV and wc_truth_0e and wc_truth_1g and wc_truth_Np and wc_truth_0mu",    "xkcd:yellow", None),
@@ -268,16 +270,17 @@ topological_category_labels_latex = [
     r"ext",
     r"data",
 ]
+topological_categories_dic = {i: topological_category_labels[i] for i in range(len(topological_category_labels))}
 
 filetype_categories = [
-    ("nc_pi0_overlay", "filetype == 'nc_pi0_overlay'", "xkcd:red", None),
-    ("nu_overlay",     "filetype == 'nu_overlay'",     "xkcd:blue", None),
-    ("nue_overlay",     "filetype == 'nue_overlay'",     "xkcd:green", None),
-    ("dirt_overlay",   "filetype == 'dirt_overlay'",   "xkcd:brown", None),
-    ("ext",            "filetype == 'ext'",            "xkcd:bright green", None),
-    ("del1g_overlay",   "filetype == 'delete_one_gamma_overlay'",   "xkcd:yellow", "++++"),
-    ("iso1g_overlay",   "filetype == 'isotropic_one_gamma_overlay'",   "xkcd:turquoise", "++++"),
-    ("data",           "filetype == 'data'",                            "xkcd:black", None),
+    ("nc_pi0_overlay", "filetype == 'nc_pi0_overlay'",                 "xkcd:red", None),
+    ("nu_overlay",     "filetype == 'nu_overlay'",                     "xkcd:blue", None),
+    ("nue_overlay",    "filetype == 'nue_overlay'",                    "xkcd:green", None),
+    ("dirt_overlay",   "filetype == 'dirt_overlay'",                   "xkcd:brown", None),
+    ("ext",            "filetype == 'ext'",                            "xkcd:bright green", None),
+    ("del1g_overlay",  "filetype == 'delete_one_gamma_overlay'",       "xkcd:yellow", "++++"),
+    ("iso1g_overlay",  "filetype == 'isotropic_one_gamma_overlay'",    "xkcd:turquoise", "++++"),
+    ("data",           "filetype == 'data'",                           "xkcd:black", None),
 ]
 filetype_category_queries = [cat[1] for cat in filetype_categories]
 filetype_category_labels = [cat[0] for cat in filetype_categories]

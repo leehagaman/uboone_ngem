@@ -83,9 +83,27 @@ vector_columns = [
     "lantern_trackPrScore",
     "lantern_trackPID",
 
+    "lantern_showerRecoE",
+    "lantern_trackRecoE",
+
     "wc_Trecchargeblob_spacepoints_x",
     "wc_Trecchargeblob_spacepoints_y",
     "wc_Trecchargeblob_spacepoints_z",
+
+    "wc_WCPMTInfoPePred",
+    "wc_WCPMTInfoPeMeas",
+    "wc_WCPMTInfoPeMeasErr",
+
+    "wc_reco_muonMomentum",
+    "wc_reco_showerMomentum",
+    "wc_truth_muonMomentum",
+
+    "true_gamma_energies",
+    "true_gamma_pairconversion_xs",
+    "true_gamma_pairconversion_ys",
+    "true_gamma_pairconversion_zs",
+    "wc_true_gamma_pairconversion_spacepoint_min_distances",
+
 ]
 vector_columns += [f"pandora_{var}" for var in pandora_vector_vars]
 vector_columns += [f"glee_{var}" for var in glee_vector_vars]

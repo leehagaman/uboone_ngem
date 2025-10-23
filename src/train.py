@@ -103,41 +103,18 @@ if __name__ == "__main__":
     presel_train_df = presel_df.query("used_for_training == True")
     presel_test_df = presel_df.query("used_for_testing == True")
 
-    signal_category_mapping = {cat: i for i, cat in enumerate(signal_category_labels)}
-
-    if args.signal_categories == "nue_only":
-        signal_category_mapping = {
-            "1gNp": 0,
-            "1g0p": 0,
-            "1gNp1mu": 0,
-            "1g0p1mu": 0,
-            "1g_outFV": 0,
-            "NC1pi0_Np": 0,
-            "NC1pi0_0p": 0,
-            "numuCC1pi0_Np": 0,
-            "numuCC1pi0_0p": 0,
-            "1pi0_outFV": 0,
-            "nueCC_Np": 1,
-            "nueCC_0p": 1,
-            "multi_pi0": 0,
-            "eta_other": 0,
-            "0pi0": 0,
-            "other_outFV_dirt": 0,
-            "ext": 0,
-        }
-
     x_train = presel_train_df[training_vars].to_numpy()
     x_train = x_train.astype(np.float64)
     x_train[(x_train > 1e10) | (x_train < -1e10)] = np.nan
 
-    y_train = presel_train_df[signal_category_var].map(signal_category_mapping).to_numpy()
+    y_train = presel_train_df[signal_category_var].to_numpy()
     w_train = presel_train_df["wc_net_weight"].to_numpy()
 
     x_test = presel_test_df[training_vars].to_numpy()
     x_test = x_test.astype(np.float64)
     x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
 
-    y_test = presel_test_df[signal_category_var].map(signal_category_mapping).to_numpy()
+    y_test = presel_test_df[signal_category_var].to_numpy()
     w_test = presel_test_df["wc_net_weight"].to_numpy()
 
     num_training_vars = len(training_vars)
@@ -234,11 +211,6 @@ if __name__ == "__main__":
     plt.figure(figsize=(20, 12))
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
-    # Map class index -> display name
-    if args.signal_categories == "nue_only":
-        category_names = {0: "not_nue", 1: "nue"}
-    else:
-        category_names = {v: k for k, v in signal_category_mapping.items()}
     n_categories = num_categories
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
@@ -247,13 +219,13 @@ if __name__ == "__main__":
         plt.subplot(n_rows, n_cols, i + 1)
         mask = (y_test == i)
         if np.sum(mask) > 0:
-            plt.hist(y_proba[mask, i], bins=bins, histtype='step', label=f'True {category_names[i]}', density=True)
+            plt.hist(y_proba[mask, i], bins=bins, histtype='step', label=f'True {train_category_labels[i]}', density=True)
             other_mask = (y_test != i)
             if np.sum(other_mask) > 0:
                 plt.hist(y_proba[other_mask, i], bins=bins, histtype='step', label=f'Other categories', density=True)
-        plt.xlabel(f'Probability for {category_names[i]}')
+        plt.xlabel(f'Probability for {train_category_labels[i]}')
         plt.ylabel('Density')
-        plt.title(f'Probability Distribution: {category_names[i]}')
+        plt.title(f'Probability Distribution: {train_category_labels[i]}')
         plt.legend()
     plt.tight_layout()
     plt.savefig(output_dir / "probability_histograms.png", dpi=300, bbox_inches='tight')
@@ -289,8 +261,8 @@ if __name__ == "__main__":
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, str(int(cm[i, j])), ha='center', va='center', fontsize=8)
-    plt.xticks(range(n_categories), [category_names[i] for i in range(n_categories)], rotation=45)
-    plt.yticks(range(n_categories), [category_names[i] for i in range(n_categories)])
+    plt.xticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)], rotation=45)
+    plt.yticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)])
     plt.subplot(1, 3, 2)
     im2 = plt.imshow(cm_normalized_cols, cmap='Blues', aspect='auto')
     plt.colorbar(im2)
@@ -300,8 +272,8 @@ if __name__ == "__main__":
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, f'{cm_normalized_cols[i, j]:.2f}', ha='center', va='center', fontsize=8)
-    plt.xticks(range(n_categories), [category_names[i] for i in range(n_categories)], rotation=45)
-    plt.yticks(range(n_categories), [category_names[i] for i in range(n_categories)])
+    plt.xticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)], rotation=45)
+    plt.yticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)])
     plt.subplot(1, 3, 3)
     im3 = plt.imshow(cm_normalized_rows, cmap='Blues', aspect='auto')
     plt.colorbar(im3)
@@ -311,8 +283,8 @@ if __name__ == "__main__":
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, f'{cm_normalized_rows[i, j]:.2f}', ha='center', va='center', fontsize=8)
-    plt.xticks(range(n_categories), [category_names[i] for i in range(n_categories)], rotation=45)
-    plt.yticks(range(n_categories), [category_names[i] for i in range(n_categories)])
+    plt.xticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)], rotation=45)
+    plt.yticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)])
     plt.tight_layout()
     plt.savefig(output_dir / "confusion_matrix.png", dpi=300, bbox_inches='tight')
     plt.close()
@@ -331,7 +303,7 @@ if __name__ == "__main__":
     prediction_df['used_for_training'] = all_df['used_for_training']
     prediction_df['used_for_testing'] = all_df['used_for_testing']
     for i in range(n_categories):
-        prediction_df[f'prob_{category_names[i]}'] = all_probabilities[:, i]
+        prediction_df[f'prob_{train_category_labels[i]}'] = all_probabilities[:, i]
 
     print("Saving predictions...")
     prediction_df.to_pickle(output_dir / "predictions.pkl")

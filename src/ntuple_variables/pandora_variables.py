@@ -341,7 +341,7 @@ pandora_vector_vars = [
 
 pandora_vector_vars_with_prefix = [f"pandora_{var}" for var in pandora_vector_vars]
 
-pandora_vars = pandora_non_BDT_vars + pandora_scalar_vars + pandora_vector_vars + blip_vars
+pandora_vars = pandora_non_BDT_vars + pandora_scalar_vars + pandora_vector_vars
 
 pandora_postprocessing_vars = []
 
