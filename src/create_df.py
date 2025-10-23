@@ -134,7 +134,7 @@ def process_root_file(filename, frac_events = 1):
             raise ValueError("Invalid data file!")
     
     file_POT = file_POT_total * frac_events
-    wc_df["file_POT"] = file_POT
+    wc_df["wc_file_POT"] = file_POT
     
     # loading blip variables
     dic = {}
@@ -212,9 +212,6 @@ def process_root_file(filename, frac_events = 1):
         progress_str += f" (f={frac_events})"
     print(progress_str)
 
-    with open("create_df.txt", "a") as f:
-        f.write(progress_str + "\n")
-
     return filetype, all_df, file_POT
 
 
@@ -233,10 +230,6 @@ if __name__ == "__main__":
 
     if args.frac_events < 1.0:
         print(f"Loading {args.frac_events} fraction of events from each file")
-
-    # delete create_df.txt
-    if os.path.exists("create_df.txt"):
-        os.remove("create_df.txt")
 
     print("Starting loop over root files...")
     all_df = pd.DataFrame()
@@ -323,6 +316,7 @@ if __name__ == "__main__":
         normalizing_POT = pot_dic["data"]
     else:
         normalizing_POT = 1.11e21
+    
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
     all_df = add_signal_categories(all_df)
 

@@ -14,7 +14,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
     print("pot_dic:")
     for k, v in pot_dic.items():
-        print(f"{k}: {v}")
+        print(f"    {k}: {v}")
 
     original_length = df.shape[0]
 
@@ -38,38 +38,40 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     iso1g_mask = df["filetype"] == 'isotropic_one_gamma_overlay'
     data_mask = df["filetype"] == 'data'
 
+    # By default, set the event type POTs to the file POTs
+    df["wc_event_type_POT"] = np.nan
+    for filetype in pot_dic.keys():
+        df.loc[df["filetype"] == filetype, "wc_event_type_POT"] = pot_dic[filetype]
+
     # setting the POTs in order to combine the NC Pi0 overlay and nu overlay files without throwing away MC statistics
-    df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
-    df.loc[nu_overlay_true_nc_1pi0_mask, "wc_file_POT"] = summed_POT_nc_1pi0
+    df.loc[nc_pi0_overlay_true_nc_1pi0_mask, "wc_event_type_POT"] = summed_POT_nc_1pi0
+    df.loc[nu_overlay_true_nc_1pi0_mask, "wc_event_type_POT"] = summed_POT_nc_1pi0
 
     # setting the POTs in order to combine the nue overlay and nu overlay files without throwing away MC statistics
-    df.loc[nue_overlay_true_nue_cc_mask, "wc_file_POT"] = summed_POT_nue_cc
-    df.loc[nu_overlay_true_nue_cc_mask, "wc_file_POT"] = summed_POT_nue_cc
-
+    df.loc[nue_overlay_true_nue_cc_mask, "wc_event_type_POT"] = summed_POT_nue_cc
+    df.loc[nu_overlay_true_nue_cc_mask, "wc_event_type_POT"] = summed_POT_nue_cc
 
     # Filter out unwanted events by keeping only the events we want
     combined_mask = (nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask
                      | nue_overlay_true_nue_cc_mask | nu_overlay_true_nue_cc_mask
                      | nu_overlay_other_mask
                      | dirt_mask | ext_mask | del1g_mask | iso1g_mask | data_mask)
-    
-    # Use boolean indexing instead of drop for more reliable filtering
     df = df[combined_mask].copy()
     df.reset_index(drop=True, inplace=True)
 
     filetype_arr = df["filetype"].to_numpy()
     weight_cv_arr = df["wc_weight_cv"].to_numpy()
     weight_spline_arr = df["wc_weight_spline"].to_numpy()
-    file_POTs = df["wc_file_POT"].to_numpy()
+    event_type_POTs = df["wc_event_type_POT"].to_numpy()
     net_weights = []
     for i in tqdm(range(len(weight_cv_arr)), desc="Adding POT weighting", mininterval=10):
-        file_POT = file_POTs[i]
+        event_type_POT = event_type_POTs[i]
         weight_temp = weight_cv_arr[i] * weight_spline_arr[i]
         if filetype_arr[i] == "data" or filetype_arr[i] == "ext":
             weight_temp = 1.
         elif weight_temp <= 0. or weight_temp > 30. or np.isnan(weight_temp) or np.isinf(weight_temp): # something went wrong with the saved GENIE weights, set it to one
             weight_temp = 1.
-        net_weights.append(weight_temp * normalizing_POT / file_POT)
+        net_weights.append(weight_temp * normalizing_POT / event_type_POT)
 
     df["wc_net_weight"] = net_weights
 
