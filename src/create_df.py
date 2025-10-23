@@ -80,19 +80,23 @@ def process_root_file(filename, frac_events = 1):
 
     start_time = time.time()
 
+    print(f"loading {filename}...")
+
     f = uproot.open(f"{data_files_location}/{filename}")
+
+    if filetype == "data": # quartering the data to use as open data
+        curr_frac_events = frac_events / 4
+    else:
+        curr_frac_events = frac_events
 
     # determine how many events to read based on requested fraction
     if not (0.0 < frac_events <= 1.0):
         raise ValueError("--frac_events/-f must be in the interval (0, 1].")
     total_entries = f["wcpselection"]["T_eval"].num_entries
-    n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
+    n_events = total_entries if curr_frac_events >= 1.0 else max(1, int(total_entries * curr_frac_events))
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
     curr_wc_T_pf_vars = wc_T_pf_vars
-    #if filetype == "delete_one_gamma_overlay" or filetype == "isotropic_one_gamma_overlay":
-    #    print(f"    TEMPORARY: NOT LOADING NANOSECOND TIMING VARIABLES FOR {filetype}")
-    #    curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var not in ["evtTimeNS_cor"]]
 
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     if "v10_04_07_09" in filename:
@@ -133,7 +137,7 @@ def process_root_file(filename, frac_events = 1):
         else:
             raise ValueError("Invalid data file!")
     
-    file_POT = file_POT_total * frac_events
+    file_POT = file_POT_total * curr_frac_events
     wc_df["wc_file_POT"] = file_POT
     
     # loading blip variables
@@ -285,7 +289,9 @@ if __name__ == "__main__":
             all_df = curr_df
         else:
             # Drop columns that are entirely NA to avoid pandas FutureWarning during concat
+            print("dropping columns that are entirely NA...")
             curr_df_no_all_na = curr_df.loc[:, curr_df.notna().any(axis=0)]
+            print(f"adding {curr_df.shape[0]} events to the existing {all_df.shape[0]} events in all_df...")
             all_df = pd.concat([all_df, curr_df_no_all_na])
         all_df.reset_index(drop=True, inplace=True)
 

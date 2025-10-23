@@ -27,7 +27,7 @@ This takes a bit of time, might want to run it in the background.
 
 ```
 python src/create_df.py -f 0.01
-nohup python -u src/create_df.py > nohup.out 2>&1 &
+nohup python -u src/create_df.py -m > nohup.out 2>&1 &
 ```
 
 ## Training Multi-Class BDT
