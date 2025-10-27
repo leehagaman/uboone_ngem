@@ -2,6 +2,7 @@
 import uproot
 import numpy as np
 import pandas as pd
+import polars as pl
 import os
 import time
 import argparse
@@ -15,6 +16,33 @@ from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_b
 from postprocessing import remove_vector_variables, compress_df
 
 from file_locations import data_files_location, intermediate_files_location
+
+def align_columns_for_concat(dfs):
+    # Find all columns across all DataFrames
+    all_cols = {col for df in dfs for col in df.columns}
+
+    # Build a mapping of column -> dtype (prefer from first df that has it)
+    dtype_map = {}
+    for df in dfs:
+        for col, dtype in zip(df.columns, df.dtypes):
+            dtype_map.setdefault(col, dtype)
+
+    aligned = []
+    for df in dfs:
+        missing = all_cols - set(df.columns)
+        if missing:
+            # Add missing columns as nulls, cast to the desired dtype
+            defaults = [
+                pl.lit(None).cast(dtype_map[c]).alias(c)
+                for c in missing
+            ]
+            df = df.with_columns(defaults)
+        # Ensure consistent column order
+        df = df.select(sorted(all_cols))
+        aligned.append(df)
+
+    return aligned
+
 
 def _get_system_memory_usage_gb():
     try:
@@ -169,6 +197,9 @@ def process_root_file(filename, frac_events = 1):
         dic[col] = dic[col].tolist()
     lantern_df = pd.DataFrame(dic)
 
+    del f
+    del dic
+
     wc_df = wc_df.add_prefix("wc_")
     # blip_df = blip_df.add_prefix("blip_") # blip variables already have the "blip_" prefix
     pandora_df = pandora_df.add_prefix("pandora_")
@@ -176,6 +207,11 @@ def process_root_file(filename, frac_events = 1):
     lantern_df = lantern_df.add_prefix("lantern_")
 
     all_df = pd.concat([wc_df, blip_df, pandora_df, glee_df, lantern_df], axis=1)
+    del wc_df
+    del blip_df
+    del pandora_df
+    del glee_df
+    del lantern_df
 
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
@@ -237,7 +273,7 @@ if __name__ == "__main__":
         print(f"Loading {args.frac_events} fraction of events from each file")
 
     print("Starting loop over root files...")
-    all_df = pd.DataFrame()
+    all_df_pl = pl.DataFrame()
     all_ncpi0_POTs = []
     all_nu_POTs = []
     all_nue_POTs = []
@@ -246,7 +282,13 @@ if __name__ == "__main__":
     all_delete_one_gamma_POTs = []
     all_isotropic_one_gamma_POTs = []
     all_data_POTs = []
-    for filename in os.listdir(data_files_location):
+
+    filenames = os.listdir(data_files_location)
+    filenames.sort()
+    # sorting these puts an NC Pi0 overlay first, which will have all the WCPMTInfo and truth variables present, 
+    # so it can be used to add columns to future dataframes with missing values
+    
+    for file_num, filename in enumerate(filenames):
 
         if "UNUSED" in filename or "older_downloads" in filename:
             continue
@@ -283,6 +325,11 @@ if __name__ == "__main__":
         curr_df = do_glee_postprocessing(curr_df)
 
         curr_df = remove_vector_variables(curr_df)
+        curr_df = compress_df(curr_df) # not needed, because we're converting to polars which will be more compressed
+
+        # converting to polars
+        curr_df_pl = pl.from_pandas(curr_df)
+        del curr_df
 
         #print("vector columns:")
         #for col in vector_columns:
@@ -298,22 +345,60 @@ if __name__ == "__main__":
         #    print(f"{col}: {str(type(curr_value))}")
         #print(1/0)
 
-        if all_df.empty:
-            all_df = curr_df
-        else:
-            # Drop columns that are entirely NA to avoid pandas FutureWarning during concat
-            print("dropping columns that are entirely NA...")
-            curr_df_no_all_na = curr_df.loc[:, curr_df.notna().any(axis=0)]
-            print(f"adding {curr_df.shape[0]} events to the existing {all_df.shape[0]} events in all_df...")
-            all_df = pd.concat([all_df, curr_df_no_all_na])
-        all_df.reset_index(drop=True, inplace=True)
+        print("TEMPORARY: NOT CONCATENATING POLARS DATAFRAMES")
 
-    if len(all_df) == 0:
+        print(f"curr_df_pl size: {curr_df_pl.estimated_size() / 1e9:.2f} GB")
+
+        # save curr_df_pl to a parquet file
+        curr_df_pl.write_parquet(f"{intermediate_files_location}/curr_df_pl_{file_num}.parquet")
+
+        print("saved")
+
+        del curr_df_pl
+
+        """
+
+        # check if polars dataframe is empty
+        if all_df_pl.is_empty():
+            all_df_pl = curr_df_pl
+            del curr_df_pl
+        else:
+            print(f"concatenating polars dataframes, adding {curr_df_pl.height} events to the existing {all_df_pl.height} events in all_df_pl...")
+
+            curr_df_pl = curr_df_pl.with_columns([
+                pl.col(pl.Float64).cast(pl.Float32)
+            ])
+            all_df_pl = all_df_pl.with_columns([
+                pl.col(pl.Float64).cast(pl.Float32)
+            ])
+            curr_df_pl = curr_df_pl.with_columns([
+                pl.col(pl.Int32).cast(pl.Int64)
+            ])
+            all_df_pl = all_df_pl.with_columns([
+                pl.col(pl.Int32).cast(pl.Int64)
+            ])
+
+            aligned = align_columns_for_concat([curr_df_pl, all_df_pl])
+            print(f"curr_df_pl size: {curr_df_pl.estimated_size() / 1e9:.2f} GB")
+            print(f"all_df_pl size: {all_df_pl.estimated_size() / 1e9:.2f} GB")
+            del curr_df_pl
+            del all_df_pl
+
+            all_df_pl = pl.concat(aligned, how="vertical")
+            del aligned
+            print(f"all_df_pl size after concatenation: {all_df_pl.estimated_size() / 1e9:.2f} GB")
+        """
+
+    if all_df_pl.is_empty():
         raise ValueError("No events in the dataframe!")
     
-    del curr_df # should save a bit of memory
+    print(f"finished looping over root files, all_df_pl.shape={all_df_pl.height}")
 
-    print(f"finished looping over root files, all_df.shape={all_df.shape}")
+    print("converting polars dataframe back to pandas dataframe...")
+    print(f"all_df_pl size in polars before conversion: {all_df_pl.estimated_size() / 1e9} GB")
+    all_df = all_df_pl.to_pandas()
+    print(f"all_df size in pandas after conversion: {all_df.memory_usage(deep=True).sum() / 1e9} GB")
+    del all_df_pl
 
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
@@ -345,9 +430,6 @@ if __name__ == "__main__":
         file_RSEs.append(file_RSE)
     assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/run/subrun/event!"
 
-    print("compressing dataframe by changing column dtypes...")
-    all_df = compress_df(all_df)
-
     print(f"saving {intermediate_files_location}/presel_df_train_vars.pkl...", end="", flush=True)
     start_time = time.time()
     presel_df = all_df.query("wc_kine_reco_Enu > 0")
@@ -357,7 +439,7 @@ if __name__ == "__main__":
     file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.pkl") / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
 
-    print(f"saving {intermediate_files_location}/intermediate_files/all_df.pkl...", end="", flush=True)
+    print(f"saving {intermediate_files_location}/all_df.pkl...", end="", flush=True)
     start_time = time.time()
     # remove the large number of WC training-only-variables for a smaller file size
     remove_columns = wc_training_only_vars

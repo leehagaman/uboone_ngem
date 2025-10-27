@@ -260,8 +260,8 @@ def do_wc_postprocessing(df):
         truth_mothers = df["wc_truth_mother"].to_numpy()
         truth_startMomentums = df["wc_truth_startMomentum"].to_numpy()
         for i in tqdm(range(df.shape[0]), desc="Adding WC truth particle variables", mininterval=10):
-            max_true_prim_proton_energy = -1
-            sum_true_prim_proton_energy = 0
+            max_true_prim_proton_energy = -1.
+            sum_true_prim_proton_energy = 0.
             max_shower_energy = -1.
             max_shower_costheta = -2.
             second_max_shower_energy = -1.
@@ -1227,7 +1227,7 @@ def do_lantern_postprocessing(df):
 
         max_shower_RecoE = 0
 
-        max_photon_shower_RecoE = 0
+        max_photon_shower_RecoE = 0.
         max_photon_shower_PhScore = np.nan
         max_photon_shower_ElScore = np.nan
         max_photon_shower_MuScore = np.nan
@@ -1264,7 +1264,7 @@ def do_lantern_postprocessing(df):
         second_max_photon_shower_StartDirY = np.nan
         second_max_photon_shower_StartDirZ = np.nan
 
-        max_electron_shower_RecoE = 0
+        max_electron_shower_RecoE = 0.
         max_electron_shower_PhScore = np.nan
         max_electron_shower_ElScore = np.nan
         max_electron_shower_MuScore = np.nan
@@ -1295,7 +1295,7 @@ def do_lantern_postprocessing(df):
         second_max_electron_shower_CosThetaY = np.nan
         second_max_electron_shower_DistToVtx = np.nan
 
-        max_nonprimary_shower_RecoE = 0
+        max_nonprimary_shower_RecoE = 0.
         max_nonprimary_shower_PhScore = np.nan
         max_nonprimary_shower_ElScore = np.nan
         max_nonprimary_shower_MuScore = np.nan
@@ -2283,6 +2283,8 @@ def do_combined_postprocessing(df):
 
 def remove_vector_variables(df):
 
+    print("removing vector variables...")
+
     df["wc_reco_muonMomentum_0"] = df["wc_reco_muonMomentum"].apply(lambda x: x[0])
     df["wc_reco_muonMomentum_1"] = df["wc_reco_muonMomentum"].apply(lambda x: x[1])
     df["wc_reco_muonMomentum_2"] = df["wc_reco_muonMomentum"].apply(lambda x: x[2])
@@ -2299,15 +2301,15 @@ def remove_vector_variables(df):
         df["wc_truth_muonMomentum_2"] = df["wc_truth_muonMomentum"].apply(lambda x: x[2])
         df["wc_truth_muonMomentum_3"] = df["wc_truth_muonMomentum"].apply(lambda x: x[3])
 
-    print("removing vector variables...")
-
     save_columns = [col for col in df.columns if col not in vector_columns]
     return df[save_columns]
 
 def compress_df(df):
 
+    print("compressing dataframe by changing column dtypes...")
+
     # ignoring overflow warnings, we expect that occassionally
-    with warnings.catch_warnings():
+    """with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
 
         for c in df.select_dtypes("float64"):
@@ -2315,10 +2317,14 @@ def compress_df(df):
 
         for c in df.select_dtypes("int64"):
             df[c] = pd.to_numeric(df[c], downcast="integer")
+    """
 
     for c in df.select_dtypes("object"):
         unique_ratio = df[c].nunique() / len(df)
         if unique_ratio < 0.5:
             df[c] = df[c].astype("category")
+
+    # dropping entirely NA columns to avoid pandas FutureWarning during concat
+    #df = df.loc[:, df.notna().any(axis=0)]
 
     return df

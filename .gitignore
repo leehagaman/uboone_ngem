@@ -7,5 +7,5 @@ __pycache__/
 *.jpg
 *.jpeg
 *.pdf
-nohup.out
-download_nohup.out
+*.parquet
+*.out
