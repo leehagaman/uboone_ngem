@@ -94,14 +94,12 @@ if __name__ == "__main__":
     preselected_num_events = presel_df.shape[0]
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 
-    x = presel_df[training_vars].to_numpy()
-    w = presel_df["wc_net_weight"].to_numpy()
-
     num_categories = len(signal_category_labels)
     print(f"{num_categories=}")
 
     presel_train_df = presel_df.query("used_for_training == True")
     presel_test_df = presel_df.query("used_for_testing == True")
+    del presel_df
 
     x_train = presel_train_df[training_vars].to_numpy()
     x_train = x_train.astype(np.float64)
@@ -152,7 +150,7 @@ if __name__ == "__main__":
         sample_weight=w_train,
         eval_set=eval_set,
         sample_weight_eval_set=eval_weights,
-        verbose=20
+        verbose=10
     )
 
     if model.best_iteration is not None:

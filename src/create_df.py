@@ -272,6 +272,11 @@ if __name__ == "__main__":
     if args.frac_events < 1.0:
         print(f"Loading {args.frac_events} fraction of events from each file")
 
+    for file in os.listdir(intermediate_files_location):
+        if file.endswith(".parquet"):
+            os.remove(f"{intermediate_files_location}/{file}")
+    print("Deleted intermediate parquet files")
+
     print("Starting loop over root files...")
     all_df_pl = pl.DataFrame()
     all_ncpi0_POTs = []
@@ -331,63 +336,27 @@ if __name__ == "__main__":
         curr_df_pl = pl.from_pandas(curr_df)
         del curr_df
 
-        #print("vector columns:")
-        #for col in vector_columns:
-        #    print(f"    {col}")
-
-        # check for vector variables still in the dataframe
-        #for col in curr_df.columns:
-        #    # load the value for just the first event, check if it's a list or awkward array or numpy array
-        #    curr_value = curr_df[col].iloc[0]
-        #    curr_type = str(type(curr_value))
-        #    if curr_type == "<class 'numpy.int64'>" or curr_type == "<class 'numpy.float64'>" or curr_type == "<class 'numpy.bool'>" or curr_type == "<class 'numpy.float32'>":
-        #        continue
-        #    print(f"{col}: {str(type(curr_value))}")
-        #print(1/0)
-
-        print("TEMPORARY: NOT CONCATENATING POLARS DATAFRAMES")
+        curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Float64).cast(pl.Float32)])
+        curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Int32).cast(pl.Int64)])
 
         print(f"curr_df_pl size: {curr_df_pl.estimated_size() / 1e9:.2f} GB")
-
-        # save curr_df_pl to a parquet file
         curr_df_pl.write_parquet(f"{intermediate_files_location}/curr_df_pl_{file_num}.parquet")
-
-        print("saved")
-
+        print("saved to parquet file")
         del curr_df_pl
 
-        """
+    print("loading polars dataframes from parquet files...")
 
-        # check if polars dataframe is empty
-        if all_df_pl.is_empty():
-            all_df_pl = curr_df_pl
-            del curr_df_pl
-        else:
-            print(f"concatenating polars dataframes, adding {curr_df_pl.height} events to the existing {all_df_pl.height} events in all_df_pl...")
-
-            curr_df_pl = curr_df_pl.with_columns([
-                pl.col(pl.Float64).cast(pl.Float32)
-            ])
-            all_df_pl = all_df_pl.with_columns([
-                pl.col(pl.Float64).cast(pl.Float32)
-            ])
-            curr_df_pl = curr_df_pl.with_columns([
-                pl.col(pl.Int32).cast(pl.Int64)
-            ])
-            all_df_pl = all_df_pl.with_columns([
-                pl.col(pl.Int32).cast(pl.Int64)
-            ])
-
-            aligned = align_columns_for_concat([curr_df_pl, all_df_pl])
-            print(f"curr_df_pl size: {curr_df_pl.estimated_size() / 1e9:.2f} GB")
-            print(f"all_df_pl size: {all_df_pl.estimated_size() / 1e9:.2f} GB")
-            del curr_df_pl
-            del all_df_pl
-
-            all_df_pl = pl.concat(aligned, how="vertical")
-            del aligned
-            print(f"all_df_pl size after concatenation: {all_df_pl.estimated_size() / 1e9:.2f} GB")
-        """
+    pl_dfs = []
+    for file in os.listdir(intermediate_files_location):
+        if file.endswith(".parquet"):
+            print(f"Reading {file}")
+            pl_dfs.append(pl.read_parquet(f"{intermediate_files_location}/{file}"))
+            print(f"Read {file}, estimated size: {pl_dfs[-1].estimated_size() / 1e9:.2f} GB")
+    aligned_pl_dfs = align_columns_for_concat(pl_dfs)
+    del pl_dfs
+    all_df_pl = pl.concat(aligned_pl_dfs, how="vertical")
+    del aligned_pl_dfs
+    print(f"all_df_pl size: {all_df_pl.estimated_size() / 1e9:.2f} GB")
 
     if all_df_pl.is_empty():
         raise ValueError("No events in the dataframe!")
@@ -397,8 +366,8 @@ if __name__ == "__main__":
     print("converting polars dataframe back to pandas dataframe...")
     print(f"all_df_pl size in polars before conversion: {all_df_pl.estimated_size() / 1e9} GB")
     all_df = all_df_pl.to_pandas()
-    print(f"all_df size in pandas after conversion: {all_df.memory_usage(deep=True).sum() / 1e9} GB")
     del all_df_pl
+    print(f"all_df size in pandas after conversion: {all_df.memory_usage(deep=True).sum() / 1e9} GB")
 
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 

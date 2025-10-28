@@ -22,6 +22,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
     summed_POT_nue_cc = pot_dic['nue_overlay'] + pot_dic['nu_overlay']
 
+    print("creating masks...")
+
     # Get masks for different event types
     nc_pi0_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nc_pi0_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
     nu_overlay_true_nc_1pi0_mask = (df["filetype"] == 'nu_overlay') & (df["wc_truth_isCC"] == 0) & (df["wc_truth_NprimPio"] == 1) & (df["wc_truth_vtxInside"] == 1)
@@ -38,6 +40,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     del1g_mask = df["filetype"] == 'delete_one_gamma_overlay'
     iso1g_mask = df["filetype"] == 'isotropic_one_gamma_overlay'
     data_mask = df["filetype"] == 'data'
+
+    print("adding wc_event_type_POT variable...")
 
     # By default, set the event type POTs to the file POTs
     df["wc_event_type_POT"] = np.nan
@@ -57,8 +61,13 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
                      | nue_overlay_true_nue_cc_mask | nu_overlay_true_nue_cc_mask
                      | nu_overlay_other_mask
                      | dirt_mask | ext_mask | del1g_mask | iso1g_mask | data_mask)
-    df = df[combined_mask].copy()
+
+    print("applying combined mask...")
+    df.drop(df.index[~combined_mask], inplace=True)
+    print("resetting index...")
     df.reset_index(drop=True, inplace=True)
+
+    print("adding net weights...")
 
     filetype_arr = df["filetype"].to_numpy()
     weight_cv_arr = df["wc_weight_cv"].to_numpy()
@@ -2262,13 +2271,13 @@ def do_combined_postprocessing(df):
     lantern_vtx_y[lantern_vtx_y == -999] = np.nan
     lantern_vtx_z[lantern_vtx_z == -999] = np.nan
 
-    wc_pandora_dist = np.sqrt((wc_vtx_x - pandora_vtx_x)**2 + (wc_vtx_y - pandora_vtx_y)**2 + (wc_vtx_z - pandora_vtx_z)**2)
-    #wc_pandora_sce_dist = np.sqrt((wc_vtx_x - pandora_vtx_sce_x)**2 + (wc_vtx_y - pandora_vtx_sce_y)**2 + (wc_vtx_z - pandora_vtx_sce_z)**2)
-
-    wc_lantern_dist = np.sqrt((wc_vtx_x - lantern_vtx_x)**2 + (wc_vtx_y - lantern_vtx_y)**2 + (wc_vtx_z - lantern_vtx_z)**2)
-
-    lantern_pandora_dist = np.sqrt((lantern_vtx_x - pandora_vtx_x)**2 + (lantern_vtx_y - pandora_vtx_y)**2 + (lantern_vtx_z - pandora_vtx_z)**2)
-    #lantern_pandora_sce_dist = np.sqrt((lantern_vtx_x - pandora_vtx_sce_x)**2 + (lantern_vtx_y - pandora_vtx_sce_y)**2 + (lantern_vtx_z - pandora_vtx_sce_z)**2)
+    # compute distances using sqrt-of-squares while suppressing overflow warnings
+    with np.errstate(over='ignore', invalid='ignore'):
+        wc_pandora_dist = np.sqrt((wc_vtx_x - pandora_vtx_x)**2 + (wc_vtx_y - pandora_vtx_y)**2 + (wc_vtx_z - pandora_vtx_z)**2)
+        #wc_pandora_sce_dist = np.sqrt((wc_vtx_x - pandora_vtx_sce_x)**2 + (wc_vtx_y - pandora_vtx_sce_y)**2 + (wc_vtx_z - pandora_vtx_sce_z)**2)
+        wc_lantern_dist = np.sqrt((wc_vtx_x - lantern_vtx_x)**2 + (wc_vtx_y - lantern_vtx_y)**2 + (wc_vtx_z - lantern_vtx_z)**2)
+        lantern_pandora_dist = np.sqrt((lantern_vtx_x - pandora_vtx_x)**2 + (lantern_vtx_y - pandora_vtx_y)**2 + (lantern_vtx_z - pandora_vtx_z)**2)
+        #lantern_pandora_sce_dist = np.sqrt((lantern_vtx_x - pandora_vtx_sce_x)**2 + (lantern_vtx_y - pandora_vtx_sce_y)**2 + (lantern_vtx_z - pandora_vtx_sce_z)**2)
 
     distances_df = pd.DataFrame({
         "wc_pandora_dist": wc_pandora_dist,
