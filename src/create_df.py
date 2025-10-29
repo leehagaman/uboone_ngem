@@ -6,83 +6,19 @@ import polars as pl
 import os
 import time
 import argparse
-import threading
+
 
 from ntuple_variables.variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
 from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
-from postprocessing import remove_vector_variables, compress_df
+from postprocessing import remove_vector_variables
 
 from file_locations import data_files_location, intermediate_files_location
 
-def align_columns_for_concat(dfs):
-    # Find all columns across all DataFrames
-    all_cols = {col for df in dfs for col in df.columns}
-
-    # Build a mapping of column -> dtype (prefer from first df that has it)
-    dtype_map = {}
-    for df in dfs:
-        for col, dtype in zip(df.columns, df.dtypes):
-            dtype_map.setdefault(col, dtype)
-
-    aligned = []
-    for df in dfs:
-        missing = all_cols - set(df.columns)
-        if missing:
-            # Add missing columns as nulls, cast to the desired dtype
-            defaults = [
-                pl.lit(None).cast(dtype_map[c]).alias(c)
-                for c in missing
-            ]
-            df = df.with_columns(defaults)
-        # Ensure consistent column order
-        df = df.select(sorted(all_cols))
-        aligned.append(df)
-
-    return aligned
-
-
-def _get_system_memory_usage_gb():
-    try:
-        with open("/proc/meminfo", "r") as f:
-            lines = f.readlines()
-        meminfo_kb = {}
-        for line in lines:
-            parts = line.split(":")
-            if len(parts) < 2:
-                continue
-            key = parts[0]
-            value_tokens = parts[1].strip().split()
-            if not value_tokens:
-                continue
-            # Values are reported in kB
-            meminfo_kb[key] = int(value_tokens[0])
-
-        total_kb = meminfo_kb.get("MemTotal")
-        avail_kb = meminfo_kb.get("MemAvailable")
-        if total_kb is None or avail_kb is None:
-            return None
-        used_kb = total_kb - avail_kb
-        used_gb = used_kb / (1024 * 1024)
-        total_gb = total_kb / (1024 * 1024)
-        percent = (used_kb / total_kb) * 100.0
-        return used_gb, total_gb, percent
-    except Exception:
-        return None
-
-def _memory_logger_loop(interval_seconds: int = 10):
-    while True:
-        usage = _get_system_memory_usage_gb()
-        if usage is not None:
-            used_gb, total_gb, percent = usage
-            print(f"[mem] {used_gb:5.2f}/{total_gb:5.2f} GB ({percent:5.1f}%)", flush=True)
-        time.sleep(interval_seconds)
-
-def start_memory_logger(interval_seconds: int = 10):
-    t = threading.Thread(target=_memory_logger_loop, args=(interval_seconds,), daemon=True)
-    t.start()
+from df_helpers import align_columns_for_concat, compress_df
+from memory_monitoring import start_memory_logger
 
 def process_root_file(filename, frac_events = 1):
 

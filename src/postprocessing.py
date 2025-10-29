@@ -2312,28 +2312,3 @@ def remove_vector_variables(df):
 
     save_columns = [col for col in df.columns if col not in vector_columns]
     return df[save_columns]
-
-def compress_df(df):
-
-    print("compressing dataframe by changing column dtypes...")
-
-    # ignoring overflow warnings, we expect that occassionally
-    """with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-
-        for c in df.select_dtypes("float64"):
-            df[c] = df[c].astype("float32")
-
-        for c in df.select_dtypes("int64"):
-            df[c] = pd.to_numeric(df[c], downcast="integer")
-    """
-
-    for c in df.select_dtypes("object"):
-        unique_ratio = df[c].nunique() / len(df)
-        if unique_ratio < 0.5:
-            df[c] = df[c].astype("category")
-
-    # dropping entirely NA columns to avoid pandas FutureWarning during concat
-    #df = df.loc[:, df.notna().any(axis=0)]
-
-    return df
