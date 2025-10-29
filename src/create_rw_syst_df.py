@@ -159,6 +159,7 @@ def process_root_file(filename, frac_events = 1):
     print("loading systematic weights using ROOT c++...")
     # Using ROOT c++ to load the systematic weights and convert them to python
     if "genie" in args.weight_types:
+        print("loading genie weights...")
         weights_genie = get_weights(
             f"{data_files_location}/{filename}",
             branch_name="weightsGenie",
@@ -167,7 +168,9 @@ def process_root_file(filename, frac_events = 1):
         curr_weights_df = curr_weights_df.with_columns(
             pl.Series(name="weights_genie", values=weights_genie, dtype=pl.List(pl.Float32))
         )
+        del weights_genie
     if "flux" in args.weight_types:
+        print("loading flux weights...")
         weights_flux = get_weights(
             f"{data_files_location}/{filename}",
             branch_name="weightsFlux",
@@ -176,7 +179,9 @@ def process_root_file(filename, frac_events = 1):
         curr_weights_df = curr_weights_df.with_columns(
             pl.Series(name="weights_flux", values=weights_flux, dtype=pl.List(pl.Float32))
         )
+        del weights_flux
     if "reint" in args.weight_types:
+        print("loading reint weights...")
         weights_reint = get_weights(
             f"{data_files_location}/{filename}",
             branch_name="weightsReint",
@@ -185,7 +190,7 @@ def process_root_file(filename, frac_events = 1):
         curr_weights_df = curr_weights_df.with_columns(
             pl.Series(name="weights_reint", values=weights_reint, dtype=pl.List(pl.Float32))
         )
-
+        del weights_reint
     previous_num_events = curr_weights_df.height
     curr_weights_df = curr_weights_df.filter(pl.col("wc_kine_reco_Enu") > 0)
     print(f"kept {curr_weights_df.height}/{previous_num_events} events with after preselection using wc_kine_reco_Enu > 0")
