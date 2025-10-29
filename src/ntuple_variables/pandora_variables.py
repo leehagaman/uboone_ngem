@@ -226,7 +226,7 @@ pandora_scalar_vars = [
     "CosmicDirAll2DEnds",
     "CosmicDirAll2DOvlp",
     "CosmicDirAll3D",
-    "_closestNuCosmicDist",
+    #"_closestNuCosmicDist", # this uses the CRT (run dependent), and has bad data-MC agreement!
     "slclustfrac",
     # "nObjHits {U,V,Y}", # doesn't exist in file!
     "tksh_angle",
@@ -346,4 +346,10 @@ pandora_vars = pandora_non_BDT_vars + pandora_scalar_vars + pandora_vector_vars
 pandora_postprocessing_vars = []
 
 pandora_training_vars = [f"pandora_{var}" for var in pandora_scalar_vars] + pandora_postprocessing_vars
+
+pandora_scalar_training_vars = [f"pandora_{var}" for var in pandora_scalar_vars]
+pandora_vector_training_vars = [f"pandora_{var}" for var in pandora_vector_vars]
+
+pandora_scalar_first_half_training_vars = pandora_scalar_training_vars[:len(pandora_scalar_training_vars)//2]
+pandora_scalar_second_half_training_vars = pandora_scalar_training_vars[len(pandora_scalar_training_vars)//2:]
 

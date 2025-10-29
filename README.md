@@ -48,7 +48,18 @@ python src/train.py --name nue_only_lantern_key_training --training_vars lantern
 python src/train.py --name nue_only_lantern_key_2_training --training_vars lantern_key_2_vars --signal_categories nue_only # good performance, data/pred consistent
 python src/train.py --name nue_only_lantern_key_other_2_training --training_vars lantern_key_other_2_vars --signal_categories nue_only
 
-python src/train.py --name with_numu_generic_pandora_glee
+python src/train.py --name all_vars
+
+python src/train.py --name with_numu_generic_pandora --training_vars pandora
+python src/train.py --name with_numu_generic_glee --training_vars glee
+python src/train.py --name only_pandora_scalars --training_vars pandora_scalars
+python src/train.py --name only_wc_lantern_combined --training_vars only_wc_lantern_combined
+
+python src/train.py --name only_pandora_scalars_first_half --training_vars pandora_scalars_first_half
+python src/train.py --name only_pandora_scalars_second_half --training_vars pandora_scalars_second_half
+
+
+nohup python -u src/train.py --name all_vars > train_nohup.out 2>&1 &
 
 
 ```

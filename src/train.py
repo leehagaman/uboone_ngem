@@ -12,7 +12,8 @@ import argparse
 import time
 
 from signal_categories import topological_category_labels, train_category_labels
-from ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars
+from ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars, glee_training_vars, pandora_training_vars, pandora_scalar_training_vars, combined_postprocessing_training_vars
+from ntuple_variables.pandora_variables import pandora_scalar_first_half_training_vars, pandora_scalar_second_half_training_vars
 
 from file_locations import intermediate_files_location
 
@@ -41,6 +42,18 @@ if __name__ == "__main__":
         training_vars = lantern_training_vars
     elif args.training_vars == "lantern_first_half":
         training_vars = lantern_training_vars[:len(lantern_training_vars)//2]
+    elif args.training_vars == "glee":
+        training_vars = glee_training_vars
+    elif args.training_vars == "pandora":
+        training_vars = pandora_training_vars
+    elif args.training_vars == "pandora_scalars":
+        training_vars = pandora_scalar_training_vars
+    elif args.training_vars == "only_wc_lantern_combined":
+        training_vars = wc_training_vars + lantern_training_vars + combined_postprocessing_training_vars
+    elif args.training_vars == "pandora_scalars_first_half":
+        training_vars = pandora_scalar_first_half_training_vars
+    elif args.training_vars == "pandora_scalars_second_half":
+        training_vars = pandora_scalar_second_half_training_vars
     else:
         raise ValueError(f"Invalid training_vars: {args.training_vars}")
 
