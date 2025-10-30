@@ -24,7 +24,8 @@ def get_vals(df, var):
 
 def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bins=None, var=None, display_var=None, breakdown_type="del1g_detailed", 
         iso1g_norm_factor=None, del1g_norm_factor=None, title=None, include_overflow=True, include_underflow=False, log_x=False, log_y=False, savename=None,
-        plot_rw_systematics=False, dont_use_systematic_cache=False):
+        plot_rw_systematics=False, dont_use_systematic_cache=False,
+        include_data=True, additional_scaling_factor=1.0):
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -116,7 +117,7 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
     for breakdown_i, breakdown_label in enumerate(breakdown_labels):
         curr_df = pred_sel_df.filter(breakdown_queries[breakdown_i])
         vals = get_vals(curr_df, var)
-        breakdown_counts.append(np.histogram(vals, weights=curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0])
+        breakdown_counts.append(np.histogram(vals, weights=curr_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0])
         unweighted_breakdown_counts.append(np.histogram(vals, bins=bins)[0])
 
     data_counts = np.histogram(get_vals(data_sel_df, var), bins=bins)[0]
@@ -178,15 +179,18 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
 
     max_pred = np.max(bottom)
     max_data = np.max(data_counts)
-
-    plt.errorbar(display_bin_centers, data_counts, yerr=np.sqrt(data_counts), fmt="o", color="k", lw=0.5, 
-                capsize=2, capthick=1, markersize=2, label=f"3.33e19 POT Run 4b Data ({np.sum(data_counts)})")
+    if include_data:
+        plt.errorbar(display_bin_centers, data_counts, yerr=np.sqrt(data_counts), fmt="o", color="k", lw=0.5, 
+                    capsize=2, capthick=1, markersize=2, label=f"3.33e19 POT Run 4b Data ({np.sum(data_counts)})")
 
     if display_var is None:
         plt.xlabel(var)
     else:
         plt.xlabel(display_var)
-    plt.ylabel("Counts (weighted\nto 3.33e19 POT)")
+    if additional_scaling_factor != 1.0:
+        plt.ylabel(f"Counts (weighted\nto {additional_scaling_factor*3.33e19:.2e} POT)")
+    else:
+        plt.ylabel("Counts (weighted\nto 3.33e19 POT)")
     plt.title(title)
     plt.xlim(display_bins[0], display_bins[-1])
     if log_x:

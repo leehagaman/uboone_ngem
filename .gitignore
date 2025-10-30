@@ -9,3 +9,4 @@ __pycache__/
 *.pdf
 *.parquet
 *.out
+ipynb_notebooks/AutoDict_map*
