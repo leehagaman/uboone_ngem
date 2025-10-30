@@ -7,9 +7,6 @@ import sys
 import os
 import time
 import argparse
-import ast
-import tempfile
-import subprocess
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
@@ -21,90 +18,7 @@ from file_locations import data_files_location, intermediate_files_location
 from df_helpers import align_columns_for_concat, compress_df
 from memory_monitoring import start_memory_logger
 
-def _cxx_escape(s: str) -> str:
-    return s.replace('\\', '\\\\').replace('"', '\\"')
-
-def get_weights(
-    file_path: str,
-    tree_path: str = "nuselection/NeutrinoSelectionFilter",
-    branch_name: str = "weightsGenie",
-    max_entries: int = -1,
-    root_bin: str = "root",
-) -> list[list[int]]:
-    cpp_macro = r'''
-#include <TFile.h>
-#include <TTree.h>
-#include <TBranch.h>
-#include <TROOT.h>
-#include <TSystem.h>
-#include <vector>
-#include <iostream>
-
-void extract_vector_ushort(const char* filePath, const char* treePath, const char* branchName, Long64_t maxEntries=-1) {
-    TFile* f = TFile::Open(filePath);
-    if (!f || f->IsZombie()) { std::cout << "__ERROR__ Cannot open file\n"; return; }
-    TObject* obj = f->Get(treePath);
-    TTree* t = dynamic_cast<TTree*>(obj);
-    if (!t) { std::cout << "__ERROR__ Tree not found at path\n"; return; }
-    TBranch* br = t->GetBranch(branchName);
-    if (!br) { std::cout << "__ERROR__ Branch not found\n"; return; }
-
-    std::vector<unsigned short>* vec = nullptr;
-    t->SetBranchAddress(branchName, &vec);
-
-    Long64_t nentries = t->GetEntries();
-    if (maxEntries >= 0 && maxEntries < nentries) nentries = maxEntries;
-
-    std::cout << "__BEGIN__\n";
-    for (Long64_t i = 0; i < nentries; ++i) {
-        t->GetEntry(i);
-        if (!vec) { std::cout << "[]\n"; continue; }
-        std::cout << "[";
-        for (size_t j = 0; j < vec->size(); ++j) {
-            if (j) std::cout << ",";
-            std::cout << static_cast<unsigned int>(vec->at(j));
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "__END__\n";
-}
-'''
-    file_path_cxx = _cxx_escape(os.path.abspath(file_path))
-    tree_path_cxx = _cxx_escape(tree_path)
-    branch_name_cxx = _cxx_escape(branch_name)
-
-    with tempfile.TemporaryDirectory() as td:
-        macro_path = os.path.join(td, "extract_vector_ushort.C")
-        with open(macro_path, "w") as f:
-            f.write(cpp_macro)
-
-        arg_expr = f'{macro_path}("{file_path_cxx}","{tree_path_cxx}","{branch_name_cxx}",{int(max_entries)})'
-        cmd = [root_bin, "-l", "-b", "-q", arg_expr]
-
-        proc = subprocess.run(cmd, text=True, capture_output=True)
-        combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
-
-        begin = "__BEGIN__"
-        end = "__END__"
-        if begin not in combined or end not in combined:
-            raise RuntimeError(f"Failed to parse ROOT output.\nReturn code: {proc.returncode}\n--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}")
-
-        payload = combined.split(begin, 1)[1].split(end, 1)[0]
-        rows: list[list[int]] = []
-        for line in payload.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                arr = ast.literal_eval(line)
-                if isinstance(arr, list):
-                    # factor of 1000 for integer -> float conversion exists here: 
-                    # https://github.com/ubneutrinos/searchingfornues/blob/c1d8558e1990d9553b874daf9807c15e6ad8dc5e/Selection/AnalysisTools/EventWeightTree_tool.cc#L245
-                    rows.append([np.float32(int(x) / 1000.0) for x in arr])
-            except Exception:
-                pass
-        return rows
-
+from systematics import get_rw_sys_weights_dic
 
 def process_root_file(filename, frac_events = 1):
 
@@ -157,40 +71,17 @@ def process_root_file(filename, frac_events = 1):
     del dic
 
     print("loading systematic weights using ROOT c++...")
-    # Using ROOT c++ to load the systematic weights and convert them to python
-    if "genie" in args.weight_types:
-        print("loading genie weights...")
-        weights_genie = get_weights(
-            f"{data_files_location}/{filename}",
-            branch_name="weightsGenie",
-            max_entries=n_events,
-        )
-        curr_weights_df = curr_weights_df.with_columns(
-            pl.Series(name="weights_genie", values=weights_genie, dtype=pl.List(pl.Float32))
-        )
-        del weights_genie
-    if "flux" in args.weight_types:
-        print("loading flux weights...")
-        weights_flux = get_weights(
-            f"{data_files_location}/{filename}",
-            branch_name="weightsFlux",
-            max_entries=n_events,
-        )
-        curr_weights_df = curr_weights_df.with_columns(
-            pl.Series(name="weights_flux", values=weights_flux, dtype=pl.List(pl.Float32))
-        )
-        del weights_flux
-    if "reint" in args.weight_types:
-        print("loading reint weights...")
-        weights_reint = get_weights(
-            f"{data_files_location}/{filename}",
-            branch_name="weightsReint",
-            max_entries=n_events,
-        )
-        curr_weights_df = curr_weights_df.with_columns(
-            pl.Series(name="weights_reint", values=weights_reint, dtype=pl.List(pl.Float32))
-        )
-        del weights_reint
+    all_event_weights = get_rw_sys_weights_dic(
+        f"{data_files_location}/{filename}",
+        max_entries=n_events,
+    )
+    print("adding systematic weights to dataframe...")
+
+    systematic_keys = list(all_event_weights[0].keys())
+    for k in systematic_keys:
+        weight_lists = [event_dict[k] for event_dict in all_event_weights]
+        curr_weights_df = curr_weights_df.with_columns(pl.Series(name=k, values=weight_lists, dtype=pl.List(pl.Float32)))
+
     previous_num_events = curr_weights_df.height
     curr_weights_df = curr_weights_df.filter(pl.col("wc_kine_reco_Enu") > 0)
     print(f"kept {curr_weights_df.height}/{previous_num_events} events with after preselection using wc_kine_reco_Enu > 0")
@@ -267,6 +158,9 @@ if __name__ == "__main__":
     # so it can be used to add columns to future dataframes with missing values
     
     for file_num, filename in enumerate(filenames):
+
+        if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
+            continue
 
         if "UNUSED" in filename or "older_downloads" in filename:
             continue

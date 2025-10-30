@@ -10,3 +10,4 @@ __pycache__/
 *.parquet
 *.out
 ipynb_notebooks/AutoDict_map*
+AutoDict_map*
