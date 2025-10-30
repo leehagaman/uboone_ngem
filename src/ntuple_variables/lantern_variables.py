@@ -72,7 +72,6 @@ lantern_postprocessing_training_vars = [
     # shower variables
     "lantern_max_shower_RecoE",
     "lantern_max_electron_shower_RecoE",
-    "lantern_max_photon_shower_RecoE",
     "lantern_max_electron_shower_PhScore",
     "lantern_max_electron_shower_ElScore",
     "lantern_max_electron_shower_MuScore",

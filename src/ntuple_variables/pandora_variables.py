@@ -64,7 +64,6 @@ pandora_scalar_vars = [
     "SliceCaloEnergy2",
 
     # multiplicities
-    "nslice",
     "n_showers",
     "n_showers_contained",
     "n_tracks",
@@ -229,7 +228,6 @@ pandora_scalar_vars = [
     #"_closestNuCosmicDist", # this uses the CRT (run dependent), and has bad data-MC agreement!
     "slclustfrac",
     # "nObjHits {U,V,Y}", # doesn't exist in file!
-    "tksh_angle",
     # "tk1sh1_angle_alltk", # doesn't exist in file!
     "secondshower_U_03_ncluster",
     "secondshower_U_10_ncluster",

@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+import polars as pl
 import xgboost as xgb
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
@@ -86,47 +86,71 @@ if __name__ == "__main__":
 
     print("loading dataframe...")
 
-    all_df = pd.read_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
+    all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
 
     # splitting into train and test, then re-making all_df
-    no_data_df = all_df.query("filetype != 'data'").copy().reset_index()
-    data_df = all_df.query("filetype == 'data'").copy().reset_index()
-    train_indices, test_indices = train_test_split(np.arange(len(no_data_df)), test_size=0.5, random_state=42)
-    data_df["used_for_training"] = False
-    data_df["used_for_testing"] = False
-    no_data_df["used_for_training"] = False
-    no_data_df["used_for_testing"] = False
-    no_data_df.loc[train_indices, "used_for_training"] = True
-    no_data_df.loc[test_indices, "used_for_testing"] = True
-    all_df = pd.concat([no_data_df, data_df])
+    no_data_df = all_df.filter(pl.col("filetype") != "data")
+    data_df = all_df.filter(pl.col("filetype") == "data")
+    train_indices, test_indices = train_test_split(np.arange(no_data_df.height), test_size=0.5, random_state=42)
+    
+    # Create boolean arrays for train/test flags
+    used_for_training = np.zeros(no_data_df.height, dtype=bool)
+    used_for_testing = np.zeros(no_data_df.height, dtype=bool)
+    used_for_training[train_indices] = True
+    used_for_testing[test_indices] = True
+    
+    no_data_df = no_data_df.with_columns([
+        pl.Series("used_for_training", used_for_training),
+        pl.Series("used_for_testing", used_for_testing)
+    ])
+    
+    data_df = data_df.with_columns([
+        pl.lit(False).alias("used_for_training"),
+        pl.lit(False).alias("used_for_testing")
+    ])
+    
+    all_df = pl.concat([no_data_df, data_df])
 
     # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
     # (should already be applied in the presel_df_train_vars.pkl file)
-    original_num_events = no_data_df.shape[0]
-    presel_df = no_data_df.query("wc_kine_reco_Enu > 0")
-    preselected_num_events = presel_df.shape[0]
+    original_num_events = no_data_df.height
+    presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+    preselected_num_events = presel_df.height
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 
     num_categories = len(signal_category_labels)
     print(f"{num_categories=}")
 
-    presel_train_df = presel_df.query("used_for_training == True")
-    presel_test_df = presel_df.query("used_for_testing == True")
+    presel_train_df = presel_df.filter(pl.col("used_for_training") == True)
+    presel_test_df = presel_df.filter(pl.col("used_for_testing") == True)
     del presel_df
 
-    x_train = presel_train_df[training_vars].to_numpy()
+    # check for duplicates in training_vars, and print them
+    training_vars_set = set(training_vars)
+    if len(training_vars_set) != len(training_vars):
+        print("Duplicates in training_vars:")
+        for var in training_vars:
+            if training_vars.count(var) > 1:
+                print(var)
+        raise ValueError("Duplicates in training_vars!")
+
+    x_train = presel_train_df.select(training_vars).to_numpy()
     x_train = x_train.astype(np.float64)
     x_train[(x_train > 1e10) | (x_train < -1e10)] = np.nan
 
-    y_train = presel_train_df[signal_category_var].to_numpy()
-    w_train = presel_train_df["wc_net_weight"].to_numpy()
+    y_train = presel_train_df.select(signal_category_var).to_numpy()
+    y_train = y_train.flatten() if y_train.ndim > 1 else y_train
+    w_train = presel_train_df.select("wc_net_weight").to_numpy()
+    w_train = w_train.flatten() if w_train.ndim > 1 else w_train
 
-    x_test = presel_test_df[training_vars].to_numpy()
+    x_test = presel_test_df.select(training_vars).to_numpy()
     x_test = x_test.astype(np.float64)
     x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
 
-    y_test = presel_test_df[signal_category_var].to_numpy()
-    w_test = presel_test_df["wc_net_weight"].to_numpy()
+    y_test = presel_test_df.select(signal_category_var).to_numpy()
+    y_test = y_test.flatten() if y_test.ndim > 1 else y_test
+    w_test = presel_test_df.select("wc_net_weight").to_numpy()
+    w_test = w_test.flatten() if w_test.ndim > 1 else w_test
 
     num_training_vars = len(training_vars)
     print(f"{num_training_vars=}")
@@ -175,14 +199,14 @@ if __name__ == "__main__":
     print("Creating feature importance plot...")
     plt.style.use('default')
     plt.figure(figsize=(12, 8))
-    importance_df = pd.DataFrame({
+    importance_df = pl.DataFrame({
         'feature': training_vars,
         'importance': model.feature_importances_
     })
-    importance_df = importance_df.sort_values('importance', ascending=True)  # Sort ascending so largest bar is at top
+    importance_df = importance_df.sort('importance')  # Sort ascending so largest bar is at top
     top_20_df = importance_df.tail(20)
-    plt.barh(range(len(top_20_df)), top_20_df['importance'])
-    plt.yticks(range(len(top_20_df)), top_20_df['feature'])
+    plt.barh(range(len(top_20_df)), top_20_df['importance'].to_numpy())
+    plt.yticks(range(len(top_20_df)), top_20_df['feature'].to_list())
     plt.xlabel('Feature Importance')
     plt.title('XGBoost Feature Importance (Top 20)')
     plt.tight_layout()
@@ -302,23 +326,30 @@ if __name__ == "__main__":
 
     print("Creating prediction dataframe...")
     # Get predictions for all data (not just test set, not just presel)
-    x = all_df[training_vars].to_numpy()
+    x = all_df.select(training_vars).to_numpy()
     x = x.astype(np.float64)
     x[np.isinf(x)] = np.nan
     all_probabilities = model.predict_proba(x)
-    prediction_df = pd.DataFrame()
-    prediction_df['filetype'] = all_df['filetype']
-    prediction_df['run'] = all_df['run']
-    prediction_df['subrun'] = all_df['subrun']
-    prediction_df['event'] = all_df['event']
-    prediction_df['used_for_training'] = all_df['used_for_training']
-    prediction_df['used_for_testing'] = all_df['used_for_testing']
+    
+    # Build prediction dataframe columns
+    prediction_cols = [
+        all_df.select("filetype"),
+        all_df.select("run"),
+        all_df.select("subrun"),
+        all_df.select("event"),
+        all_df.select("used_for_training"),
+        all_df.select("used_for_testing")
+    ]
     for i in range(n_categories):
-        prediction_df[f'prob_{train_category_labels[i]}'] = all_probabilities[:, i]
+        prediction_cols.append(pl.DataFrame({
+            f'prob_{train_category_labels[i]}': all_probabilities[:, i]
+        }))
+    
+    prediction_df = pl.concat(prediction_cols, how="horizontal")
 
     print("Saving predictions...")
-    prediction_df.to_pickle(output_dir / "predictions.pkl")
-    print(f"Saved predictions to: {output_dir / 'predictions.pkl'}")
+    prediction_df.write_parquet(output_dir / "predictions.parquet")
+    print(f"Saved predictions to: {output_dir / 'predictions.parquet'}")
 
     main_end_time = time.time()
     print(f"Total time to train and analyze the BDT: {main_end_time - main_start_time:.2f} seconds")

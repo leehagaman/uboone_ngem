@@ -27,6 +27,7 @@ This takes a bit of time, might want to run it in the background.
 
 ```
 python src/create_df.py -f 0.01 -m
+python src/create_df.py -f 0.01 -m --just_one_file
 nohup python -u src/create_df.py -m > nohup.out 2>&1 &
 
 python src/create_rw_syst_df.py -f 0.01
@@ -68,6 +69,7 @@ python src/train.py --name only_pandora_scalars_second_half --training_vars pand
 
 nohup python -u src/train.py --name all_vars > train_nohup.out 2>&1 &
 
+python src/train.py --name all_vars_small
 
 ```
 

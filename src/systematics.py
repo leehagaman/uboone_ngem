@@ -3,7 +3,7 @@ import numpy as np
 import os
 import hashlib
 from tqdm import tqdm
-from file_locations import covariance_cache_location
+from src.file_locations import covariance_cache_location
 
 import tempfile
 import subprocess

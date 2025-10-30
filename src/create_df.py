@@ -200,6 +200,8 @@ if __name__ == "__main__":
                         help="Fraction of events (and POT) to load from each file, in (0,1]. Default: 1.0")
     parser.add_argument("-m", "--memory_logger", action="store_true", default=False,
                         help="Start a memory logger thread")
+    parser.add_argument("--just_one_file", action="store_true", default=False,
+                        help="Only process one file for debugging purposes")
     args = parser.parse_args()
 
     if args.memory_logger:
@@ -209,7 +211,7 @@ if __name__ == "__main__":
         print(f"Loading {args.frac_events} fraction of events from each file")
 
     for file in os.listdir(intermediate_files_location):
-        if file.endswith(".parquet"):
+        if ((file.startswith("curr_df_pl_") and file.endswith(".parquet")) or file == "presel_df_train_vars.parquet" or file == "all_df.parquet"):
             os.remove(f"{intermediate_files_location}/{file}")
     print("Deleted intermediate parquet files")
 
@@ -230,6 +232,9 @@ if __name__ == "__main__":
     # so it can be used to add columns to future dataframes with missing values
     
     for file_num, filename in enumerate(filenames):
+
+        if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
+            continue
 
         if "UNUSED" in filename or "older_downloads" in filename:
             continue
@@ -266,7 +271,7 @@ if __name__ == "__main__":
         curr_df = do_glee_postprocessing(curr_df)
 
         curr_df = remove_vector_variables(curr_df)
-        curr_df = compress_df(curr_df) # not needed, because we're converting to polars which will be more compressed
+        #curr_df = compress_df(curr_df) # not needed, because we're converting to polars which will be more compressed
 
         # converting to polars
         curr_df_pl = pl.from_pandas(curr_df)
@@ -284,26 +289,18 @@ if __name__ == "__main__":
 
     pl_dfs = []
     for file in os.listdir(intermediate_files_location):
-        if file.endswith(".parquet"):
+        if file.startswith("curr_df_pl_") and file.endswith(".parquet"):
             print(f"Reading {file}")
             pl_dfs.append(pl.read_parquet(f"{intermediate_files_location}/{file}"))
             print(f"Read {file}, estimated size: {pl_dfs[-1].estimated_size() / 1e9:.2f} GB")
-    aligned_pl_dfs = align_columns_for_concat(pl_dfs)
+    all_df = pl.concat(align_columns_for_concat(pl_dfs), how="vertical")
     del pl_dfs
-    all_df_pl = pl.concat(aligned_pl_dfs, how="vertical")
-    del aligned_pl_dfs
-    print(f"all_df_pl size: {all_df_pl.estimated_size() / 1e9:.2f} GB")
+    print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
 
-    if all_df_pl.is_empty():
+    if all_df.is_empty():
         raise ValueError("No events in the dataframe!")
     
-    print(f"finished looping over root files, all_df_pl.shape={all_df_pl.height}")
-
-    print("converting polars dataframe back to pandas dataframe...")
-    print(f"all_df_pl size in polars before conversion: {all_df_pl.estimated_size() / 1e9} GB")
-    all_df = all_df_pl.to_pandas()
-    del all_df_pl
-    print(f"all_df size in pandas after conversion: {all_df.memory_usage(deep=True).sum() / 1e9} GB")
+    print(f"finished looping over root files, all_df.height={all_df.height}")
 
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
@@ -318,7 +315,7 @@ if __name__ == "__main__":
         "data": sum(all_data_POTs),
     }
 
-    print("doing post-processing that doesn't require vector variables...")
+    print("doing post-processing that doesn't require vector variables using polars...")
 
     all_df = do_combined_postprocessing(all_df)
     if pot_dic["data"] > 0:
@@ -335,25 +332,24 @@ if __name__ == "__main__":
         file_RSEs.append(file_RSE)
     assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/run/subrun/event!"
 
-    print(f"saving {intermediate_files_location}/presel_df_train_vars.pkl...", end="", flush=True)
+    print(f"saving {intermediate_files_location}/presel_df_train_vars.parquet...", end="", flush=True)
     start_time = time.time()
-    presel_df = all_df.query("wc_kine_reco_Enu > 0")
-    presel_df.reset_index(drop=True, inplace=True)
-    presel_df.to_pickle(f"{intermediate_files_location}/presel_df_train_vars.pkl")
+    presel_df = all_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+    presel_df.write_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
     end_time = time.time()
-    file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.pkl") / 1024**3
+    file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.parquet") / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
 
-    print(f"saving {intermediate_files_location}/all_df.pkl...", end="", flush=True)
+    print(f"saving {intermediate_files_location}/all_df.parquet...", end="", flush=True)
     start_time = time.time()
     # remove the large number of WC training-only-variables for a smaller file size
     remove_columns = wc_training_only_vars
     final_save_columns = [col for col in all_df.columns if col not in remove_columns]
 
     all_df_no_training_columns = all_df[final_save_columns]
-    all_df_no_training_columns.to_pickle(f"{intermediate_files_location}/all_df.pkl")
+    all_df_no_training_columns.write_parquet(f"{intermediate_files_location}/all_df.parquet")
     end_time = time.time()
-    file_size_gb = os.path.getsize(f"{intermediate_files_location}/all_df.pkl") / 1024**3
+    file_size_gb = os.path.getsize(f"{intermediate_files_location}/all_df.parquet") / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
     main_end_time = time.time()
     print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
