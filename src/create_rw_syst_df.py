@@ -7,14 +7,18 @@ import sys
 import os
 import time
 import argparse
+from pathlib import Path
 
-sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
+# Add parent directory to path to allow imports with src. prefix
+parent_dir = Path(__file__).parent.parent
+if str(parent_dir) not in sys.path:
+    sys.path.insert(0, str(parent_dir))
 
-from file_locations import data_files_location, intermediate_files_location
+from src.file_locations import data_files_location, intermediate_files_location
 
-from memory_monitoring import start_memory_logger
+from src.memory_monitoring import start_memory_logger
 
-from pyroot_loading import get_rw_sys_weights_dic
+from src.pyroot_loading import get_rw_sys_weights_dic
 
 def process_rw_sys_root_file(filename, frac_events = 1):
 

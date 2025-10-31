@@ -1,9 +1,17 @@
 import os
+import sys
+from pathlib import Path
 from tqdm import tqdm
+
+# Add parent directory to path to allow imports with src. prefix
+parent_dir = Path(__file__).parent.parent
+if str(parent_dir) not in sys.path:
+    sys.path.insert(0, str(parent_dir))
 
 from src.file_locations import tmp_dir
 
 import ROOT
+ROOT.gSystem.SetBuildDir(tmp_dir, True)
 
 def get_rw_sys_weights_dic(
     file_path: str,
@@ -29,11 +37,9 @@ def get_rw_sys_weights_dic(
     --------
     list of dict
         List of dictionaries, one per event. Each dictionary maps systematic names to lists of weights.
+
     """
 
-    ROOT.gSystem.SetBuildDir(tmp_dir, True)
-    
-    # Ensure ROOT dictionary is generated for the map type
     ROOT.gInterpreter.GenerateDictionary("map<string,vector<double>>", "map;string;vector")
     
     # Open the ROOT file
@@ -58,6 +64,8 @@ def get_rw_sys_weights_dic(
     # In PyROOT, we create the map object and pass it to SetBranchAddress
     # PyROOT will handle the pointer conversion automatically
     weight_map = ROOT.std.map('string', ROOT.std.vector('double'))()
+    ROOT.SetOwnership(weight_map, False) # Don't delete the map object when the branch is deleted
+
     tree.SetBranchAddress(branch_name, weight_map)
     
     # Determine number of entries to process
@@ -95,6 +103,10 @@ def get_rw_sys_weights_dic(
         rows.append(event_dict)
 
     root_file.Close()
+    # move all .cxx files in the current directory to tmp_dir
+    for f in os.listdir("."):
+        if f.endswith(".cxx"):
+            os.rename(f, os.path.join(tmp_dir, f))
     
     return rows
     
