@@ -11,7 +11,7 @@ nohup bash download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/nge
 
 ## Python environment
 ```
-uv pip install numpy pandas matplotlib uproot umap-learn tqdm xgboost nbconvert
+uv pip install numpy pandas matplotlib uproot umap-learn tqdm xgboost nbconvert polars root
 ```
 
 To avoid making ipynb plots visible on github:
@@ -21,22 +21,29 @@ git config --global filter.strip-notebook-output.clean 'jupyter nbconvert --Clea
 ```
 
 ## Creating Dataframes
-You can add --frac_events (-f) 0.05 to load only 5% of the events from each file, making this faster (and less RAM consuming) for small tests. You can also add -m to add memory logging printouts, to check if you're running out of memory.
+You can add --frac_events (-f) 0.01 to load only 1% of the events from each file, making this faster (and less RAM consuming) for small tests. You can also add --just_one_file to only process one file for small tests.
 
-This takes a bit of time, might want to run it in the background.
+You can also add -m to add memory logging printouts, to check if you're running out of memory.
+
+This takes a bit of time, might want to run it in the background with nohup or tmux.
 
 ```
-python src/create_df.py -f 0.01 -m
-python src/create_df.py -f 0.01 -m --just_one_file
+python src/create_df.py -f 0.01
+python src/create_df.py -f 0.01 --just_one_file
 nohup python -u src/create_df.py -m > nohup.out 2>&1 &
+```
 
+## Creating Systematic Weight Dataframes
+Similar as above, but now we only load reweightable systematic weights after WC generic neutrino preselection.
+
+```
 python src/create_rw_syst_df.py -f 0.01
 nohup python -u src/create_rw_syst_df.py -m > weights_nohup.out 2>&1 &
+```
 
 
 python src/create_rw_syst_df.py -f 0.01 --just_one_file
 
-```
 
 ## Training Multi-Class BDT
 
