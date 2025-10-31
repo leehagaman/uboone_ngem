@@ -70,7 +70,7 @@ def process_root_file(filename, frac_events = 1):
     del f
     del dic
 
-    print("loading systematic weights using ROOT c++...")
+    print("loading systematic weights using PyROOT...")
     all_event_weights = get_rw_sys_weights_dic(
         f"{data_files_location}/{filename}",
         max_entries=n_events,
