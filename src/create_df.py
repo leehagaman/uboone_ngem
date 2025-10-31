@@ -297,10 +297,15 @@ if __name__ == "__main__":
     del pl_dfs
     print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
 
+    for file in os.listdir(intermediate_files_location):
+        if file.startswith("curr_df_pl_") and file.endswith(".parquet"):
+            os.remove(f"{intermediate_files_location}/{file}")
+    print("Deleted intermediate curr_df_pl*.parquet files")
+
     if all_df.is_empty():
         raise ValueError("No events in the dataframe!")
     
-    print(f"finished looping over root files, all_df.height={all_df.height}")
+    print(f"all_df.height={all_df.height}")
 
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 

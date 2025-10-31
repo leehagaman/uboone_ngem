@@ -9,18 +9,14 @@ import time
 import argparse
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
-from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
-from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
-from postprocessing import remove_vector_variables
 
 from file_locations import data_files_location, intermediate_files_location
 
-from df_helpers import align_columns_for_concat, compress_df
 from memory_monitoring import start_memory_logger
 
-from systematics import get_rw_sys_weights_dic
+from pyroot_loading import get_rw_sys_weights_dic
 
-def process_root_file(filename, frac_events = 1):
+def process_rw_sys_root_file(filename, frac_events = 1):
 
     if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower(): # EXT file
         filetype = "ext"
@@ -154,14 +150,11 @@ if __name__ == "__main__":
 
     filenames = os.listdir(data_files_location)
     filenames.sort()
-    # sorting these puts an NC Pi0 overlay first, which will have all the WCPMTInfo and truth variables present, 
-    # so it can be used to add columns to future dataframes with missing values
     
     for file_num, filename in enumerate(filenames):
 
         if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
             continue
-
         if "UNUSED" in filename or "older_downloads" in filename:
             continue
 
@@ -172,7 +165,7 @@ if __name__ == "__main__":
         if "one_gamma" in filename.lower():
             continue
 
-        filetype, curr_presel_weights_df = process_root_file(filename, frac_events=args.frac_events)
+        filetype, curr_presel_weights_df = process_rw_sys_root_file(filename, frac_events=args.frac_events)
 
         print(f"curr_presel_weights_df size: {curr_presel_weights_df.estimated_size() / 1e9:.2f} GB")
         curr_presel_weights_df.write_parquet(f"{intermediate_files_location}/presel_weights_df_{file_num}.parquet")
@@ -186,15 +179,20 @@ if __name__ == "__main__":
 
     presel_weights_dfs = []
     for file in os.listdir(intermediate_files_location):
-        if file.startswith("presel_weights_df") and file.endswith(".parquet"):
+        if file.startswith("presel_weights_df_") and file.endswith(".parquet"):
             presel_weights_dfs.append(pl.read_parquet(f"{intermediate_files_location}/{file}"))
     presel_weights_df = pl.concat(presel_weights_dfs, how="vertical")
     del presel_weights_dfs
 
+    for file in os.listdir(intermediate_files_location):
+        if file.startswith("presel_weights_df_") and file.endswith(".parquet"):
+            os.remove(f"{intermediate_files_location}/{file}")
+    print("Deleted intermediate presel_weights_df*.parquet files")
+
     if presel_weights_df.is_empty():
         raise ValueError("No events in the dataframe!")
     
-    print(f"finished looping over root files, presel_weights_df.shape={presel_weights_df.height}")
+    print(f"presel_weights_df.height={presel_weights_df.height}")
 
     print(f"saving {intermediate_files_location}/presel_weights_df.parquet...", end="", flush=True)
     start_time = time.time()

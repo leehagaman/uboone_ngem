@@ -9,3 +9,5 @@ __pycache__/
 *.pdf
 *.parquet
 *.out
+tmp/*
+!tmp/.gitkeep

@@ -37,12 +37,9 @@ nohup python -u src/create_df.py -m > nohup.out 2>&1 &
 Similar as above, but now we only load reweightable systematic weights after WC generic neutrino preselection.
 
 ```
-python src/create_rw_syst_df.py -f 0.01
+python src/create_rw_syst_df.py -f 0.01 --just_one_file
 nohup python -u src/create_rw_syst_df.py -m > weights_nohup.out 2>&1 &
 ```
-
-
-python src/create_rw_syst_df.py -f 0.01 --just_one_file
 
 
 ## Training Multi-Class BDT
