@@ -157,7 +157,7 @@ del1g_detailed_category_labels_latex = [
     r"iso1g $1\gamma$ out FV",
     r"data",
 ]
-del1g_detailed_categories_dic = {i: del1g_detailed_category_labels[i] for i in range(len(del1g_detailed_category_labels))}
+del1g_detailed_categories_dic = {del1g_detailed_category_labels[i]: i for i in range(len(del1g_detailed_category_labels))}
 
 def get_cut_from_del1g(name):
     for line in del1g_detailed_categories:
@@ -213,7 +213,7 @@ del1g_simple_category_labels_latex = [
     r"EXT",
     r"data",
 ]
-del1g_simple_categories_dic = {i: del1g_simple_category_labels[i] for i in range(len(del1g_simple_category_labels))}
+del1g_simple_categories_dic = {del1g_simple_category_labels[i]: i for i in range(len(del1g_simple_category_labels))}
 
 train_category_queries = []
 train_category_labels = []
@@ -227,7 +227,7 @@ for i in range(len(del1g_simple_category_labels)):
         train_category_colors.append(del1g_simple_category_colors[i])
         train_category_hatches.append(del1g_simple_category_hatches[i])
         train_category_labels_latex.append(del1g_simple_category_labels_latex[i])
-train_category_dic = {i: train_category_labels[i] for i in range(len(train_category_labels))}
+train_category_dic = {train_category_labels[i]: i for i in range(len(train_category_labels))}
 
 topological_categories = [
     ("1gNp",        "(pl.col('normal_overlay') | pl.col('del1g_overlay') | pl.col('iso1g_overlay')) & pl.col('wc_truth_inFV') & pl.col('wc_truth_0e') & pl.col('wc_truth_1g') & pl.col('wc_truth_Np') & pl.col('wc_truth_0mu')",    "xkcd:yellow", None),
@@ -271,7 +271,7 @@ topological_category_labels_latex = [
     r"ext",
     r"data",
 ]
-topological_categories_dic = {i: topological_category_labels[i] for i in range(len(topological_category_labels))}
+topological_categories_dic = {topological_category_labels[i]: i for i in range(len(topological_category_labels))}
 
 filetype_categories = [
     ("nc_pi0_overlay", "pl.col('filetype') == 'nc_pi0_overlay'",                 "xkcd:red", None),
