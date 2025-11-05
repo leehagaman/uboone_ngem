@@ -7,88 +7,93 @@ red_hex_colors = [mpl.colors.rgb2hex(color) for color in plt.cm.Reds(np.linspace
 blue_hex_colors = [mpl.colors.rgb2hex(color) for color in plt.cm.Blues(np.linspace(0, 1, 10))]
 
 del1g_detailed_categories = [
-    ("NCDeltaRad_1gNp",                 "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_Np')",                                                           "xkcd:light yellow", None),
-    ("NCDeltaRad_1g0p",                 "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_0p')",                                                           "xkcd:pumpkin", None),
-    ("numuCCDeltaRad_1gNp",             "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_Np')",                                                       "xkcd:royal blue", None),
-    ("numuCCDeltaRad_1g0p",             "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_0p')",                                                       "xkcd:baby blue", None),
+    ("NCDeltaRad_1gNp",                 "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_Np') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                           "xkcd:light yellow", None),
+    ("NCDeltaRad_1g0p",                 "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_0p') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                           "xkcd:pumpkin", None),
+    ("numuCCDeltaRad_1gNp",             "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_Np') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                       "xkcd:royal blue", None),
+    ("numuCCDeltaRad_1g0p",             "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_0pi0') & pl.col('wc_truth_0p') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                       "xkcd:baby blue", None),
 
     ("NC1pi0_Np_photonuc",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
-                                    & pl.col('wc_true_has_photonuclear_absorption')""".strip().replace("\n", ""),                                                           red_hex_colors[0], None),
+                                    & pl.col('wc_true_has_photonuclear_absorption') & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                           red_hex_colors[0], None),
     ("NC1pi0_Np_outFV_gamma",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
-                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2)""".strip().replace("\n", ""),              red_hex_colors[1], None),
+                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),              red_hex_colors[1], None),
     ("NC1pi0_Np_lowE_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
-                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)""".strip().replace("\n", ""),                                                   red_hex_colors[2], None),
+                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                   red_hex_colors[2], None),
     ("NC1pi0_Np_misclustered_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5)""".strip().replace("\n", ""),                                  red_hex_colors[3], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                  red_hex_colors[3], None),
     ("NC1pi0_Np_other",         """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5))""".strip().replace("\n", ""),                            red_hex_colors[4], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                            red_hex_colors[4], None),
     
     ("NC1pi0_0p_photonuc",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
-                                    & pl.col('wc_true_has_photonuclear_absorption')""".strip().replace("\n", ""),                                                           red_hex_colors[5], None),
+                                    & pl.col('wc_true_has_photonuclear_absorption') & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                           red_hex_colors[5], None),
     ("NC1pi0_0p_outFV_gamma",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
-                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2)""".strip().replace("\n", ""),              red_hex_colors[6], None),
+                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),              red_hex_colors[6], None),
     ("NC1pi0_0p_lowE_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
-                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)""".strip().replace("\n", ""),                                                   red_hex_colors[7], None),
+                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                   red_hex_colors[7], None),
     ("NC1pi0_0p_misclustered_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5)""".strip().replace("\n", ""),                                  red_hex_colors[8], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                  red_hex_colors[8], None),
     ("NC1pi0_0p_other",         """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & ~pl.col('wc_truth_NCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5))""".strip().replace("\n", ""),                            red_hex_colors[9], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                            red_hex_colors[9], None),
 
 
     ("numuCC1pi0_Np_photonuc",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
-                                    & pl.col('wc_true_has_photonuclear_absorption')""".strip().replace("\n", ""),                                                           blue_hex_colors[0], None),
+                                    & pl.col('wc_true_has_photonuclear_absorption') & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                           blue_hex_colors[0], None),
     ("numuCC1pi0_Np_outFV_gamma",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
-                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2)""".strip().replace("\n", ""),              blue_hex_colors[1], None),
+                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),              blue_hex_colors[1], None),
     ("numuCC1pi0_Np_lowE_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
-                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)""".strip().replace("\n", ""),                                                   blue_hex_colors[2], None),
+                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                   blue_hex_colors[2], None),
     ("numuCC1pi0_Np_misclustered_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5)""".strip().replace("\n", ""),                                  blue_hex_colors[3], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                  blue_hex_colors[3], None),
     ("numuCC1pi0_Np_other",         """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_Np')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5))""".strip().replace("\n", ""),                            blue_hex_colors[4], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                            blue_hex_colors[4], None),
 
     ("numuCC1pi0_0p_photonuc",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
-                                    & pl.col('wc_true_has_photonuclear_absorption')""".strip().replace("\n", ""),                                                           blue_hex_colors[5], None),
+                                    & pl.col('wc_true_has_photonuclear_absorption') & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                           blue_hex_colors[5], None),
     ("numuCC1pi0_0p_outFV_gamma",   """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
-                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2)""".strip().replace("\n", ""),              blue_hex_colors[6], None),
+                                    & ~pl.col('wc_true_has_photonuclear_absorption') & (pl.col('true_num_gamma_pairconvert_in_FV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),              blue_hex_colors[6], None),
     ("numuCC1pi0_0p_lowE_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
-                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)""".strip().replace("\n", ""),                                                   blue_hex_colors[7], None),
+                                    & (pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                                   blue_hex_colors[7], None),
     ("numuCC1pi0_0p_misclustered_gamma",    """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5)""".strip().replace("\n", ""),                                  blue_hex_colors[8], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') > 5) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                  blue_hex_colors[8], None),
     ("numuCC1pi0_0p_other",         """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & ~pl.col('wc_truth_numuCCDeltaRad') & pl.col('wc_truth_1pi0') & pl.col('wc_truth_0p')
                                     & ~pl.col('wc_true_has_photonuclear_absorption') & ~(pl.col('true_num_gamma_pairconvert_in_FV') < 2)
                                     & ~(pl.col('true_num_gamma_pairconvert_in_FV_20_MeV') < 2)
-                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5))""".strip().replace("\n", ""),                            blue_hex_colors[9], None),
+                                    & (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance').is_null() | (pl.col('wc_true_gamma_pairconversion_spacepoint_max_min_distance') <= 5)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                            blue_hex_colors[9], None),
 
-    ("1pi0_outFV",      "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & pl.col('wc_truth_1pi0')",                                                                                                     "xkcd:lavender", None),
-    ("nueCC_Np",        "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & pl.col('wc_truth_Np')",                                                                                          "xkcd:seafoam", None),
-    ("nueCC_0p",        "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & pl.col('wc_truth_0p')",                                                                                          "xkcd:electric green", None),
+    ("1pi0_outFV",      "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & pl.col('wc_truth_1pi0') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                                                                     "xkcd:lavender", None),
+    ("nueCC_Np",        "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & pl.col('wc_truth_Np') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                                                          "xkcd:seafoam", None),
+    ("nueCC_0p",        "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & pl.col('wc_truth_0p') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                                                                          "xkcd:electric green", None),
     ("numuCC_Np",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_Np')
-                                    & pl.col('wc_truth_0pi0') & ~(pl.col('wc_truth_numuCCDeltaRad') | (pl.col('true_num_prim_gamma') >= 2))""".strip().replace("\n", ""),                                       "xkcd:azure", None),
+                                    & pl.col('wc_truth_0pi0') & ~(pl.col('wc_truth_numuCCDeltaRad') | (pl.col('true_num_prim_gamma') >= 2)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                       "xkcd:azure", None),
     ("numuCC_0p",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_0p')
-                                    & pl.col('wc_truth_0pi0') & ~(pl.col('wc_truth_numuCCDeltaRad') | (pl.col('true_num_prim_gamma') >= 2))""".strip().replace("\n", ""),                                       "xkcd:electric blue", None),
-    ("multi_pi0",       "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_notnueCC') & (pl.col('wc_truth_multi_pi0') | (pl.col('wc_truth_1pi0') & (pl.col('wc_truth_NCDeltaRad') | pl.col('wc_truth_numuCCDeltaRad'))))",      "xkcd:ice blue", None), # also includes pi0 + Delta radiative
+                                    & pl.col('wc_truth_0pi0') & ~(pl.col('wc_truth_numuCCDeltaRad') | (pl.col('true_num_prim_gamma') >= 2)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                       "xkcd:electric blue", None),
+    ("pi0_dalitz_decay", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_true_has_pi0_dalitz_decay')",                                                                                          "xkcd:dark mint", None),
+    
+    ("multi_pi0",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV')
+                    & (pl.col('wc_truth_multi_pi0') | (pl.col('wc_truth_1pi0') & (pl.col('wc_truth_NCDeltaRad') | pl.col('wc_truth_numuCCDeltaRad'))))
+                    & ~(pl.col('wc_true_has_pi0_dalitz_decay') | pl.col('wc_truth_nueCC'))""".strip().replace("\n", ""),      "xkcd:ice blue", None), # also includes pi0 + Delta radiative
+
     ("eta_other",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_notnueCC') & (pl.col('true_num_prim_gamma') >= 2)
-                                    & ~pl.col('wc_truth_multi_pi0') & ~pl.col('wc_truth_1pi0') & ~(pl.col('wc_truth_NCDeltaRad') | pl.col('wc_truth_numuCCDeltaRad'))""".strip().replace("\n", ""),             "xkcd:light aqua", None),
-    ("NC_no_gamma",     "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_notnueCC') & pl.col('wc_truth_notnumuCC') & pl.col('wc_truth_0pi0') & ~pl.col('wc_truth_NCDeltaRad')",                                  "xkcd:burnt sienna", None),
-    ("other_outFV",     "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & ~pl.col('wc_truth_1pi0')",                                                                                               "xkcd:bright purple", None),
+                                    & ~pl.col('wc_truth_multi_pi0') & ~pl.col('wc_truth_1pi0') & ~(pl.col('wc_truth_NCDeltaRad') | pl.col('wc_truth_numuCCDeltaRad')) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),             "xkcd:light aqua", None),
+    ("NC_no_gamma",     "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_notnueCC') & pl.col('wc_truth_notnumuCC') & pl.col('wc_truth_0pi0') & ~pl.col('wc_truth_NCDeltaRad') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                  "xkcd:burnt sienna", None),
+    ("other_outFV",     "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & ~(pl.col('wc_truth_1pi0') & ~pl.col('wc_true_has_pi0_dalitz_decay'))",                                                                                               "xkcd:bright purple", None),
     ("dirt",        "pl.col('filetype') == 'dirt_overlay'",                                                                                                                                       "xkcd:brown", None),
     ("ext",         "pl.col('filetype') == 'ext'",                                                                                                                                                "xkcd:green", None),
     ("del1g_Np",        "pl.col('del1g_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_Np') & pl.col('wc_truth_0mu')",                                                                                             "xkcd:yellow", "++++"),
@@ -142,6 +147,7 @@ del1g_detailed_category_labels_latex = [
     r"$\nu_\mu$ CC $Np$",
     r"$\nu_\mu$ CC $0p$",
 
+    r"$\pi^0$ Dalitz decay",
     r"multi $\pi^0$",
     r"Other $2\gamma$ ($\eta$)",
     r"NC no $\gamma$",
@@ -180,6 +186,7 @@ del1g_simple_categories = [
     ("nueCC_0p",                get_cut_from_del1g('nueCC_0p'),                                                                                         "xkcd:electric green", None),
     ("numuCC_Np",               get_cut_from_del1g('numuCC_Np'),                                                                                        "xkcd:azure", None),
     ("numuCC_0p",               get_cut_from_del1g('numuCC_0p'),                                                                                        "xkcd:electric blue", None),
+    ("pi0_dalitz_decay",        get_cut_from_del1g('pi0_dalitz_decay'),                                                                                "xkcd:dark mint", None),
     ("multi_pi0",               get_cut_from_del1g('multi_pi0'),                                                                                        "xkcd:ice blue", None), # also includes pi0 + Delta radiative
     ("eta_other",               get_cut_from_del1g('eta_other'),                                                                                        "xkcd:light aqua", None),
     ("NC_no_gamma",             get_cut_from_del1g('NC_no_gamma'),                                                                                      "xkcd:burnt sienna", None),
@@ -206,6 +213,7 @@ del1g_simple_category_labels_latex = [
     r"$\nu_e$ CC $0p$",
     r"$\nu_\mu$ CC $Np$",
     r"$\nu_\mu$ CC $0p$",
+    r"$\pi^0$ Dalitz decay",
     r"Multi-$\pi^0$",
     r"Other $2\gamma$ ($\eta$)",
     r"NC no $\gamma$",

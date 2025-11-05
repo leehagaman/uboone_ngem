@@ -40,6 +40,7 @@ blip_postprocessing_vars = [
 pandora_non_BDT_vars = [
     "crtveto",
     "crthitpe",
+    "_closestNuCosmicDist", # this uses the CRT (run dependent), and has bad data-MC agreement!
     "reco_nu_vtx_x",
     "reco_nu_vtx_y",
     "reco_nu_vtx_z",
@@ -225,7 +226,6 @@ pandora_scalar_vars = [
     "CosmicDirAll2DEnds",
     "CosmicDirAll2DOvlp",
     "CosmicDirAll3D",
-    #"_closestNuCosmicDist", # this uses the CRT (run dependent), and has bad data-MC agreement!
     "slclustfrac",
     # "nObjHits {U,V,Y}", # doesn't exist in file!
     # "tk1sh1_angle_alltk", # doesn't exist in file!

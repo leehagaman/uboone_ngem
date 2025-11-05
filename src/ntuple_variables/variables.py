@@ -109,4 +109,4 @@ vector_columns += [f"pandora_{var}" for var in pandora_vector_vars]
 vector_columns += [f"glee_{var}" for var in glee_vector_vars]
 
 combined_training_vars = wc_training_vars + glee_training_vars + pandora_training_vars + lantern_training_vars + combined_postprocessing_training_vars
-# leave blip, nanosecond timing, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability
+# leave blip, nanosecond timing, CRT, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability

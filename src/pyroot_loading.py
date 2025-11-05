@@ -12,6 +12,7 @@ from src.file_locations import tmp_dir
 
 import ROOT
 ROOT.gSystem.SetBuildDir(tmp_dir, True)
+ROOT.gInterpreter.GenerateDictionary("map<string,vector<double>>", "map;string;vector")
 
 def get_rw_sys_weights_dic(
     file_path: str,
@@ -39,8 +40,6 @@ def get_rw_sys_weights_dic(
         List of dictionaries, one per event. Each dictionary maps systematic names to lists of weights.
 
     """
-
-    ROOT.gInterpreter.GenerateDictionary("map<string,vector<double>>", "map;string;vector")
     
     # Open the ROOT file
     root_file = ROOT.TFile.Open(os.path.abspath(file_path))

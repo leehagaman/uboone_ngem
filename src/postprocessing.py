@@ -293,6 +293,7 @@ def do_wc_postprocessing(df):
 
         # Extra truth variables
         has_photonuclear_absorption_flags = []
+        has_pi0_dalitz_decay_flags = []
         max_true_prim_proton_energies = []
         sum_true_prim_proton_energies = []
         true_leading_shower_energies = []
@@ -331,6 +332,7 @@ def do_wc_postprocessing(df):
             else:
                 num_particles = len(truth_id_list)
             has_photonuclear_absorption = False
+            has_pi0_dalitz_decay = False
             for j in range(num_particles):
                 if truth_pdg_list[j] == 22: # photon
                     truth_photon_parent_id = truth_mother_list[j]
@@ -370,16 +372,22 @@ def do_wc_postprocessing(df):
                         for k in range(num_particles):
                             if truth_mother_list[k] == truth_id_list[j]:
                                 pi0_daughter_indices.append(k)
-                        if len(pi0_daughter_indices) != 2: # Dalitz decay, or otherwise weird Geant4 info
-                            continue
-                        pi0_daughter_1_momentum = truth_startMomentum_list[pi0_daughter_indices[0]][:3]
-                        pi0_daughter_2_momentum = truth_startMomentum_list[pi0_daughter_indices[1]][:3]
-                        pi0_daughter_1_dir = pi0_daughter_1_momentum / np.linalg.norm(pi0_daughter_1_momentum)
-                        pi0_daughter_2_dir = pi0_daughter_2_momentum / np.linalg.norm(pi0_daughter_2_momentum)
-                        dot_product = np.dot(pi0_daughter_1_dir, pi0_daughter_2_dir)
-                        dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
-                        max_pi0_opening_angle = np.arccos(dot_product) * 180 / np.pi
+                        if len(pi0_daughter_indices) == 2: # Not a Dalitz decay, or otherwise weird Geant4 info
+                            pi0_daughter_1_momentum = truth_startMomentum_list[pi0_daughter_indices[0]][:3]
+                            pi0_daughter_2_momentum = truth_startMomentum_list[pi0_daughter_indices[1]][:3]
+                            pi0_daughter_1_dir = pi0_daughter_1_momentum / np.linalg.norm(pi0_daughter_1_momentum)
+                            pi0_daughter_2_dir = pi0_daughter_2_momentum / np.linalg.norm(pi0_daughter_2_momentum)
+                            dot_product = np.dot(pi0_daughter_1_dir, pi0_daughter_2_dir)
+                            dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
+                            max_pi0_opening_angle = np.arccos(dot_product) * 180 / np.pi
 
+                    daughter_pdgs = []
+                    for k in range(num_particles):
+                        if truth_mother_list[k] == truth_id_list[j]:
+                            daughter_pdgs.append(truth_pdg_list[k])
+                    #print("pi0 daughter pdgs:", daughter_pdgs)
+                    if 22 in daughter_pdgs and 11 in daughter_pdgs and -11 in daughter_pdgs:
+                        has_pi0_dalitz_decay = True
 
                 if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2212: # primary proton
                     true_num_prim_protons += 1
@@ -404,6 +412,7 @@ def do_wc_postprocessing(df):
             true_leading_pi0_costhetas.append(max_pi0_costheta)
             true_leading_pi0_opening_angles.append(max_pi0_opening_angle)
             has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
+            has_pi0_dalitz_decay_flags.append(has_pi0_dalitz_decay)
 
         df["wc_true_max_prim_proton_energy"] = max_true_prim_proton_energies
         df["wc_true_sum_prim_proton_energy"] = sum_true_prim_proton_energies
@@ -418,12 +427,15 @@ def do_wc_postprocessing(df):
         df["wc_true_leading_pi0_costheta"] = true_leading_pi0_costhetas
         df["wc_true_leading_pi0_opening_angle"] = true_leading_pi0_opening_angles
         df["wc_true_has_photonuclear_absorption"] = pd.Series(has_photonuclear_absorption_flags, dtype=bool)
+        df["wc_true_has_pi0_dalitz_decay"] = pd.Series(has_pi0_dalitz_decay_flags, dtype=bool)
 
     # Ensure this column exists and is boolean for all filetypes (e.g., EXT)
     if "wc_true_has_photonuclear_absorption" not in df.columns:
         df["wc_true_has_photonuclear_absorption"] = False
+        df["wc_true_has_pi0_dalitz_decay"] = False
     else:
         df["wc_true_has_photonuclear_absorption"] = df["wc_true_has_photonuclear_absorption"].fillna(False).astype(bool)
+        df["wc_true_has_pi0_dalitz_decay"] = df["wc_true_has_pi0_dalitz_decay"].fillna(False).astype(bool)
 
     # extra primary shower position and angle variables
     shower_thetas = []
@@ -516,8 +528,6 @@ def do_wc_postprocessing(df):
     df["wc_reco_shower_phi"] = shower_phis
     df["wc_reco_distance_to_boundary"] = distances_to_boundary
     df["wc_reco_backwards_projected_dist"] = backwards_projected_dists
-
-    # TODO: add multiplicities for different WC reco particles in the PF tree, primary and nonprimary, with different energy thresholds
 
     return df
 
@@ -861,8 +871,8 @@ def add_signal_categories(all_df):
         category_counts_weighted.append(weighted_num)
         print(f"    {del1g_detailed_signal_category}: {weighted_num:.2f} ({unweighted_num})")
     total_events = all_df.height
-    if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of del1g detailed category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), overlapping categories?")
+    if sum(category_counts_unweighted) > total_events:
+        print(f"Error: Sum of del1g detailed category counts ({sum(category_counts_unweighted)}) > total events ({total_events}), overlapping categories?")
         raise AssertionError
     uncategorized_count = all_df.filter(pl.col('del1g_detailed_signal_category') == -1).height
     if uncategorized_count > 0:
@@ -871,6 +881,7 @@ def add_signal_categories(all_df):
         print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['del1g_overlay']=}, {row['iso1g_overlay']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_NCDelta']=}, {row['true_num_prim_gamma']=}, {row['wc_truth_0pi0']=}, {row['wc_truth_1pi0']=}, {row['wc_truth_multi_pi0']=}")
         print(f"Additional fields: {row.get('wc_truth_isNC', 'N/A')=}, {row.get('wc_truth_nueCC', 'N/A')=}, {row.get('wc_truth_numuCC', 'N/A')=}, {row.get('wc_truth_NCDeltaRad', 'N/A')=}, {row.get('normal_overlay', 'N/A')=}")
         print(f"Additional fields: {row.get('wc_true_has_photonuclear_absorption', 'N/A')=}, {row.get('true_num_gamma_pairconvert_in_FV', 'N/A')=}, {row.get('true_num_gamma_pairconvert_in_FV_20_MeV', 'N/A')=}, {row.get('wc_true_gamma_pairconversion_spacepoint_max_min_distance', 'N/A')=}")
+        print(f"Additional fields: {row.get('wc_true_has_pi0_dalitz_decay', 'N/A')=}, {row.get('wc_truth_notnueCC', 'N/A')=}")
         raise AssertionError
 
     print("Adding del1g simple signal categories...")

@@ -348,11 +348,12 @@ if __name__ == "__main__":
     print(f"saving {intermediate_files_location}/all_df.parquet...", end="", flush=True)
     start_time = time.time()
     # remove the large number of WC training-only-variables for a smaller file size
-    remove_columns = wc_training_only_vars
-    final_save_columns = [col for col in all_df.columns if col not in remove_columns]
 
-    all_df_no_training_columns = all_df[final_save_columns]
-    all_df_no_training_columns.write_parquet(f"{intermediate_files_location}/all_df.parquet")
+    remove_columns = wc_training_only_vars
+
+    all_df = all_df.drop(remove_columns)
+
+    all_df.write_parquet(f"{intermediate_files_location}/all_df.parquet")
     end_time = time.time()
     file_size_gb = os.path.getsize(f"{intermediate_files_location}/all_df.parquet") / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
