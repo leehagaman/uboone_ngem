@@ -61,6 +61,9 @@ def process_root_file(filename, frac_events = 1):
     n_events = total_entries if curr_frac_events >= 1.0 else max(1, int(total_entries * curr_frac_events))
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
+    print(f"{total_entries=}, {curr_frac_events=}, {n_events=}")
+
+
     curr_wc_T_pf_vars = wc_T_pf_vars
 
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars

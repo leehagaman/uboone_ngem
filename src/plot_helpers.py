@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 from src.signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches
-from src.signal_categories import filetype_category_labels, filetype_category_labels_latex, filetype_category_colors, filetype_category_hatches
+from src.signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
 
-from src.systematics import get_frac_cov_matrices
+from src.systematics import get_rw_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
+from src.systematics import get_significance
 
 from src.file_locations import intermediate_files_location
 
@@ -24,8 +25,8 @@ def get_vals(df, var):
 
 def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bins=None, var=None, display_var=None, breakdown_type="del1g_detailed", 
         iso1g_norm_factor=None, del1g_norm_factor=None, title=None, include_overflow=True, include_underflow=False, log_x=False, log_y=False, savename=None,
-        plot_rw_systematics=False, dont_use_systematic_cache=False,
-        include_data=True, additional_scaling_factor=1.0):
+        plot_rw_systematics=False, dont_load_from_systematic_cache=False,
+        include_data=True, additional_scaling_factor=1.0, include_systematic_breakdown=False):
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -96,22 +97,6 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
     else:
         raise ValueError(f"Invalid breakdown type: {breakdown_type}")
 
-    pred_vals = get_vals(pred_sel_df, var)
-
-    if plot_rw_systematics:
-
-        print("creating reweightable systematic covariance matrix...")
-        print("loading weights_df from parquet file...")
-        weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
-
-        print("getting covariance matrices...")
-        genie_frac_cov, flux_frac_cov, reint_frac_cov = get_frac_cov_matrices(
-            pred_sel_df, weights_df, pred_vals, bins, dont_use_systematic_cache=dont_use_systematic_cache
-        )
-
-        combined_frac_cov = genie_frac_cov + flux_frac_cov + reint_frac_cov
-        rw_sys_frac_errors = np.sqrt(np.diag(combined_frac_cov))
-
     breakdown_counts = []
     unweighted_breakdown_counts = []
     for breakdown_i, breakdown_label in enumerate(breakdown_labels):
@@ -155,14 +140,41 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         else:
             bottom += n
 
+    pred_counts = bottom
+
     if plot_rw_systematics:
-        total_counts = bottom + n
+
+        rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
+            pred_sel_df.filter(pl.col("filetype") != "ext"), var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache
+        )
+
+        combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
+        for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
+            combined_rw_sys_frac_cov += rw_sys_frac_cov
+
+        combined_rw_sys_cov = combined_rw_sys_frac_cov * np.outer(pred_counts, pred_counts)
+        # using Pearson data stat cov
+        data_stat_cov = get_data_stat_cov(data_counts, pred_counts)
+        mc_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column("wc_net_weight").to_numpy(), bins)
+        tot_cov = combined_rw_sys_cov + data_stat_cov + mc_stat_cov
+
+        tot_pred_cov = combined_rw_sys_cov + mc_stat_cov
+        tot_pred_frac_cov = tot_pred_cov / np.outer(pred_counts, pred_counts)
+        tot_pred_frac_errors = np.sqrt(np.diag(tot_pred_frac_cov))
+
+        diff = data_counts - pred_counts
+        chi2 = diff @ np.linalg.inv(tot_cov) @ diff
+        ndf = len(pred_counts)
+        p_value, sigma = get_significance(chi2, ndf)
+
+        plt.text(0.05, 0.95, fr"$\chi^2/ndf$ = {chi2:.2f}/{ndf}, p-value = {p_value:.2e}, $\sigma$ = {sigma:.2f}", transform=plt.gca().transAxes, fontsize=8, ha="left", va="top")
+        
         ax = plt.gca()
-        for i in range(len(total_counts)):
-            abs_err = rw_sys_frac_errors[i] * total_counts[i]
+        for i in range(len(pred_counts)):
+            abs_err = tot_pred_frac_errors[i] * pred_counts[i]
             left = display_bins[i]
             width = display_bins[i+1] - display_bins[i]
-            bottom_y = total_counts[i] - abs_err
+            bottom_y = pred_counts[i] - abs_err
             rect = Rectangle(
                 (left, bottom_y),
                 width,
@@ -205,3 +217,50 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         plt.savefig(f"../plots/{savename}.pdf")
         plt.savefig(f"../plots/{savename}.png")
     plt.show()
+
+    if include_systematic_breakdown:
+
+        plt.figure(figsize=(10, 6))
+
+        max_frac_error = 0
+
+        mc_stat_errors = np.sqrt(np.diag(mc_stat_cov))
+        mc_stat_frac_errors = mc_stat_errors / pred_counts
+        mc_stat_frac_errors_extra_val = np.concatenate([mc_stat_frac_errors, [mc_stat_frac_errors[-1]]])
+        plt.step(display_bins, mc_stat_frac_errors_extra_val, where="post", label="MC Stat", ls="-")
+
+        max_frac_error = max(max_frac_error, np.max(mc_stat_frac_errors))
+
+        for rw_sys_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
+            diag_frac_errors = np.sqrt(np.diag(rw_sys_frac_cov))
+            max_frac_error = max(max_frac_error, np.max(diag_frac_errors))
+            diag_frac_errors_extra_val = np.concatenate([diag_frac_errors, [diag_frac_errors[-1]]])
+            if rw_sys_name in [
+                    "AxFFCCQEshape_UBGenie",
+                    "DecayAngMEC_UBGenie",
+                    "NormCCCOH_UBGenie",
+                    "NormNCCOH_UBGenie",
+                    "RPA_CCQE_UBGenie",
+                    "ThetaDelta2NRad_UBGenie",
+                    "Theta_Delta2Npi_UBGenie",
+                    "VecFFCCQEshape_UBGenie",
+                    "XSecShape_CCMEC_UBGenie",
+                    "xsr_scc_Fa3_SCC",
+                    "xsr_scc_Fv3_SCC",
+                ]:
+                ls = "--"
+            else:
+                ls = "-"
+            plt.step(display_bins, diag_frac_errors_extra_val, where="post", label=rw_sys_name, ls=ls)
+            if np.max(diag_frac_errors) > 1:
+                print(f"Large max frac errors for {rw_sys_name}: {np.max(diag_frac_errors):.2%}")
+
+        plt.legend(ncol=1, loc='upper right', fontsize=10)
+
+        plt.xlabel(display_var)
+        plt.ylabel("Fractional Error")
+        plt.title("Systematic Breakdown")
+        plt.xlim(display_bins[0], display_bins[-1])
+        plt.ylim(0, max_frac_error * 1.2)
+
+        plt.show()

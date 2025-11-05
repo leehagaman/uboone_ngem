@@ -58,6 +58,8 @@ def process_rw_sys_root_file(filename, frac_events = 1):
     total_entries = f["wcpselection"]["T_eval"].num_entries
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
 
+    print(f"{total_entries=}, {frac_events=}, {n_events=}")
+
     print("loading run, subrun, event, and CV weights using uproot...")
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
     dic = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["run", "sub", "evt", "weightSpline", "weightTune", "weightSplineTimesTune"], library="np", **slice_kwargs)
@@ -116,7 +118,7 @@ def process_rw_sys_root_file(filename, frac_events = 1):
 
     end_time = time.time()
 
-    progress_str = f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} {curr_weights_df.shape[0]:>10,d} events {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    progress_str = f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} {curr_weights_df.shape[0]:>10,d} wc_generic_sel events {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
