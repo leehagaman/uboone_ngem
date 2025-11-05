@@ -11,3 +11,4 @@ __pycache__/
 *.out
 tmp/*
 !tmp/.gitkeep
+small_data_files/genie_univs/*
