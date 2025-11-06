@@ -104,7 +104,7 @@ pandora_scalar_vars = [
     "tksh_distance",
     "tksh_angle",
     # "tksh_angle_muon", # doesn't exist in file!
-    "shr_score",
+    # "shr_score", # not used anymore, see https://microboone.slack.com/archives/C08LHGZSXC4/p1744724709013149
     "shr_theta",
     "shr_phi",
     "shr_px",
