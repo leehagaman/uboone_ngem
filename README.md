@@ -45,31 +45,6 @@ nohup python -u src/create_rw_syst_df.py -m > weights_nohup.out 2>&1 &
 ## Training Multi-Class BDT
 
 ```
-python src/train.py --name first_combined_training
-python src/train.py --name first_wc_training --training_vars wc
-python src/train.py --name first_lantern_training --training_vars lantern
-
-python src/train.py --name mixed_del1g_iso_training --signal_categories del1g_simple
-
-python src/train.py --name mixed_wc_training --training_vars wc
-python src/train.py --name mixed_lantern_training --training_vars lantern
-
-python src/train.py --name nue_only_lantern_training --training_vars lantern --signal_categories nue_only # perfect performance, data/pred difference
-python src/train.py --name nue_only_lantern_first_half_training --training_vars lantern_first_half --signal_categories nue_only # perfect performance, data/pred difference
-python src/train.py --name nue_only_lantern_key_training --training_vars lantern_key_vars --signal_categories nue_only # perfect performance, data/pred difference
-python src/train.py --name nue_only_lantern_key_2_training --training_vars lantern_key_2_vars --signal_categories nue_only # good performance, data/pred consistent
-python src/train.py --name nue_only_lantern_key_other_2_training --training_vars lantern_key_other_2_vars --signal_categories nue_only
-
-python src/train.py --name all_vars
-
-python src/train.py --name with_numu_generic_pandora --training_vars pandora
-python src/train.py --name with_numu_generic_glee --training_vars glee
-python src/train.py --name only_pandora_scalars --training_vars pandora_scalars
-python src/train.py --name only_wc_lantern_combined --training_vars only_wc_lantern_combined
-
-python src/train.py --name only_pandora_scalars_first_half --training_vars pandora_scalars_first_half
-python src/train.py --name only_pandora_scalars_second_half --training_vars pandora_scalars_second_half
-
 
 nohup python -u src/train.py --name all_vars > train_nohup.out 2>&1 &
 

@@ -182,6 +182,10 @@ def process_root_file(filename, frac_events = 1):
     all_df["detailed_run_period"] = detailed_run_period
     all_df["filename"] = filename
     all_df["filetype"] = filetype
+    
+    # Validate that filetype was set correctly
+    if not filetype or filetype == '':
+        raise ValueError(f"filetype is empty or None for filename: {filename}")
 
     end_time = time.time()
 
@@ -242,6 +246,10 @@ if __name__ == "__main__":
         if "UNUSED" in filename or "older_downloads" in filename:
             continue
 
+        # TEMPORARY
+        #if filename not in ["MCC9.10_Run4b_v10_04_07_09_BNB_NC_pi0_overlay_surprise_reco2_hist.root", "MCC9.10_Run4b_v10_04_07_09_Run4b_BNB_beam_off_surprise_reco2_hist.root"]:
+        #    continue
+
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
         if filetype == "nc_pi0_overlay":
             all_ncpi0_POTs.append(curr_POT)
@@ -279,7 +287,15 @@ if __name__ == "__main__":
         # converting to polars
         curr_df_pl = pl.from_pandas(curr_df)
         del curr_df
-
+        
+        # Validate filetype column after conversion to polars
+        filetype_values = curr_df_pl["filetype"].unique().to_list()
+        if '' in filetype_values or None in filetype_values:
+            empty_count = curr_df_pl.filter(pl.col("filetype") == '').height
+            null_count = curr_df_pl.filter(pl.col("filetype").is_null()).height
+            if empty_count > 0 or null_count > 0:
+                raise ValueError(f"filetype column has empty/null values after polars conversion for {filename}: {empty_count} empty, {null_count} null")
+        
         curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Float64).cast(pl.Float32)])
         curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Int32).cast(pl.Int64)])
 
@@ -294,11 +310,28 @@ if __name__ == "__main__":
     for file in os.listdir(intermediate_files_location):
         if file.startswith("curr_df_pl_") and file.endswith(".parquet"):
             print(f"Reading {file}")
-            pl_dfs.append(pl.read_parquet(f"{intermediate_files_location}/{file}"))
+            curr_df = pl.read_parquet(f"{intermediate_files_location}/{file}")
+            # Validate filetype column after reading from parquet - should never be empty
+            if 'filetype' in curr_df.columns:
+                empty_count = curr_df.filter(pl.col("filetype") == '').height
+                if empty_count > 0:
+                    raise ValueError(f"filetype column has {empty_count} empty string values after reading parquet file {file}. This should never happen!")
+            pl_dfs.append(curr_df)
             print(f"Read {file}, estimated size: {pl_dfs[-1].estimated_size() / 1e9:.2f} GB")
     all_df = pl.concat(align_columns_for_concat(pl_dfs), how="vertical")
     del pl_dfs
     print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
+    
+    # Validate filetype column immediately after concatenation
+    if "filetype" in all_df.columns:
+        empty_count = all_df.filter(pl.col("filetype") == '').height
+        null_count = all_df.filter(pl.col("filetype").is_null()).height
+        if empty_count > 0 or null_count > 0:
+            print(f"ERROR after concat: filetype has {empty_count} empty strings and {null_count} nulls")
+            if empty_count > 0:
+                problem_row = all_df.filter(pl.col("filetype") == '').head(1).row(0, named=True)
+                print(f"Example empty filetype row: filename={problem_row.get('filename', 'N/A')}")
+            raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null")
 
     for file in os.listdir(intermediate_files_location):
         if file.startswith("curr_df_pl_") and file.endswith(".parquet"):

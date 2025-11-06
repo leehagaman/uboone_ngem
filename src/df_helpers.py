@@ -11,17 +11,49 @@ def align_columns_for_concat(dfs):
             dtype_map.setdefault(col, dtype)
 
     aligned = []
-    for df in dfs:
+    for i, df in enumerate(dfs):
+        # Store original filetype values before any operations
+        original_filetype = None
+        if "filetype" in df.columns:
+            original_filetype = df["filetype"].clone()
+            # Validate filetype before processing
+            empty_or_null_count_before = df.filter(
+                (pl.col("filetype") == '') | pl.col("filetype").is_null()
+            ).height
+            if empty_or_null_count_before > 0:
+                raise ValueError(f"DataFrame {i}: filetype has {empty_or_null_count_before} empty/null values BEFORE alignment!")
+        
         missing = all_cols - set(df.columns)
         if missing:
             # Add missing columns as nulls, cast to the desired dtype
-            defaults = [
-                pl.lit(None).cast(dtype_map[c]).alias(c)
-                for c in missing
-            ]
+            # For string columns, use empty string "" as a placeholder that we'll check for
+            defaults = []
+            for c in missing:
+                defaults.append(pl.lit(None).cast(dtype_map[c]).alias(c))
             df = df.with_columns(defaults)
+        
         # Ensure consistent column order
         df = df.select(sorted(all_cols))
+        
+        # Restore and validate filetype column after all transformations
+        if original_filetype is not None:
+            # Check if filetype was corrupted during select operation
+            empty_or_null_count_after = df.filter(
+                (pl.col("filetype") == '') | pl.col("filetype").is_null()
+            ).height
+            if empty_or_null_count_after > 0:
+                # Debug: print the first problematic row
+                problem_row = df.filter(
+                    (pl.col("filetype") == '') | pl.col("filetype").is_null()
+                ).head(1)
+                print(f"ERROR in align_columns_for_concat DataFrame {i}: Found {empty_or_null_count_after} rows with empty/null filetype AFTER column operations")
+                print(f"Example row columns: {problem_row.columns[:10]}")
+                if "filename" in problem_row.columns:
+                    print(f"Example filename: {problem_row['filename'][0]}")
+                print(f"Original filetype unique values: {original_filetype.unique().to_list()}")
+                print(f"After transform filetype unique values: {df['filetype'].unique().to_list()}")
+                raise ValueError(f"align_columns_for_concat DataFrame {i}: filetype column was corrupted during column alignment!")
+        
         aligned.append(df)
 
     return aligned

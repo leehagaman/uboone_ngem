@@ -75,7 +75,7 @@ def get_rw_sys_weights_dic(
     rows = []
     
     # Process each event
-    for i in tqdm(range(nentries), total=nentries, desc="Loading systematic weights"):
+    for i in tqdm(range(nentries), total=nentries, desc="Loading systematic weights", mininterval=10):
         entry = tree.GetEntry(i)
         if entry <= 0:
             rows.append({})
