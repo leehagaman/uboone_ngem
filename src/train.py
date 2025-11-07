@@ -13,7 +13,6 @@ import time
 
 from signal_categories import topological_category_labels, train_category_labels
 from ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars, glee_training_vars, pandora_training_vars, pandora_scalar_training_vars, combined_postprocessing_training_vars
-from ntuple_variables.pandora_variables import pandora_scalar_first_half_training_vars, pandora_scalar_second_half_training_vars
 
 from file_locations import intermediate_files_location
 

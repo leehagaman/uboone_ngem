@@ -16,6 +16,10 @@ def get_significance(chisquare, ndf, printout=False):
     sigma = np.sqrt(2.) * erfcinv(p_value)
     return p_value, sigma
 
+def get_significance_from_p_value(p_value):
+    sigma = np.sqrt(2.) * erfcinv(p_value)
+    return sigma
+
 def get_poisson_significance(measured, expected):
     # probability of getting an equal or more extreme result
     p_value = 1. - poisson.cdf(measured - 0.001, expected)
@@ -70,7 +74,7 @@ def create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=None):
     return curr_cov / uni_count
 
 
-def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, description=""):
+def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, description="", quiet=True):
 
     num_bins = len(bins) - 1
 
@@ -94,7 +98,7 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
 
     # creating the histogram for each universe (with pre-computed bin indices)
     hists = np.zeros((num_bins, num_unis))
-    for uni_i, uni_weights in tqdm(enumerate(sys_weight_arrs.T), total=num_unis, desc=f"Creating {description} universe histograms"):
+    for uni_i, uni_weights in tqdm(enumerate(sys_weight_arrs.T), total=num_unis, desc=f"Creating {description} universe histograms", disable=quiet):
         hists[:, uni_i] = np.bincount(bin_indices, weights=uni_weights*other_weights, minlength=num_bins)
 
     return hists
@@ -105,31 +109,21 @@ def create_frac_cov_matrices(mc_pred_df, var, bins):
     print("creating systematic covariance matrices...")
 
     print("loading weights_df from parquet file...")
-    weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
+    #weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
+
+    # TEMPORARY
+    weights_df = pl.read_parquet(f"{intermediate_files_location}/small_presel_weights_df.parquet")
+    print("WARNING: using small_presel_weights_df.parquet for testing!")
 
     print("merging mc_pred_df and weights_df...")
     pred_vars = ["filename", "run", "subrun", "event", "wc_net_weight", "wc_weight_cv", "wc_weight_spline", var]
     merged_df = mc_pred_df.select(pred_vars).join(weights_df, on=["filename", "run", "subrun", "event"], how="inner")
     if merged_df.height != mc_pred_df.height:
-        print("merged_df height does not match mc_pred_df height, missing events in weights_df?")
-        print(f"{merged_df.height=}, {mc_pred_df.height=}, {weights_df.height=}")
-        missing_events_df = mc_pred_df.select(pred_vars).join(weights_df, on=["filename", "run", "subrun", "event"], how="anti")
-        missing_filename_value_counts = missing_events_df.get_column("filename").value_counts()
-        print(f"{missing_filename_value_counts=}")
-        print(missing_events_df.get_column("filename").unique()[0])
-        print(f"{missing_events_df.height=}, {missing_events_df.head()=}")
-        raise ValueError
-
-    print(f"{merged_df.columns=}")
+        print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {mc_pred_df.height=}, {weights_df.height=}")
 
     pred_vals = merged_df.get_column(var).to_numpy()
 
     rw_sys_frac_cov_dic = {}
-
-    # 'All_UBGenie', 'AxFFCCQEshape_UBGenie', 'DecayAngMEC_UBGenie', 'NormCCCOH_UBGenie', 'NormNCCOH_UBGenie', 'RPA_CCQE_UBGenie', 
-    # 'ThetaDelta2NRad_UBGenie', 'Theta_Delta2Npi_UBGenie', 'VecFFCCQEshape_UBGenie', 'XSecShape_CCMEC_UBGenie', 
-    # 'xsr_scc_Fa3_SCC', 'xsr_scc_Fv3_SCC'
-
 
     print("getting CV histogram and non-GENIE weights...")
     cv_hist = np.histogram(pred_vals, weights=merged_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
