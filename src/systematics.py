@@ -74,7 +74,7 @@ def create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=None):
     return curr_cov / uni_count
 
 
-def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, description="", quiet=True):
+def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, description="", quiet=False):
 
     num_bins = len(bins) - 1
 
@@ -104,16 +104,17 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
     return hists
 
 
-def create_frac_cov_matrices(mc_pred_df, var, bins):
+def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
     print("creating systematic covariance matrices...")
 
-    print("loading weights_df from parquet file...")
-    #weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
-
     # TEMPORARY
-    weights_df = pl.read_parquet(f"{intermediate_files_location}/small_presel_weights_df.parquet")
-    print("WARNING: using small_presel_weights_df.parquet for testing!")
+    #weights_df = pl.read_parquet(f"{intermediate_files_location}/small_presel_weights_df.parquet")
+    #print("WARNING: using small_presel_weights_df.parquet for testing!")
+
+    if weights_df is None:
+        print("loading weights_df from parquet file...")
+        weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
 
     print("merging mc_pred_df and weights_df...")
     pred_vars = ["filename", "run", "subrun", "event", "wc_net_weight", "wc_weight_cv", "wc_weight_spline", var]
@@ -191,7 +192,7 @@ def _key_hash(var, bins):
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def get_rw_sys_frac_cov_matrices(mc_pred_df, var, bins, dont_load_from_systematic_cache=False):
+def get_rw_sys_frac_cov_matrices(mc_pred_df, var, bins, dont_load_from_systematic_cache=False, weights_df=None):
 
     if not dont_load_from_systematic_cache:
         key_h = _key_hash(var, bins)
@@ -201,7 +202,7 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, var, bins, dont_load_from_systemati
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["rw_sys_frac_cov_dic"].item()
 
-    rw_sys_frac_cov_dic = create_frac_cov_matrices(mc_pred_df, var, bins)
+    rw_sys_frac_cov_dic = create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df)
 
     key_h = _key_hash(var, bins)
     cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"

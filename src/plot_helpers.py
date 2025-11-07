@@ -28,7 +28,8 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         plot_rw_systematics=False, dont_load_from_systematic_cache=False,
         include_data=True, additional_scaling_factor=1.0, include_systematic_breakdown=False,
         include_legend=True, show=True, return_p_value_info=False,
-        page_num=None):
+        page_num=None,
+        weights_df=None):
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -44,8 +45,8 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         all_vals = np.concatenate([pred_vals, data_vals])
         min_val = np.min(all_vals[np.isfinite(all_vals)])
         max_val = np.max(all_vals[np.isfinite(all_vals)])
-        reasonable_vals = all_vals[all_vals > -1e9]
-        reasonable_vals = reasonable_vals[reasonable_vals < 1e9]
+        reasonable_vals = all_vals[all_vals > -1e8]
+        reasonable_vals = reasonable_vals[reasonable_vals < 1e8]
         min_reasonable_val = np.min(reasonable_vals)
         max_reasonable_val = np.max(reasonable_vals)
 
@@ -185,7 +186,7 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
     if plot_rw_systematics:
 
         rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
-            pred_sel_df.filter(pl.col("filetype") != "ext"), var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache
+            pred_sel_df.filter(pl.col("filetype") != "ext"), var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache, weights_df=weights_df
         )
 
         combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
