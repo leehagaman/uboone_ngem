@@ -195,22 +195,50 @@ if __name__ == "__main__":
     print("Saving model...")
     model.get_booster().save_model(output_dir / "bdt.json")
 
-    print("Creating feature importance plot...")
+    print("Creating feature importance plots...")
     plt.style.use('default')
-    plt.figure(figsize=(12, 8))
-    importance_df = pl.DataFrame({
-        'feature': training_vars,
-        'importance': model.feature_importances_
-    })
-    importance_df = importance_df.sort('importance')  # Sort ascending so largest bar is at top
-    top_20_df = importance_df.tail(20)
-    plt.barh(range(len(top_20_df)), top_20_df['importance'].to_numpy())
-    plt.yticks(range(len(top_20_df)), top_20_df['feature'].to_list())
-    plt.xlabel('Feature Importance')
-    plt.title('XGBoost Feature Importance (Top 20)')
-    plt.tight_layout()
-    plt.savefig(output_dir / "feature_importance.png", dpi=300, bbox_inches='tight')
-    plt.close()
+    
+    # Get importance scores for weight, gain, and cover
+    booster = model.get_booster()
+    
+    # Get importance dictionaries (feature name -> importance value)
+    weight_importance = booster.get_score(importance_type='weight')
+    gain_importance = booster.get_score(importance_type='gain')
+    cover_importance = booster.get_score(importance_type='cover')
+    
+    # Convert to arrays aligned with training_vars
+    # XGBoost uses f0, f1, f2, ... as feature names
+    def get_importance_array(importance_dict, feature_names):
+        importance_array = []
+        for i, feature_name in enumerate(feature_names):
+            feature_key = f'f{i}'
+            importance_array.append(importance_dict.get(feature_key, 0.0))
+        return np.array(importance_array)
+    
+    weight_array = get_importance_array(weight_importance, training_vars)
+    gain_array = get_importance_array(gain_importance, training_vars)
+    cover_array = get_importance_array(cover_importance, training_vars)
+    
+    # Create plots for each importance type
+    for importance_type, importance_array, importance_name in [
+        ('weight', weight_array, 'Weight'),
+        ('gain', gain_array, 'Gain'),
+        ('cover', cover_array, 'Cover')
+    ]:
+        plt.figure(figsize=(12, 8))
+        importance_df = pl.DataFrame({
+            'feature': training_vars,
+            'importance': importance_array
+        })
+        importance_df = importance_df.sort('importance')  # Sort ascending so largest bar is at top
+        top_20_df = importance_df.tail(20)
+        plt.barh(range(len(top_20_df)), top_20_df['importance'].to_numpy())
+        plt.yticks(range(len(top_20_df)), top_20_df['feature'].to_list())
+        plt.xlabel(f'Feature Importance ({importance_name})')
+        plt.title(f'XGBoost Feature Importance - {importance_name} (Top 20)')
+        plt.tight_layout()
+        plt.savefig(output_dir / f"feature_importance_{importance_type}.png", dpi=300, bbox_inches='tight')
+        plt.close()
 
     print("Creating training curves...")
     plt.figure(figsize=(12, 5))
