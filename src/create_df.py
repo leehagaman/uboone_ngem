@@ -32,6 +32,8 @@ def process_root_file(filename, frac_events = 1):
         filetype = "dirt_overlay"
     elif "nc_pi0" in filename.lower() or "ncpi0" in filename.lower() or "nc_pio" in filename.lower() or "ncpio" in filename.lower():
         filetype = "nc_pi0_overlay"
+    elif "ccpi0" in filename.lower():
+        filetype = "numucc_pi0_overlay"
     elif "delete_one_gamma" in filename.lower():
         filetype = "delete_one_gamma_overlay"
     elif "isotropic_one_gamma" in filename.lower():
@@ -39,7 +41,7 @@ def process_root_file(filename, frac_events = 1):
     elif "beam_on" in filename.lower():
         filetype = "data"
     else:
-        raise ValueError("Unknown filetype!", filename)
+        raise ValueError("Unknown filetype!", filename, filetype)
     
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -224,7 +226,8 @@ if __name__ == "__main__":
 
     print("Starting loop over root files...")
     all_df_pl = pl.DataFrame()
-    all_ncpi0_POTs = []
+    all_nc_pi0_POTs = []
+    all_numucc_pi0_POTs = []
     all_nu_POTs = []
     all_nue_POTs = []
     all_dirt_POTs = []
@@ -252,7 +255,9 @@ if __name__ == "__main__":
 
         filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
         if filetype == "nc_pi0_overlay":
-            all_ncpi0_POTs.append(curr_POT)
+            all_nc_pi0_POTs.append(curr_POT)
+        elif filetype == "numucc_pi0_overlay":
+            all_numucc_pi0_POTs.append(curr_POT)
         elif filetype == "nu_overlay":
             all_nu_POTs.append(curr_POT)
         elif filetype == "nue_overlay":
@@ -346,7 +351,8 @@ if __name__ == "__main__":
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
     pot_dic = {
-        "nc_pi0_overlay": sum(all_ncpi0_POTs),
+        "nc_pi0_overlay": sum(all_nc_pi0_POTs),
+        "numucc_pi0_overlay": sum(all_numucc_pi0_POTs),
         "nu_overlay": sum(all_nu_POTs),
         "nue_overlay": sum(all_nue_POTs),
         "dirt_overlay": sum(all_dirt_POTs),

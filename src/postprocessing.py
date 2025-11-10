@@ -22,6 +22,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
     summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
     summed_POT_nue_cc = pot_dic['nue_overlay'] + pot_dic['nu_overlay']
+    summed_POT_numucc_pi0 = pot_dic['numucc_pi0_overlay'] + pot_dic['nu_overlay']
 
     print("creating masks...")
 
@@ -45,17 +46,35 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
         (pl.col("wc_truth_nuPdg").abs() == 12) & 
         (pl.col("wc_truth_vtxInside") == 1)
     )
-    nu_overlay_true_nue_cc_mask_2 = (
+    nu_overlay_true_nue_cc_mask = (
         (pl.col("filetype") == 'nu_overlay') & 
         (pl.col("wc_truth_isCC") == 1) & 
         (pl.col("wc_truth_nuPdg").abs() == 12) & 
         (pl.col("wc_truth_vtxInside") == 1)
     )
 
+    numucc_pi0_overlay_true_numucc_pi0_mask = (
+        (pl.col("filetype") == 'numucc_pi0_overlay') & 
+        (pl.col("wc_truth_isCC") == 1) & 
+        (pl.col("wc_truth_nuPdg") == 14) & 
+        (pl.col("wc_truth_NprimPio") == 1) & 
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    nu_overlay_true_numucc_pi0_mask = (
+        (pl.col("filetype") == 'nu_overlay') & 
+        (pl.col("wc_truth_isCC") == 1) & 
+        (pl.col("wc_truth_nuPdg") == 14) & 
+        (pl.col("wc_truth_NprimPio") == 1) & 
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+
     nu_overlay_other_mask = (
-        (pl.col("filetype") == 'nu_overlay') &
-        ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) &
-        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1))
+        (
+            pl.col("filetype") == 'nu_overlay') &
+            ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) &
+            ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1) &
+            ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg") == 14) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1))
+        )
     )
 
     dirt_mask = pl.col("filetype") == 'dirt_overlay'
@@ -82,8 +101,10 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     wc_event_type_POT_expr = (
         pl.when(nc_pi0_overlay_true_nc_1pi0_mask).then(pl.lit(summed_POT_nc_1pi0))
         .when(nu_overlay_true_nc_1pi0_mask).then(pl.lit(summed_POT_nc_1pi0))
+        .when(numucc_pi0_overlay_true_numucc_pi0_mask).then(pl.lit(summed_POT_numucc_pi0))
+        .when(nu_overlay_true_numucc_pi0_mask).then(pl.lit(summed_POT_numucc_pi0))
         .when(nue_overlay_true_nue_cc_mask).then(pl.lit(summed_POT_nue_cc))
-        .when(nu_overlay_true_nue_cc_mask_2).then(pl.lit(summed_POT_nue_cc))
+        .when(nu_overlay_true_nue_cc_mask).then(pl.lit(summed_POT_nue_cc))
         .otherwise(wc_event_type_POT_expr)
     )
 
@@ -94,7 +115,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     # Filter out unwanted events by keeping only the events we want
     combined_mask = (
         nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask
-        | nue_overlay_true_nue_cc_mask | nu_overlay_true_nue_cc_mask_2
+        | numucc_pi0_overlay_true_numucc_pi0_mask | nu_overlay_true_numucc_pi0_mask
+        | nue_overlay_true_nue_cc_mask | nu_overlay_true_nue_cc_mask
         | nu_overlay_other_mask
         | dirt_mask | ext_mask | del1g_mask | iso1g_mask | data_mask
     )
@@ -762,7 +784,7 @@ def add_signal_categories(all_df):
             (pl.col("filetype") == "nu_overlay") | 
             (pl.col("filetype") == "nue_overlay") | 
             (pl.col("filetype") == "nc_pi0_overlay") | 
-            (pl.col("filetype") == "cc_pi0_overlay")
+            (pl.col("filetype") == "numucc_pi0_overlay")
         ).alias("normal_overlay"),
         (pl.col("filetype") == "delete_one_gamma_overlay").alias("del1g_overlay"),
         (pl.col("filetype") == "isotropic_one_gamma_overlay").alias("iso1g_overlay"),
@@ -836,7 +858,7 @@ def add_signal_categories(all_df):
         print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
     total_events = all_df.height
     if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of topological category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), overlapping categories?")
+        print(f"Error: Sum of topological category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
         raise AssertionError
     uncategorized_count = all_df.filter(pl.col('topological_signal_category') == -1).height
     if uncategorized_count > 0:
@@ -911,7 +933,7 @@ def add_signal_categories(all_df):
         print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
     total_events = all_df.height
     if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of del1g simple category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), overlapping categories?")
+        print(f"Error: Sum of del1g simple category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
         raise AssertionError
     uncategorized_count = all_df.filter(pl.col('del1g_simple_signal_category') == -1).height
     if uncategorized_count > 0:
@@ -946,14 +968,22 @@ def add_signal_categories(all_df):
         category_counts_weighted.append(weighted_num)
         print(f"    {filetype_signal_category}: {weighted_num:.2f} ({unweighted_num})")
     total_events = all_df.height
-    if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of filetype category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), overlapping categories?")
-        raise AssertionError
     uncategorized_count = all_df.filter(pl.col('filetype_signal_category') == -1).height
     if uncategorized_count > 0:
-        print(f"Uncategorized filetype signal categories ({uncategorized_count} events)!")
-        row = all_df.filter(pl.col('filetype_signal_category') == -1).row(0, named=True)
-        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
+        print(f"\nUncategorized filetype signal categories ({uncategorized_count} events)!")
+        uncategorized_df = all_df.filter(pl.col('filetype_signal_category') == -1)
+        # Print unique filetypes in uncategorized events
+        unique_filetypes = uncategorized_df['filetype'].unique().to_list()
+        print(f"Unique filetypes in uncategorized events: {unique_filetypes}")
+        # Print counts per filetype
+        for filetype in unique_filetypes:
+            count = uncategorized_df.filter(pl.col('filetype') == filetype).height
+            print(f"  {filetype}: {count} events")
+        row = uncategorized_df.row(0, named=True)
+        print(f"Example uncategorized event: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
+        raise AssertionError
+    if sum(category_counts_unweighted) != total_events:
+        print(f"Error: Sum of filetype category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
         raise AssertionError
 
     return all_df
@@ -2393,6 +2423,14 @@ def do_combined_postprocessing(df):
             .sqrt()
             .alias("lantern_pandora_dist")
         ),
+    ])
+
+    # changing to nan when lantern vtx is the default (-999, -999, -999)
+    # the WC vtx will always be valid after generic neutrino selection
+    # the Pandora vtx will always be valid since a slice is always chosen
+    df = df.with_columns([
+        pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("wc_lantern_dist")).alias("wc_lantern_dist"),
+        pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("lantern_pandora_dist")).alias("lantern_pandora_dist"),
     ])
 
     return df

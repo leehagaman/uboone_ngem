@@ -32,6 +32,8 @@ def process_rw_sys_root_file(filename, frac_events = 1):
         filetype = "dirt_overlay"
     elif "nc_pi0" in filename.lower() or "ncpi0" in filename.lower() or "nc_pio" in filename.lower() or "ncpio" in filename.lower():
         filetype = "nc_pi0_overlay"
+    elif "ccpi0_overlay" in filename.lower():
+        filetype = "numucc_pi0_overlay"
     elif "delete_one_gamma" in filename.lower():
         filetype = "delete_one_gamma_overlay"
     elif "isotropic_one_gamma" in filename.lower():
@@ -39,7 +41,7 @@ def process_rw_sys_root_file(filename, frac_events = 1):
     elif "beam_on" in filename.lower():
         filetype = "data"
     else:
-        raise ValueError("Unknown filetype!", filename)
+        raise ValueError("Unknown filetype!", filename, filetype)
 
     if filetype == "data" or filetype == "ext" or filetype == "isotropic_one_gamma_overlay" or filetype == "delete_one_gamma_overlay":
         raise ValueError("Data, EXT, and 1g overlay files don't have systematics variables!")

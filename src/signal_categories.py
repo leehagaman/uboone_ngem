@@ -283,6 +283,7 @@ topological_categories_dic = {topological_category_labels[i]: i for i in range(l
 
 filetype_categories = [
     ("nc_pi0_overlay", "pl.col('filetype') == 'nc_pi0_overlay'",                 "xkcd:red", None),
+    ("numucc_pi0_overlay", "pl.col('filetype') == 'numucc_pi0_overlay'",         "xkcd:cyan", None),
     ("nu_overlay",     "pl.col('filetype') == 'nu_overlay'",                     "xkcd:blue", None),
     ("nue_overlay",    "pl.col('filetype') == 'nue_overlay'",                    "xkcd:green", None),
     ("dirt_overlay",   "pl.col('filetype') == 'dirt_overlay'",                   "xkcd:brown", None),
