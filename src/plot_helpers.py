@@ -194,10 +194,10 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         combined_rw_sys_cov = combined_rw_sys_frac_cov * np.outer(pred_counts, pred_counts)
         # using Pearson data stat cov
         data_stat_cov = get_data_stat_cov(data_counts, pred_counts)
-        mc_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column("wc_net_weight").to_numpy(), bins)
-        tot_cov = combined_rw_sys_cov + data_stat_cov + mc_stat_cov
+        pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column("wc_net_weight").to_numpy(), bins)
+        tot_cov = combined_rw_sys_cov + data_stat_cov + pred_stat_cov
 
-        tot_pred_cov = combined_rw_sys_cov + mc_stat_cov
+        tot_pred_cov = combined_rw_sys_cov + pred_stat_cov
         tot_pred_frac_cov = tot_pred_cov / np.outer(pred_counts, pred_counts)
         tot_pred_frac_errors = np.sqrt(np.diag(tot_pred_frac_cov))
 
@@ -353,10 +353,10 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         tot_pred_frac_errors_extra_val = np.nan_to_num(np.concatenate([tot_pred_frac_errors, [tot_pred_frac_errors[-1]]]), nan=0, posinf=0, neginf=0)
         plt.step(display_bins, tot_pred_frac_errors_extra_val, where="post", label="Total", ls="-", color="k")
 
-        mc_stat_errors = np.sqrt(np.diag(mc_stat_cov))
-        mc_stat_frac_errors = mc_stat_errors / pred_counts
-        mc_stat_frac_errors_extra_val = np.concatenate([mc_stat_frac_errors, [mc_stat_frac_errors[-1]]])
-        plt.step(display_bins, mc_stat_frac_errors_extra_val, where="post", label="MC Stat", ls="-")
+        pred_stat_errors = np.sqrt(np.diag(pred_stat_cov))
+        pred_stat_frac_errors = pred_stat_errors / pred_counts
+        pred_stat_frac_errors_extra_val = np.concatenate([pred_stat_frac_errors, [pred_stat_frac_errors[-1]]])
+        plt.step(display_bins, pred_stat_frac_errors_extra_val, where="post", label="Pred Stat", ls="-")
 
         for rw_sys_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
             diag_frac_errors = np.sqrt(np.diag(rw_sys_frac_cov))
