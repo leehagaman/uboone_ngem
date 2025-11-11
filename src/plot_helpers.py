@@ -29,7 +29,7 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
         include_data=True, additional_scaling_factor=1.0, include_systematic_breakdown=False,
         include_legend=True, show=True, return_p_value_info=False,
         page_num=None,
-        weights_df=None):
+        weights_df=None, include_ratio=True):
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -84,7 +84,6 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
             bins = np.concatenate([bins, [np.inf]])
             display_bins = np.concatenate([[bins[0] - bin_width], display_bins])
             bins = np.concatenate([[-np.inf], bins])
-        print("including overflow and underflow")
     elif include_overflow:
         if log_x:
             bin_width_log = np.log10(bins[-1]) - np.log10(bins[-2])
@@ -94,7 +93,6 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
             bin_width = bins[-1] - bins[-2]
             display_bins = np.concatenate([bins, [bins[-1] + bin_width]])
             bins = np.concatenate([bins, [np.inf]])
-        print("including overflow")
     elif include_underflow:
         if log_x:
             bin_width_log = np.log10(bins[-1]) - np.log10(bins[-2])
@@ -104,11 +102,8 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
             bin_width = bins[1] - bins[0]
             display_bins = np.concatenate([[bins[0] - bin_width], bins])
             bins = np.concatenate([[-np.inf], bins])
-        print("including underflow")
     else:
         display_bins = bins
-
-    print("display_bins:", display_bins)
 
     # check if bins is sorted
     if not np.all(np.diff(bins) > 0):
@@ -148,7 +143,10 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
 
     data_counts = np.histogram(get_vals(data_sel_df, var), bins=bins)[0]
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    if include_ratio:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    else:
+        fig, ax1 = plt.subplots(1, 1, figsize=(10, 6))
 
     bottom = np.zeros(len(bins)-1)
     tot_pred = 0
@@ -230,31 +228,33 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
 
     diff = data_counts - pred_counts
 
-    # removing bins with low data counts
-    empty_indices = np.where(data_counts <= 1)[0]
-    if len(empty_indices) > 0:
-        print("removing bins with 0 or 1 data counts at indices:", empty_indices)
-        diff = np.delete(diff, empty_indices)
-        tot_cov = np.delete(tot_cov, empty_indices, axis=0)
-        tot_cov = np.delete(tot_cov, empty_indices, axis=1)
+    if plot_rw_systematics:
 
-    try:
-        tot_cov_inv = np.linalg.inv(tot_cov)
-        inverse_success = True
-    except:
-        inverse_success = False
-        print(f"WARNING: tot_cov is not invertible, using pseudo-inverse")
-        tot_cov_inv = np.linalg.pinv(tot_cov)
-    chi2 = diff @ tot_cov_inv @ diff
-    # don't include totally empty bins in the ndf
-    ndf = len(diff)
-    p_value, sigma = get_significance(chi2, ndf)
+        # removing bins with low data counts
+        empty_indices = np.where(data_counts <= 1)[0]
+        if len(empty_indices) > 0:
+            print("removing bins with 0 or 1 data counts at indices:", empty_indices)
+            diff = np.delete(diff, empty_indices)
+            tot_cov = np.delete(tot_cov, empty_indices, axis=0)
+            tot_cov = np.delete(tot_cov, empty_indices, axis=1)
 
-    s = f"$\chi^2/ndf$ = {chi2:.2f}/{ndf}, p-value = {p_value:.2e}, $\sigma$ = {sigma:.2f}"
-    if inverse_success:
-        ax1.text(0.05, 0.95, s, transform=ax1.transAxes, fontsize=8, ha="left", va="top")
-    else:
-        ax1.text(0.05, 0.95, "WARNING: tot_cov is not invertible, using pseudo-inverse\n" + s, transform=ax1.transAxes, fontsize=8, ha="left", va="top")
+            try:
+                tot_cov_inv = np.linalg.inv(tot_cov)
+                inverse_success = True
+            except:
+                inverse_success = False
+                print(f"WARNING: tot_cov is not invertible, using pseudo-inverse")
+                tot_cov_inv = np.linalg.pinv(tot_cov)
+            chi2 = diff @ tot_cov_inv @ diff
+            # don't include totally empty bins in the ndf
+            ndf = len(diff)
+            p_value, sigma = get_significance(chi2, ndf)
+
+            s = f"$\chi^2/ndf$ = {chi2:.2f}/{ndf}, p-value = {p_value:.2e}, $\sigma$ = {sigma:.2f}"
+            if inverse_success:
+                ax1.text(0.05, 0.95, s, transform=ax1.transAxes, fontsize=8, ha="left", va="top")
+            else:
+                ax1.text(0.05, 0.95, "WARNING: tot_cov is not invertible, using pseudo-inverse\n" + s, transform=ax1.transAxes, fontsize=8, ha="left", va="top")
 
     if display_var is None:
         display_var = var
@@ -275,62 +275,69 @@ def make_plot(pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, bin
     if include_legend:
         ax1.legend(ncol=2, loc='upper right', fontsize=6)
     
-    # Remove x-axis labels from top plot
-    ax1.set_xticklabels([])
-    
     # Create ratio plot
-    ratio = np.zeros_like(pred_counts)
-    ratio_err_data = np.zeros_like(pred_counts)
-    ratio_err_pred = np.zeros_like(pred_counts)
-    
-    for i in range(len(pred_counts)):
-        if pred_counts[i] > 0:
-            ratio[i] = data_counts[i] / pred_counts[i]
-            # Error on data/pred
-            ratio_err_data[i] = np.sqrt(data_counts[i]) / pred_counts[i]
-            # Error on pred (if systematics are available)
-            if plot_rw_systematics:
-                ratio_err_pred[i] = tot_pred_frac_errors[i] * ratio[i]
-        else:
-            ratio[i] = np.nan
-            ratio_err_data[i] = np.nan
-            ratio_err_pred[i] = np.nan
-    
-    # Plot data points with error bars
-    if include_data:
-        ax2.errorbar(display_bin_centers, ratio, yerr=ratio_err_data, fmt="o", color="k", lw=0.5,
-                    capsize=2, capthick=1, markersize=2, label="Data/Pred")
-    
-    # Plot prediction uncertainty band if systematics are available
-    if plot_rw_systematics:
+    if include_ratio:
+        # Remove x-axis labels from top plot
+        ax1.set_xticklabels([])
+        
+        ratio = np.zeros_like(pred_counts)
+        ratio_err_data = np.zeros_like(pred_counts)
+        ratio_err_pred = np.zeros_like(pred_counts)
+        
         for i in range(len(pred_counts)):
             if pred_counts[i] > 0:
-                left = display_bins[i]
-                width = display_bins[i+1] - display_bins[i]
-                bottom_y = 1 - tot_pred_frac_errors[i]
-                rect = Rectangle(
-                    (left, bottom_y),
-                    width,
-                    2 * tot_pred_frac_errors[i],
-                    hatch="/////",
-                    fill=False,
-                    edgecolor="k",
-                    linewidth=0,
-                )
-                ax2.add_patch(rect)
-    
-    # Draw horizontal line at 1
-    ax2.axhline(y=1, color='k', linestyle='--', linewidth=1)
-    
-    ax2.set_xlabel(display_var)
-    ax2.set_ylabel("Data/Pred")
-    ax2.set_xlim(display_bins[0], display_bins[-1])
-    ax2.set_ylim(0, 2)
-    if log_x:
-        ax2.set_xscale("log")
+                ratio[i] = data_counts[i] / pred_counts[i]
+                # Error on data/pred
+                ratio_err_data[i] = np.sqrt(data_counts[i]) / pred_counts[i]
+                # Error on pred (if systematics are available)
+                if plot_rw_systematics:
+                    ratio_err_pred[i] = tot_pred_frac_errors[i] * ratio[i]
+            else:
+                ratio[i] = np.nan
+                ratio_err_data[i] = np.nan
+                ratio_err_pred[i] = np.nan
+        
+        # Plot data points with error bars
+        if include_data:
+            ax2.errorbar(display_bin_centers, ratio, yerr=ratio_err_data, fmt="o", color="k", lw=0.5,
+                        capsize=2, capthick=1, markersize=2, label="Data/Pred")
+        
+        # Plot prediction uncertainty band if systematics are available
+        if plot_rw_systematics:
+            for i in range(len(pred_counts)):
+                if pred_counts[i] > 0:
+                    left = display_bins[i]
+                    width = display_bins[i+1] - display_bins[i]
+                    bottom_y = 1 - tot_pred_frac_errors[i]
+                    rect = Rectangle(
+                        (left, bottom_y),
+                        width,
+                        2 * tot_pred_frac_errors[i],
+                        hatch="/////",
+                        fill=False,
+                        edgecolor="k",
+                        linewidth=0,
+                    )
+                    ax2.add_patch(rect)
+        
+        # Draw horizontal line at 1
+        ax2.axhline(y=1, color='k', linestyle='--', linewidth=1)
+        
+        ax2.set_xlabel(display_var)
+        ax2.set_ylabel("Data/Pred")
+        ax2.set_xlim(display_bins[0], display_bins[-1])
+        ax2.set_ylim(0, 2)
+        if log_x:
+            ax2.set_xscale("log")
 
-    if page_num is not None:
-        ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
+        if page_num is not None:
+            ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
+    else:
+        # Set x-axis label on main plot when ratio panel is not included
+        ax1.set_xlabel(display_var)
+        
+        if page_num is not None:
+            ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
     
     
     if savename is not None:

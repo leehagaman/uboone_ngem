@@ -12,3 +12,4 @@ __pycache__/
 tmp/*
 !tmp/.gitkeep
 small_data_files/genie_univs/*
+training_outputs/*/*.csv

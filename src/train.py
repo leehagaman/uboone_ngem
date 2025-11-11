@@ -219,6 +219,17 @@ if __name__ == "__main__":
     gain_array = get_importance_array(gain_importance, training_vars)
     cover_array = get_importance_array(cover_importance, training_vars)
     
+    # Save feature importances to CSV
+    print("Saving feature importances to CSV...")
+    importance_df = pl.DataFrame({
+        'feature': training_vars,
+        'weight_importance': weight_array,
+        'gain_importance': gain_array,
+        'cover_importance': cover_array
+    })
+    importance_df.write_csv(output_dir / "feature_importances.csv")
+    print(f"Saved feature importances to: {output_dir / 'feature_importances.csv'}")
+    
     # Create plots for each importance type
     for importance_type, importance_array, importance_name in [
         ('weight', weight_array, 'Weight'),
@@ -246,8 +257,10 @@ if __name__ == "__main__":
     evals_result = model.evals_result()
     loss_key = 'mlogloss' if num_categories > 2 else 'logloss'
     err_key = 'merror' if num_categories > 2 else 'error'
-    plt.plot(evals_result['validation_0'][loss_key], label='Train Loss', linewidth=2)
-    plt.plot(evals_result['validation_1'][loss_key], label='Test Loss', linewidth=2)
+    train_loss = evals_result['validation_0'][loss_key]
+    test_loss = evals_result['validation_1'][loss_key]
+    plt.plot(train_loss, label='Train Loss', linewidth=2)
+    plt.plot(test_loss, label='Test Loss', linewidth=2)
     plt.xlabel('Iteration')
     plt.ylabel('Multi-class Log Loss')
     plt.title('Training Loss Curves')
@@ -268,6 +281,20 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig(output_dir / "training_curves.png", dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Save training curves to CSV
+    print("Saving training curves to CSV...")
+    num_iterations = len(train_loss)
+    training_curves_df = pl.DataFrame({
+        'iteration': list(range(num_iterations)),
+        'train_loss': train_loss,
+        'test_loss': test_loss,
+        'train_accuracy': train_acc,
+        'test_accuracy': test_acc,
+        'is_best_iteration': [i == model.best_iteration for i in range(num_iterations)]
+    })
+    training_curves_df.write_csv(output_dir / "training_curves.csv")
+    print(f"Saved training curves to: {output_dir / 'training_curves.csv'}")
 
     print("Creating probability histograms...")
     plt.figure(figsize=(20, 12))
