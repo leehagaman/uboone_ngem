@@ -49,10 +49,6 @@ if __name__ == "__main__":
         training_vars = pandora_scalar_training_vars
     elif args.training_vars == "only_wc_lantern_combined":
         training_vars = wc_training_vars + lantern_training_vars + combined_postprocessing_training_vars
-    elif args.training_vars == "pandora_scalars_first_half":
-        training_vars = pandora_scalar_first_half_training_vars
-    elif args.training_vars == "pandora_scalars_second_half":
-        training_vars = pandora_scalar_second_half_training_vars
     else:
         raise ValueError(f"Invalid training_vars: {args.training_vars}")
 
@@ -110,7 +106,7 @@ if __name__ == "__main__":
     
     all_df = pl.concat([no_data_df, data_df])
 
-    # Preselection: WC generic neutrino selection with at least one reco 20 MeV shower
+    # Preselection: WC generic neutrino selection
     # (should already be applied in the presel_df_train_vars.pkl file)
     original_num_events = no_data_df.height
     presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0)
