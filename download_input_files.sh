@@ -74,6 +74,15 @@ FILES_TO_COPY=(
     # Data files
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4b_full_samples/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root"
 
+    # DetVar files
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_lya_surprise_reco2_hist.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_lyd_surprise_reco2_hist.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_lyr_surprise_reco2_hist.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_WMX_surprise_TEST_reco2_hist.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_recomb2_surprise_reco2_hist.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_SCE_surprise_reco2_hist.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_cv_surprise_reco2_hist.root"
+
 )
 
 for FILE in "${FILES_TO_COPY[@]}"; do

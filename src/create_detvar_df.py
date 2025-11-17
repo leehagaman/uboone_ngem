@@ -22,9 +22,7 @@ from memory_monitoring import start_memory_logger
 
 def process_root_file(filename, frac_events = 1):
 
-    if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower(): # EXT file
-        filetype = "ext"
-    elif "nu_overlay" in filename.lower():
+    if "nu_overlay" in filename.lower():
         filetype = "nu_overlay"
     elif "nue_overlay" in filename.lower():
         filetype = "nue_overlay"
@@ -38,10 +36,25 @@ def process_root_file(filename, frac_events = 1):
         filetype = "delete_one_gamma_overlay"
     elif "isotropic_one_gamma" in filename.lower():
         filetype = "isotropic_one_gamma_overlay"
-    elif "beam_on" in filename.lower():
-        filetype = "data"
     else:
         raise ValueError("Unknown filetype!", filename, filetype)
+
+    if "lya" in filename.lower():
+        vartype = "LYAtt"
+    elif "lyd" in filename.lower():
+        vartype = "LYDown"
+    elif "lyr" in filename.lower():
+        vartype = "LYRayleigh"
+    elif "wmx" in filename.lower():
+        vartype = "WireModX"
+    elif "recomb2" in filename.lower():
+        vartype = "Recomb2"
+    elif "sce" in filename.lower():
+        vartype = "SCE"
+    elif "cv" in filename.lower():
+        vartype = "CV"
+    else:
+        raise ValueError("Unknown vartype!", filename, vartype)
     
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -51,22 +64,17 @@ def process_root_file(filename, frac_events = 1):
 
     f = uproot.open(f"{data_files_location}/{filename}")
 
-    if filetype == "data": # quartering the data to use as open data
-        curr_frac_events = frac_events / 4
-    else:
-        curr_frac_events = frac_events
-
     # determine how many events to read based on requested fraction
     if not (0.0 < frac_events <= 1.0):
         raise ValueError("--frac_events/-f must be in the interval (0, 1].")
     total_entries = f["wcpselection"]["T_eval"].num_entries
-    n_events = total_entries if curr_frac_events >= 1.0 else max(1, int(total_entries * curr_frac_events))
+    n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
-    print(f"{total_entries=}, {curr_frac_events=}, {n_events=}")
+    print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
-
-    curr_wc_T_pf_vars = wc_T_pf_vars
+    # this nanosecond timing variable only exists in the CV and merged files
+    curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var != "evtTimeNS_cor"]
 
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     if "v10_04_07_09" in filename:
@@ -79,35 +87,14 @@ def process_root_file(filename, frac_events = 1):
     dic.update(f["wcpselection"]["T_BDTvars"].arrays(curr_wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
     dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
     dic.update(f["wcpselection"]["T_spacepoints"].arrays(wc_T_spacepoints_vars, library="np", **slice_kwargs))
-    if filetype == "ext" or filetype == "data":
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
-    else:
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     for col in dic:
         dic[col] = dic[col].tolist()
     wc_df = pd.DataFrame(dic)
-
-    if filetype == "ext":
-        # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
-
-        # trigger numbers from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4
-        if filename == "MCC9.10_Run4b_v10_04_07_09_Run4b_BNB_beam_off_surprise_reco2_hist.root":
-            ext_num_triggers = 88445969
-            corresponding_data_num_triggers = 31582916
-            corresponding_data_POT = 1.332e20
-            file_POT_total = corresponding_data_POT * ext_num_triggers / corresponding_data_num_triggers
-        else:
-            raise ValueError("Invalid EXT file, num triggers not found!")
-    elif filetype == "data":
-        if filename == "MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root":
-            file_POT_total = 1.332e20
-        else:
-            raise ValueError("Invalid data file!")
     
-    file_POT = file_POT_total * curr_frac_events
+    file_POT = file_POT_total * frac_events
     wc_df["wc_file_POT"] = file_POT
     
     # loading blip variables
@@ -157,6 +144,10 @@ def process_root_file(filename, frac_events = 1):
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
 
+    previous_num_events = all_df.shape[0]
+    all_df = all_df.query("wc_kine_reco_Enu > 0").reset_index(drop=True)
+    print(f"kept {all_df.shape[0]}/{previous_num_events} events with after preselection using wc_kine_reco_Enu > 0")
+
     detailed_run_period = "?"
     if "4a.root" in filename:
         detailed_run_period = "4a"
@@ -184,6 +175,7 @@ def process_root_file(filename, frac_events = 1):
     all_df["detailed_run_period"] = detailed_run_period
     all_df["filename"] = filename
     all_df["filetype"] = filetype
+    all_df["vartype"] = vartype
     
     # Validate that filetype was set correctly
     if not filetype or filetype == '':
@@ -193,12 +185,12 @@ def process_root_file(filename, frac_events = 1):
 
     events_per_POT = all_df.shape[0] / (file_POT / 1e19)
 
-    progress_str = f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {events_per_POT:>6.2f} events / 1e19 POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    progress_str = f"\nloaded {filetype:<30}   Vartype {vartype:<12} Run {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {events_per_POT:>6.2f} events / 1e19 POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
 
-    return filetype, all_df, file_POT
+    return filetype, vartype, all_df, file_POT
 
 
 if __name__ == "__main__":
@@ -220,21 +212,21 @@ if __name__ == "__main__":
         print(f"Loading {args.frac_events} fraction of events from each file")
 
     for file in os.listdir(intermediate_files_location):
-        if ((file.startswith("curr_df_pl_") and file.endswith(".parquet")) or file == "presel_df_train_vars.parquet" or file == "all_df.parquet"):
+        if ((file.startswith("curr_detvar_df_pl_") and file.endswith(".parquet")) or file == "detvar_presel_df_train_vars.parquet"):
             os.remove(f"{intermediate_files_location}/{file}")
     print("Deleted intermediate parquet files")
 
     print("Starting loop over root files...")
     all_df_pl = pl.DataFrame()
-    all_nc_pi0_POTs = []
-    all_numucc_pi0_POTs = []
-    all_nu_POTs = []
-    all_nue_POTs = []
-    all_dirt_POTs = []
-    all_ext_POTs = []
-    all_delete_one_gamma_POTs = []
-    all_isotropic_one_gamma_POTs = []
-    all_data_POTs = []
+
+    detailed_pot_dic = {}
+    all_cv_nc_pi0_POTs = []
+    all_cv_numucc_pi0_POTs = []
+    all_cv_nu_POTs = []
+    all_cv_nue_POTs = []
+    all_cv_dirt_POTs = []
+    all_cv_delete_one_gamma_POTs = []
+    all_cv_isotropic_one_gamma_POTs = []
 
     filenames = os.listdir(data_files_location)
     filenames.sort()
@@ -249,30 +241,28 @@ if __name__ == "__main__":
         if "UNUSED" in filename or "older_downloads" in filename:
             continue
 
-        if "detvar" in filename.lower():
+        if not "detvar" in filename.lower():
             continue
 
-        filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
-        if filetype == "nc_pi0_overlay":
-            all_nc_pi0_POTs.append(curr_POT)
-        elif filetype == "numucc_pi0_overlay":
-            all_numucc_pi0_POTs.append(curr_POT)
-        elif filetype == "nu_overlay":
-            all_nu_POTs.append(curr_POT)
-        elif filetype == "nue_overlay":
-            all_nue_POTs.append(curr_POT)
-        elif filetype == "dirt_overlay":
-            all_dirt_POTs.append(curr_POT)
-        elif filetype == "ext":
-            all_ext_POTs.append(curr_POT)
-        elif filetype == "delete_one_gamma_overlay":
-            all_delete_one_gamma_POTs.append(curr_POT)
-        elif filetype == "isotropic_one_gamma_overlay":
-            all_isotropic_one_gamma_POTs.append(curr_POT)
-        elif filetype == "data":
-            all_data_POTs.append(curr_POT)
-        else:
-            raise ValueError("Unknown filetype!", filetype)
+        filetype, vartype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
+
+        if vartype == "CV":
+            if filetype == "nc_pi0_overlay":
+                all_cv_nc_pi0_POTs.append(curr_POT)
+            elif filetype == "numucc_pi0_overlay":
+                all_cv_numucc_pi0_POTs.append(curr_POT)
+            elif filetype == "nu_overlay":
+                all_cv_nu_POTs.append(curr_POT)
+            elif filetype == "nue_overlay":
+                all_cv_nue_POTs.append(curr_POT)
+            elif filetype == "dirt_overlay":
+                all_cv_dirt_POTs.append(curr_POT)
+            elif filetype == "delete_one_gamma_overlay":
+                all_cv_delete_one_gamma_POTs.append(curr_POT)
+            elif filetype == "isotropic_one_gamma_overlay":
+                all_cv_isotropic_one_gamma_POTs.append(curr_POT)
+            else:
+                raise ValueError("Unknown filetype!", filetype)
 
 
         print("doing post-processing that requires vector variables...")
@@ -286,7 +276,7 @@ if __name__ == "__main__":
         curr_df = do_glee_postprocessing(curr_df)
 
         curr_df = remove_vector_variables(curr_df)
-        
+
         # converting to polars
         curr_df_pl = pl.from_pandas(curr_df)
         del curr_df
@@ -302,31 +292,17 @@ if __name__ == "__main__":
         curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Float64).cast(pl.Float32)])
         curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Int32).cast(pl.Int64)])
 
-        parquet_path = f"{intermediate_files_location}/curr_df_pl_{file_num}.parquet"
         print(f"curr_df_pl size: {curr_df_pl.estimated_size() / 1e9:.2f} GB")
-        curr_df_pl.write_parquet(parquet_path)
+        curr_df_pl.write_parquet(f"{intermediate_files_location}/curr_detvar_df_pl_{file_num}.parquet")
         print("saved to parquet file")
-
-        # Immediately reload the parquet shard to ensure on-disk integrity
-        print(f"Reloading {parquet_path} to ensure on-disk integrity...")
-        reloaded_df = pl.read_parquet(parquet_path)
-        if "filetype" not in reloaded_df.columns:
-            raise ValueError(f"{parquet_path} is missing the filetype column after writing!")
-        empty_count = reloaded_df.filter(pl.col("filetype") == '').height
-        null_count = reloaded_df.filter(pl.col("filetype").is_null()).height
-        if empty_count > 0 or null_count > 0:
-            raise ValueError(
-                f"{parquet_path} has corrupted filetype values after writing: "
-                f"{empty_count} empty strings, {null_count} nulls"
-            )
-        del reloaded_df
         del curr_df_pl
 
     print("loading polars dataframes from parquet files...")
 
     pl_dfs = []
     for file in os.listdir(intermediate_files_location):
-        if file.startswith("curr_df_pl_") and file.endswith(".parquet"):
+
+        if file.startswith("curr_detvar_df_pl_") and file.endswith(".parquet"):
             print(f"Reading {file}")
             curr_df = pl.read_parquet(f"{intermediate_files_location}/{file}")
             # Validate filetype column after reading from parquet - should never be empty
@@ -352,9 +328,9 @@ if __name__ == "__main__":
             raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null")
 
     for file in os.listdir(intermediate_files_location):
-        if file.startswith("curr_df_pl_") and file.endswith(".parquet"):
+        if file.startswith("curr_detvar_df_pl_") and file.endswith(".parquet"):
             os.remove(f"{intermediate_files_location}/{file}")
-    print("Deleted intermediate curr_df_pl*.parquet files")
+    print("Deleted intermediate curr_detvar_df_pl*.parquet files")
 
     if all_df.is_empty():
         raise ValueError("No events in the dataframe!")
@@ -364,58 +340,37 @@ if __name__ == "__main__":
     # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
     pot_dic = {
-        "nc_pi0_overlay": sum(all_nc_pi0_POTs),
-        "numucc_pi0_overlay": sum(all_numucc_pi0_POTs),
-        "nu_overlay": sum(all_nu_POTs),
-        "nue_overlay": sum(all_nue_POTs),
-        "dirt_overlay": sum(all_dirt_POTs),
-        "ext": sum(all_ext_POTs),
-        "delete_one_gamma_overlay": sum(all_delete_one_gamma_POTs),
-        "isotropic_one_gamma_overlay": sum(all_isotropic_one_gamma_POTs),
-        "data": sum(all_data_POTs),
+        "nc_pi0_overlay": sum(all_cv_nc_pi0_POTs),
+        "numucc_pi0_overlay": sum(all_cv_numucc_pi0_POTs),
+        "nu_overlay": sum(all_cv_nu_POTs),
+        "nue_overlay": sum(all_cv_nue_POTs),
+        "dirt_overlay": sum(all_cv_dirt_POTs),
+        "delete_one_gamma_overlay": sum(all_cv_delete_one_gamma_POTs),
+        "isotropic_one_gamma_overlay": sum(all_cv_isotropic_one_gamma_POTs),
     }
 
     print("doing post-processing that doesn't require vector variables using polars...")
 
     all_df = do_combined_postprocessing(all_df)
-    if pot_dic["data"] > 0:
-        normalizing_POT = pot_dic["data"]
-    else:
-        normalizing_POT = 1.11e21
+    normalizing_POT = 1.11e21
     
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
     all_df = add_signal_categories(all_df)
 
     file_RSEs = []
-    for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
-        file_RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
+    for filetype, vartype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["vartype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
+        file_RSE = f"{filetype}_{vartype}_{run:06d}_{subrun:06d}_{event:06d}"
         file_RSEs.append(file_RSE)
-    if not len(file_RSEs) == len(set(file_RSEs)):
-        # find the duplicates
-        duplicates = [file_RSE for file_RSE in file_RSEs if file_RSEs.count(file_RSE) > 1]
-        print(f"Found {len(duplicates)} duplicates, first 10: {duplicates[:10]}")
-        raise ValueError("Duplicate filetype/run/subrun/event!")
+    assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/vartype/run/subrun/event!"
 
-    print(f"saving {intermediate_files_location}/presel_df_train_vars.parquet...", end="", flush=True)
+    print(f"saving {intermediate_files_location}/detvar_presel_df_train_vars.parquet...", end="", flush=True)
     start_time = time.time()
     presel_df = all_df.filter(pl.col("wc_kine_reco_Enu") > 0)
-    presel_df.write_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
+    presel_df.write_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
     end_time = time.time()
-    file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.parquet") / 1024**3
+    file_size_gb = os.path.getsize(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet") / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
 
-    print(f"saving {intermediate_files_location}/all_df.parquet...", end="", flush=True)
-    start_time = time.time()
-    # remove the large number of WC training-only-variables for a smaller file size
-
-    remove_columns = wc_training_only_vars
-
-    all_df = all_df.drop(remove_columns)
-
-    all_df.write_parquet(f"{intermediate_files_location}/all_df.parquet")
-    end_time = time.time()
-    file_size_gb = os.path.getsize(f"{intermediate_files_location}/all_df.parquet") / 1024**3
-    print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
     main_end_time = time.time()
     print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
     

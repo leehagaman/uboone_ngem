@@ -173,6 +173,9 @@ if __name__ == "__main__":
         if "one_gamma" in filename.lower():
             continue
 
+        if "detvar" in filename.lower():
+            continue
+
         filetype, curr_presel_weights_df = process_rw_sys_root_file(filename, frac_events=args.frac_events)
 
         print(f"curr_presel_weights_df size: {curr_presel_weights_df.estimated_size() / 1e9:.2f} GB")

@@ -1027,6 +1027,16 @@ def do_blip_postprocessing(df):
         blip_dxs = all_blip_dx[event_index]
         blip_dws = all_blip_dw[event_index]
 
+        # Check if wc_reco_shower_momentum is a float/NaN (not subscriptable)
+        if isinstance(all_wc_reco_shower_momentum[event_index], float) or not hasattr(all_wc_reco_shower_momentum[event_index], '__getitem__'):
+            closest_upstream_blip_distance.append(curr_closest_upstream_blip_distance)
+            closest_upstream_blip_angle.append(curr_closest_upstream_blip_angle)
+            closest_upstream_blip_impact_parameter.append(curr_closest_upstream_blip_impact_parameter)
+            closest_upstream_blip_energy.append(curr_closest_upstream_blip_energy)
+            closest_upstream_blip_dx.append(curr_closest_upstream_blip_dx)
+            closest_upstream_blip_dw.append(curr_closest_upstream_blip_dw)
+            continue
+
         wc_reco_shower_momentum = np.array([all_wc_reco_shower_momentum[event_index][0], 
                                             all_wc_reco_shower_momentum[event_index][1], 
                                             all_wc_reco_shower_momentum[event_index][2]])
@@ -1149,6 +1159,24 @@ def do_glee_postprocessing(df):
     sum_isolation_num_unassoc_hits_win_5cm_trk = []
 
     for event_i in tqdm(range(len(isolation_min_dist_trk_shr)), desc="Analyzing gLEE isolation variables", mininterval=10):
+        curr_isolation_min_dist_trk_shr = isolation_min_dist_trk_shr[event_i]
+        if isinstance(curr_isolation_min_dist_trk_shr, (float, np.floating)) or not hasattr(curr_isolation_min_dist_trk_shr, '__len__'):
+            # It's a scalar, treat as empty list (will append NaN values)
+            min_isolation_min_dist_trk_shr.append(np.nan)
+            min_isolation_min_dist_trk_unassoc.append(np.nan)
+            min_isolation_nearest_shr_hit_to_trk_time.append(np.nan)
+            min_isolation_nearest_shr_hit_to_trk_wire.append(np.nan)
+            min_isolation_nearest_unassoc_hit_to_trk_time.append(np.nan)
+            min_isolation_nearest_unassoc_hit_to_trk_wire.append(np.nan)
+            sum_isolation_num_shr_hits_win_10cm_trk.append(np.nan)
+            sum_isolation_num_shr_hits_win_1cm_trk.append(np.nan)
+            sum_isolation_num_shr_hits_win_2cm_trk.append(np.nan)
+            sum_isolation_num_shr_hits_win_5cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_10cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_1cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_2cm_trk.append(np.nan)
+            sum_isolation_num_unassoc_hits_win_5cm_trk.append(np.nan)
+            continue
         if len(isolation_min_dist_trk_shr[event_i]) == 0:
             min_isolation_min_dist_trk_shr.append(np.nan)
             min_isolation_min_dist_trk_unassoc.append(np.nan)
@@ -1195,7 +1223,7 @@ def do_glee_postprocessing(df):
         "glee_sum_isolation_num_unassoc_hits_win_1cm_trk": sum_isolation_num_unassoc_hits_win_1cm_trk,
         "glee_sum_isolation_num_unassoc_hits_win_2cm_trk": sum_isolation_num_unassoc_hits_win_2cm_trk,
         "glee_sum_isolation_num_unassoc_hits_win_5cm_trk": sum_isolation_num_unassoc_hits_win_5cm_trk,
-    })
+    }, index=df.index)
     df = pd.concat([df, glee_isolation_df], axis=1)
 
     return df
@@ -1362,7 +1390,11 @@ def do_lantern_postprocessing(df):
     showerStartDirY = df["lantern_showerStartDirY"].to_numpy()
     showerStartDirZ = df["lantern_showerStartDirZ"].to_numpy()
     for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN showers", mininterval=10):
-        curr_nShowers = nShowers[event_i]
+        curr_nShowers_val = nShowers[event_i]
+        if np.isnan(curr_nShowers_val):
+            curr_nShowers = 0
+        else:
+            curr_nShowers = int(curr_nShowers_val)
         curr_showerIsSecondary = showerIsSecondary[event_i]
         curr_showerPID = showerPID[event_i]
         curr_showerPhScore = showerPhScore[event_i]
@@ -2019,7 +2051,11 @@ def do_lantern_postprocessing(df):
     trackRecoE = df["lantern_trackRecoE"].to_numpy()
 
     for event_i in tqdm(range(len(df)), desc="Analyzing LANTERN tracks", mininterval=10):
-        curr_nTracks = nTracks[event_i]
+        curr_nTracks_val = nTracks[event_i]
+        if np.isnan(curr_nTracks_val):
+            curr_nTracks = 0
+        else:
+            curr_nTracks = int(curr_nTracks_val)
         curr_trackIsSecondary = trackIsSecondary[event_i]
         curr_trackClassified = trackClassified[event_i]
         curr_trackCharge = trackCharge[event_i]
@@ -2392,7 +2428,7 @@ def do_lantern_postprocessing(df):
         "lantern_prim_charged_pion_track_max_piscore": prim_charged_pion_track_max_piscores,
     })
 
-    df = pd.concat([df, pd.DataFrame(new_lantern_cols_dic, index=df.index)], axis=1)
+    df = pd.concat([df, pd.DataFrame(new_lantern_cols_dic)], axis=1)
 
     return df
 
@@ -2440,21 +2476,27 @@ def remove_vector_variables(df):
 
     print("removing vector variables...")
 
-    df["wc_reco_muonMomentum_0"] = df["wc_reco_muonMomentum"].apply(lambda x: x[0])
-    df["wc_reco_muonMomentum_1"] = df["wc_reco_muonMomentum"].apply(lambda x: x[1])
-    df["wc_reco_muonMomentum_2"] = df["wc_reco_muonMomentum"].apply(lambda x: x[2])
-    df["wc_reco_muonMomentum_3"] = df["wc_reco_muonMomentum"].apply(lambda x: x[3])
+    def get_vector_component(x, index):
+        """Extract component from vector, handling float/NaN values."""
+        if isinstance(x, (float, np.floating)) or not hasattr(x, '__getitem__'):
+            return np.nan
+        return x[index]
 
-    df["wc_reco_showerMomentum_0"] = df["wc_reco_showerMomentum"].apply(lambda x: x[0])
-    df["wc_reco_showerMomentum_1"] = df["wc_reco_showerMomentum"].apply(lambda x: x[1])
-    df["wc_reco_showerMomentum_2"] = df["wc_reco_showerMomentum"].apply(lambda x: x[2])
-    df["wc_reco_showerMomentum_3"] = df["wc_reco_showerMomentum"].apply(lambda x: x[3])
+    df["wc_reco_muonMomentum_0"] = df["wc_reco_muonMomentum"].apply(lambda x: get_vector_component(x, 0))
+    df["wc_reco_muonMomentum_1"] = df["wc_reco_muonMomentum"].apply(lambda x: get_vector_component(x, 1))
+    df["wc_reco_muonMomentum_2"] = df["wc_reco_muonMomentum"].apply(lambda x: get_vector_component(x, 2))
+    df["wc_reco_muonMomentum_3"] = df["wc_reco_muonMomentum"].apply(lambda x: get_vector_component(x, 3))
+
+    df["wc_reco_showerMomentum_0"] = df["wc_reco_showerMomentum"].apply(lambda x: get_vector_component(x, 0))
+    df["wc_reco_showerMomentum_1"] = df["wc_reco_showerMomentum"].apply(lambda x: get_vector_component(x, 1))
+    df["wc_reco_showerMomentum_2"] = df["wc_reco_showerMomentum"].apply(lambda x: get_vector_component(x, 2))
+    df["wc_reco_showerMomentum_3"] = df["wc_reco_showerMomentum"].apply(lambda x: get_vector_component(x, 3))
 
     if "wc_truth_muonMomentum" in df.columns:
-        df["wc_truth_muonMomentum_0"] = df["wc_truth_muonMomentum"].apply(lambda x: x[0])
-        df["wc_truth_muonMomentum_1"] = df["wc_truth_muonMomentum"].apply(lambda x: x[1])
-        df["wc_truth_muonMomentum_2"] = df["wc_truth_muonMomentum"].apply(lambda x: x[2])
-        df["wc_truth_muonMomentum_3"] = df["wc_truth_muonMomentum"].apply(lambda x: x[3])
+        df["wc_truth_muonMomentum_0"] = df["wc_truth_muonMomentum"].apply(lambda x: get_vector_component(x, 0))
+        df["wc_truth_muonMomentum_1"] = df["wc_truth_muonMomentum"].apply(lambda x: get_vector_component(x, 1))
+        df["wc_truth_muonMomentum_2"] = df["wc_truth_muonMomentum"].apply(lambda x: get_vector_component(x, 2))
+        df["wc_truth_muonMomentum_3"] = df["wc_truth_muonMomentum"].apply(lambda x: get_vector_component(x, 3))
 
     save_columns = [col for col in df.columns if col not in vector_columns]
     return df[save_columns]
