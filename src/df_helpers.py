@@ -1,4 +1,17 @@
 import polars as pl
+import numpy as np
+
+def get_vals(df, var):
+    if var == "(wc_flash_measPe - wc_flash_predPe) / wc_flash_predPe":
+        vals = (df.get_column("wc_flash_measPe") - df.get_column("wc_flash_predPe")) / df.get_column("wc_flash_predPe")
+        vals = vals.to_numpy()
+    elif var == "wc_WCPMTInfoChi2 / wc_WCPMTInfoNDF":
+        vals = df.get_column("wc_WCPMTInfoChi2") / df.get_column("wc_WCPMTInfoNDF")
+        vals = np.nan_to_num(vals.to_numpy(), nan=-1, posinf=-1, neginf=-1)
+    else:
+        vals = df.get_column(var)
+        vals = vals.to_numpy()
+    return vals
 
 def align_columns_for_concat(dfs):
     # Find all columns across all DataFrames

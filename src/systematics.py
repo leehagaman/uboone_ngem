@@ -2,13 +2,14 @@ import numpy as np
 import os
 import hashlib
 from tqdm import tqdm
-from src.file_locations import covariance_cache_location
 import polars as pl
-from src.file_locations import intermediate_files_location
+from src.file_locations import intermediate_files_location, covariance_cache_location
+from src.df_helpers import get_vals
 
 from scipy.special import erfinv, erfcinv, erfc
 from scipy.stats import chi2
 from scipy.stats import poisson
+
 
 def get_significance(chisquare, ndf, printout=False):
     # probability of getting a more extreme result
@@ -108,10 +109,6 @@ def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
     print("creating systematic covariance matrices...")
 
-    # TEMPORARY
-    #weights_df = pl.read_parquet(f"{intermediate_files_location}/small_presel_weights_df.parquet")
-    #print("WARNING: using small_presel_weights_df.parquet for testing!")
-
     if weights_df is None:
         print("loading weights_df from parquet file...")
         weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
@@ -122,7 +119,7 @@ def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     if merged_df.height != mc_pred_df.height:
         print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {mc_pred_df.height=}, {weights_df.height=}")
 
-    pred_vals = merged_df.get_column(var).to_numpy()
+    pred_vals = get_vals(merged_df, var)
 
     rw_sys_frac_cov_dic = {}
 
@@ -184,6 +181,36 @@ def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     return rw_sys_frac_cov_dic
 
 
+def create_detvar_frac_cov_matrices(detvar_df, var, bins):
+
+    print("creating detvar systematic covariance matrices...")
+
+    if detvar_df is None:
+        print("loading detvar_df from parquet file...")
+        detvar_df = pl.read_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
+
+    cv_df = detvar_df.filter(pl.col("vartype") == "CV")
+
+    detvar_sys_frac_cov_dic = {}
+
+    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "Recomb2", "SCE"]:
+        curr_df = detvar_df.filter(pl.col("vartype") == vartype)
+
+        curr_filetype_rse_df = curr_df.select(["filetype", "run", "subrun", "event"])
+        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=["filetype", "run", "subrun", "event"], how="inner")
+
+        matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
+
+        matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+        matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+
+        diff = matching_cv_counts - matching_var_counts
+        detvar_sys_frac_cov_dic[vartype] = np.cov(diff) / np.outer(matching_cv_counts, matching_cv_counts)
+
+    print("done getting detvar systematic covariance matrices")
+
+    return detvar_sys_frac_cov_dic
+
 def _key_hash(var, bins):
     bins_arr = np.asarray(bins, dtype=float)
     h = hashlib.sha256()
@@ -198,7 +225,7 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, var, bins, dont_load_from_systemati
         key_h = _key_hash(var, bins)
         cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"
         if os.path.exists(cache_path):
-            print("loading systematic covariance matrices from cache...")
+            print("loading reweightable systematic covariance matrices from cache...")
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["rw_sys_frac_cov_dic"].item()
 
@@ -209,3 +236,21 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, var, bins, dont_load_from_systemati
     np.savez_compressed(cache_path, rw_sys_frac_cov_dic=rw_sys_frac_cov_dic)
 
     return rw_sys_frac_cov_dic
+
+def get_detvar_sys_frac_cov_matrices(var, bins, dont_load_from_systematic_cache=False, detvar_df=None):
+
+    if not dont_load_from_systematic_cache:
+        key_h = _key_hash(var, bins)
+        cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
+        if os.path.exists(cache_path):
+            print("loading DetVar systematic covariance matrices from cache...")
+            with np.load(cache_path, allow_pickle=True) as data:
+                return data["detvar_sys_frac_cov_dic"].item()
+
+    detvar_sys_frac_cov_dic = create_detvar_frac_cov_matrices(detvar_df, var, bins)
+
+    key_h = _key_hash(var, bins)
+    cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
+    np.savez_compressed(cache_path, detvar_sys_frac_cov_dic=detvar_sys_frac_cov_dic)
+
+    return detvar_sys_frac_cov_dic
