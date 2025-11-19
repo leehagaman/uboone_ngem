@@ -58,14 +58,12 @@ def get_pred_stat_cov(pred_vals, pred_weights, bins):
 
 def create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=None):
     # Similar to np.cov, but manually setting the number of univirses to divide by
-    # In some of the unisims, one of the universese is actually the CV. In these cases, 
+    # In some of the unisims, one of the universes is actually the CV. In these cases, 
     # we need to divide by the number of universes minus one.
     curr_cov = np.zeros((len(unisim_hists), len(unisim_hists)))
     for uni_i in range(unisim_hists.shape[1]):
         diff = np.array(unisim_hists[:,uni_i]) - np.array(cv_hist)
-        row_diffs = np.tile(diff, (len(unisim_hists), 1))
-        col_diffs = np.tile(np.reshape(diff, (len(unisim_hists), 1)), (1, len(unisim_hists)))
-        curr_cov += row_diffs * col_diffs
+        curr_cov += np.outer(diff, diff)
 
     if manual_uni_count is None:
         uni_count = unisim_hists.shape[1]
@@ -134,17 +132,18 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     normal_weights = merged_df.get_column("wc_net_weight").to_numpy()
 
     All_UBGenie_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("All_UBGenie").to_numpy(), non_genie_cv_weights, description="All_UBGenie")
-    #All_UBGenie_cov = np.cov(All_UBGenie_hists - cv_hist[:, None])
     All_UBGenie_cov = create_cov_matrix(All_UBGenie_hists, cv_hist)
     rw_sys_frac_cov_dic["All_UBGenie"] = np.nan_to_num(All_UBGenie_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
     flux_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("flux_all").to_numpy(), normal_weights, description="flux")
-    flux_cov = np.cov(flux_hists - cv_hist[:, None])
+    flux_cov = create_cov_matrix(flux_hists, cv_hist)
     rw_sys_frac_cov_dic["flux"] = np.nan_to_num(flux_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
     reint_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("reint_all").to_numpy(), normal_weights, description="reinteraction")
-    reint_cov = np.cov(reint_hists - cv_hist[:, None])
+    reint_cov = create_cov_matrix(reint_hists, cv_hist)
     rw_sys_frac_cov_dic["reinteraction"] = np.nan_to_num(reint_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
+
+    print("creating GENIE unisim systematic covariance matrices...")
 
     for unisim_type in [
             "AxFFCCQEshape_UBGenie",
@@ -172,7 +171,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
         else:
             other_weights = non_genie_cv_weights
 
-        unisim_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column(unisim_type).to_numpy(), other_weights, description=unisim_type)
+        unisim_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column(unisim_type).to_numpy(), other_weights, description=unisim_type, quiet=True)
         unisim_cov = create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=num_unis)
         rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(unisim_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
@@ -201,7 +200,7 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins):
         matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
 
         diff = matching_cv_counts - matching_var_counts
-        detvar_sys_frac_cov_dic[vartype] = np.nan_to_num(np.cov(diff) / np.outer(matching_cv_counts, matching_cv_counts), nan=0, posinf=0, neginf=0)
+        detvar_sys_frac_cov_dic[vartype] = np.nan_to_num(np.outer(diff, diff) / np.outer(matching_cv_counts, matching_cv_counts), nan=0, posinf=0, neginf=0)
 
     print("done getting detvar systematic covariance matrices")
 

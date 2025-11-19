@@ -114,12 +114,20 @@ def auto_binning(all_vals):
 def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov, mc_pred_counts, pred_counts,
         display_var, display_bins, log_x, savename=None, show=True,
         include_total=True, include_pred_stat=True, include_data_stat=False, 
-        include_rw=True, include_genie_breakdown=False,
-        include_detvar=True, include_detvar_breakdown=False, detvar_df=None,
+        include_rw=True, just_genie_breakdown=False,
+        include_detvar=True, just_detvar_breakdown=False, detvar_df=None,
         print_sys_breakdown=False):
 
     if include_detvar and detvar_df is None:
         raise ValueError("detvar_df must be provided if include_detvar is True")
+
+    if just_genie_breakdown:
+        if just_detvar_breakdown or include_total or include_pred_stat or include_data_stat:
+            raise ValueError(f"trying to plot non-genie systematic breakdown with just_detvar_breakdown! just_detvar_breakdown = {just_detvar_breakdown}, include_total = {include_total}, include_pred_stat = {include_pred_stat}, include_data_stat = {include_data_stat}")
+
+    if just_detvar_breakdown:
+        if just_genie_breakdown or include_total or include_pred_stat or include_data_stat:
+            raise ValueError(f"trying to plot non-detvar systematic breakdown with just_genie_breakdown! just_genie_breakdown = {just_genie_breakdown}, include_total = {include_total}, include_pred_stat = {include_pred_stat}, include_data_stat = {include_data_stat}")
 
     plt.figure(figsize=(10, 6))
 
@@ -166,20 +174,20 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
                     "xsr_scc_Fv3_SCC",
                 ]:
                 tot_genie_frac_cov += rw_sys_frac_cov
-                if not include_genie_breakdown:
+                if not just_genie_breakdown:
                     continue
-                ls = "--"
-            else:
-                ls = "-"
             label = rw_sys_name
             if rw_sys_name == "flux":
                 label = "Flux"
             elif rw_sys_name == "reinteraction":
                 label = "Reinteraction"
-            custom_step(display_bins, np.sqrt(np.diag(rw_sys_frac_cov)), label=rw_sys_name, ls=ls)
+            custom_step(display_bins, np.sqrt(np.diag(rw_sys_frac_cov)), label=label)
             if print_sys_breakdown:
                 print(f"{rw_sys_name}: {np.sqrt(np.diag(rw_sys_frac_cov))}")
-        custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE")
+        if just_genie_breakdown:
+            custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE", color="k")
+        else:
+            custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE")
         if print_sys_breakdown:
             print(f"Total GENIE: {np.sqrt(np.diag(tot_genie_frac_cov))}")
     if include_detvar:
@@ -189,12 +197,15 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
             detvar_sys_frac_cov = detvar_sys_cov / np.outer(pred_counts, pred_counts)
             detvar_sys_frac_cov = np.nan_to_num(detvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_detvar_frac_cov += detvar_sys_frac_cov
-            if not include_detvar_breakdown:
+            if not just_detvar_breakdown:
                 continue
-            custom_step(display_bins, np.sqrt(np.diag(detvar_sys_frac_cov)), label=detvar_sys_name, ls="--")
+            custom_step(display_bins, np.sqrt(np.diag(detvar_sys_frac_cov)), label=detvar_sys_name)
             if print_sys_breakdown:
                 print(f"{detvar_sys_name}: {np.sqrt(np.diag(detvar_sys_frac_cov))}")
-        custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar")
+        if just_detvar_breakdown:
+            custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar", color="k")
+        else:
+            custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar")
         if print_sys_breakdown:
             print(f"Total Detvar: {np.sqrt(np.diag(tot_detvar_frac_cov))}")
 
@@ -318,8 +329,8 @@ def make_histogram_plot(
         # optional systematics breakdown plot
         plot_sys_breakdown=False,
         include_total=True, include_pred_stat=True, include_data_stat=False, 
-        include_rw=True, include_genie_breakdown=False,
-        include_detvar=True, include_detvar_breakdown=False,
+        include_rw=True, just_genie_breakdown=False,
+        include_detvar=True, just_detvar_breakdown=False,
         print_sys_breakdown=False,
         
         ):
@@ -652,7 +663,7 @@ def make_histogram_plot(
         
         make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov, 
             mc_pred_counts, pred_counts, display_var, display_bins, log_x, savename, show, 
-            include_total, include_pred_stat, include_data_stat, include_rw, include_genie_breakdown, include_detvar, include_detvar_breakdown, print_sys_breakdown)
+            include_total, include_pred_stat, include_data_stat, include_rw, just_genie_breakdown, include_detvar, just_detvar_breakdown, print_sys_breakdown)
 
     if return_p_value_info:
         if use_rw_systematics and use_detvar_systematics and include_data:
