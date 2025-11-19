@@ -105,9 +105,9 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
     return hists
 
 
-def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
+def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
-    print("creating systematic covariance matrices...")
+    print("creating reweightable systematic covariance matrices...")
 
     if weights_df is None:
         print("loading weights_df from parquet file...")
@@ -136,15 +136,15 @@ def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     All_UBGenie_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("All_UBGenie").to_numpy(), non_genie_cv_weights, description="All_UBGenie")
     #All_UBGenie_cov = np.cov(All_UBGenie_hists - cv_hist[:, None])
     All_UBGenie_cov = create_cov_matrix(All_UBGenie_hists, cv_hist)
-    rw_sys_frac_cov_dic["All_UBGenie"] = All_UBGenie_cov / np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["All_UBGenie"] = np.nan_to_num(All_UBGenie_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
     flux_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("flux_all").to_numpy(), normal_weights, description="flux")
     flux_cov = np.cov(flux_hists - cv_hist[:, None])
-    rw_sys_frac_cov_dic["flux"] = flux_cov / np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["flux"] = np.nan_to_num(flux_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
     reint_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("reint_all").to_numpy(), normal_weights, description="reinteraction")
     reint_cov = np.cov(reint_hists - cv_hist[:, None])
-    rw_sys_frac_cov_dic["reinteraction"] = reint_cov / np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["reinteraction"] = np.nan_to_num(reint_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
     for unisim_type in [
             "AxFFCCQEshape_UBGenie",
@@ -174,7 +174,7 @@ def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
         unisim_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column(unisim_type).to_numpy(), other_weights, description=unisim_type)
         unisim_cov = create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=num_unis)
-        rw_sys_frac_cov_dic[unisim_type] = unisim_cov / np.outer(cv_hist, cv_hist)
+        rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(unisim_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
 
     print("done getting reweightable systematic covariance matrices")
 
@@ -184,10 +184,6 @@ def create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 def create_detvar_frac_cov_matrices(detvar_df, var, bins):
 
     print("creating detvar systematic covariance matrices...")
-
-    if detvar_df is None:
-        print("loading detvar_df from parquet file...")
-        detvar_df = pl.read_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
 
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
@@ -205,42 +201,46 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins):
         matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
 
         diff = matching_cv_counts - matching_var_counts
-        detvar_sys_frac_cov_dic[vartype] = np.cov(diff) / np.outer(matching_cv_counts, matching_cv_counts)
+        detvar_sys_frac_cov_dic[vartype] = np.nan_to_num(np.cov(diff) / np.outer(matching_cv_counts, matching_cv_counts), nan=0, posinf=0, neginf=0)
 
     print("done getting detvar systematic covariance matrices")
 
     return detvar_sys_frac_cov_dic
 
-def _key_hash(var, bins):
+def _key_hash(sel, var, bins):
     bins_arr = np.asarray(bins, dtype=float)
     h = hashlib.sha256()
+    h.update(sel.encode("utf-8"))
+    h.update(b"\x00")
     h.update(var.encode("utf-8"))
     h.update(b"\x00")
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def get_rw_sys_frac_cov_matrices(mc_pred_df, var, bins, dont_load_from_systematic_cache=False, weights_df=None):
+def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_from_systematic_cache=False, weights_df=None):
 
     if not dont_load_from_systematic_cache:
-        key_h = _key_hash(var, bins)
+        key_h = _key_hash(selname, var, bins)
         cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"
         if os.path.exists(cache_path):
             print("loading reweightable systematic covariance matrices from cache...")
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["rw_sys_frac_cov_dic"].item()
 
-    rw_sys_frac_cov_dic = create_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df)
+    rw_sys_frac_cov_dic = create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df)
 
-    key_h = _key_hash(var, bins)
+    key_h = _key_hash(selname, var, bins)
     cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"
     np.savez_compressed(cache_path, rw_sys_frac_cov_dic=rw_sys_frac_cov_dic)
 
     return rw_sys_frac_cov_dic
 
-def get_detvar_sys_frac_cov_matrices(var, bins, dont_load_from_systematic_cache=False, detvar_df=None):
+
+def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_from_systematic_cache=False):
+    # detvar_df is not optional, it must be loaded by the user and must have the selection cuts applied to match those on mc_pred_df
 
     if not dont_load_from_systematic_cache:
-        key_h = _key_hash(var, bins)
+        key_h = _key_hash(selname, var, bins)
         cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
         if os.path.exists(cache_path):
             print("loading DetVar systematic covariance matrices from cache...")
@@ -249,7 +249,7 @@ def get_detvar_sys_frac_cov_matrices(var, bins, dont_load_from_systematic_cache=
 
     detvar_sys_frac_cov_dic = create_detvar_frac_cov_matrices(detvar_df, var, bins)
 
-    key_h = _key_hash(var, bins)
+    key_h = _key_hash(selname, var, bins)
     cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
     np.savez_compressed(cache_path, detvar_sys_frac_cov_dic=detvar_sys_frac_cov_dic)
 

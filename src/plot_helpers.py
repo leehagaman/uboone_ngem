@@ -115,8 +115,11 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         display_var, display_bins, log_x, savename=None, show=True,
         include_total=True, include_pred_stat=True, include_data_stat=False, 
         include_rw=True, include_genie_breakdown=False,
-        include_detvar=True, include_detvar_breakdown=False,
+        include_detvar=True, include_detvar_breakdown=False, detvar_df=None,
         print_sys_breakdown=False):
+
+    if include_detvar and detvar_df is None:
+        raise ValueError("detvar_df must be provided if include_detvar is True")
 
     plt.figure(figsize=(10, 6))
 
@@ -131,11 +134,13 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
     
     if include_pred_stat:
         pred_stat_frac_cov = pred_stat_cov / np.outer(pred_counts, pred_counts)
+        pred_stat_frac_cov = np.nan_to_num(pred_stat_frac_cov, nan=0, posinf=0, neginf=0)
         custom_step(display_bins, np.sqrt(np.diag(pred_stat_frac_cov)), label="Pred Stat", ls="-")
         if print_sys_breakdown:
             print(f"Pred Stat: {np.sqrt(np.diag(pred_stat_frac_cov))}")
     if include_data_stat:
         data_stat_frac_cov = data_stat_cov / np.outer(pred_counts, pred_counts)
+        data_stat_frac_cov = np.nan_to_num(data_stat_frac_cov, nan=0, posinf=0, neginf=0)
         custom_step(display_bins, np.sqrt(np.diag(data_stat_frac_cov)), label="Data Stat", ls="-")
         if print_sys_breakdown:
             print(f"Data Stat: {np.sqrt(np.diag(data_stat_frac_cov))}")
@@ -145,6 +150,7 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         for rw_sys_name, rw_sys_frac_cov_mc in rw_sys_frac_cov_dic.items():
             rw_sys_cov = rw_sys_frac_cov_mc * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
             rw_sys_frac_cov = rw_sys_cov / np.outer(pred_counts, pred_counts)
+            rw_sys_frac_cov = np.nan_to_num(rw_sys_frac_cov, nan=0, posinf=0, neginf=0)
             if rw_sys_name in [
                     "All_UBGenie",
                     "AxFFCCQEshape_UBGenie",
@@ -181,6 +187,7 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         for detvar_sys_name, detvar_sys_frac_cov_mc in detvar_sys_frac_cov_dic.items():
             detvar_sys_cov = detvar_sys_frac_cov_mc * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
             detvar_sys_frac_cov = detvar_sys_cov / np.outer(pred_counts, pred_counts)
+            detvar_sys_frac_cov = np.nan_to_num(detvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_detvar_frac_cov += detvar_sys_frac_cov
             if not include_detvar_breakdown:
                 continue
@@ -216,8 +223,7 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         page_num=None, savename=None, show=True, detvar_df=None):
 
     if detvar_df is None:
-        print("loading detvar_df from parquet file...")
-        detvar_df = pl.read_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
+        raise ValueError("detvar_df must be provided")
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
 
@@ -300,6 +306,7 @@ def make_histogram_plot(
         include_ratio=True,
 
         # information for optional systematics
+        selname=None,
         dont_load_from_systematic_cache=False,
         use_rw_systematics=False, weights_df=None,
         use_detvar_systematics=False, detvar_df=None,
@@ -419,8 +426,11 @@ def make_histogram_plot(
 
     # optionally including rw systematic uncertainties
     if use_rw_systematics:
+        if selname is None:
+            raise ValueError("selname must be provided if use_rw_systematics is True")
+
         rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
-            pred_sel_df.filter(pl.col("filetype") != "ext"), var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache, weights_df=weights_df
+            pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache, weights_df=weights_df
         )
         combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
         for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
@@ -430,8 +440,10 @@ def make_histogram_plot(
         pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column("wc_net_weight").to_numpy(), bins)
         nodetvar_sys_cov = combined_rw_sys_cov + data_stat_cov + pred_stat_cov
         nodetvar_sys_frac_cov = nodetvar_sys_cov / np.outer(pred_counts, pred_counts)
+        nodetvar_sys_frac_cov = np.nan_to_num(nodetvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
         nodetvar_pred_sys_cov = combined_rw_sys_cov + pred_stat_cov
         nodetvar_pred_sys_frac_cov = nodetvar_pred_sys_cov / np.outer(pred_counts, pred_counts)
+        nodetvar_pred_sys_frac_cov = np.nan_to_num(nodetvar_pred_sys_frac_cov, nan=0, posinf=0, neginf=0)
         nodetvar_pred_sys_frac_errors = np.sqrt(np.diag(nodetvar_pred_sys_frac_cov))
         for i in range(len(pred_counts)):
             abs_err = nodetvar_pred_sys_frac_errors[i] * pred_counts[i]
@@ -452,18 +464,24 @@ def make_histogram_plot(
 
         # optionally including detvar systematic uncertainties
         if use_detvar_systematics:
+            if detvar_df is None:
+                raise ValueError("detvar_df must be provided if use_detvar_systematics is True")
+
             detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
-                var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache, detvar_df=detvar_df
+                detvar_df, selname, var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache
             )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
                 combined_detvar_sys_frac_cov_mc += detvar_sys_frac_cov
             combined_detvar_sys_cov = combined_detvar_sys_frac_cov_mc * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
             combined_detvar_sys_frac_cov = combined_detvar_sys_cov / np.outer(pred_counts, pred_counts)
+            combined_detvar_sys_frac_cov = np.nan_to_num(combined_detvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_sys_cov = combined_detvar_sys_cov + combined_rw_sys_cov + data_stat_cov + pred_stat_cov
             tot_sys_frac_cov = tot_sys_cov / np.outer(pred_counts, pred_counts)
+            tot_sys_frac_cov = np.nan_to_num(tot_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_pred_sys_cov = combined_detvar_sys_cov + combined_rw_sys_cov + pred_stat_cov
             tot_pred_sys_frac_cov = tot_pred_sys_cov / np.outer(pred_counts, pred_counts)
+            tot_pred_sys_frac_cov = np.nan_to_num(tot_pred_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_pred_sys_frac_errors = np.sqrt(np.diag(tot_pred_sys_frac_cov))
 
             for i in range(len(pred_counts)):
@@ -499,6 +517,8 @@ def make_histogram_plot(
                 print(f"WARNING: rw_tot_cov is not invertible, using pseudo-inverse")
                 nodetvar_sys_cov_inv = np.linalg.pinv(nodetvar_sys_cov)
             nodetvar_chi2 = diff @ nodetvar_sys_cov_inv @ diff
+            if np.isnan(nodetvar_chi2):
+                raise ValueError("nodetvar_chi2 is nan! nodetvar_sys_cov diagonal is:", np.diag(nodetvar_sys_cov))
             ndf = len(diff) # don't include totally empty bins in the ndf
             nodetvar_p_value, nodetvar_sigma = get_significance(nodetvar_chi2, ndf)
             s = ""
@@ -518,6 +538,8 @@ def make_histogram_plot(
                     print(f"WARNING: tot_sys_cov is not invertible, using pseudo-inverse")
                     tot_sys_cov_inv = np.linalg.pinv(tot_sys_cov)
                 tot_chi2 = diff @ tot_sys_cov_inv @ diff
+                if np.isnan(tot_chi2):
+                    raise ValueError("tot_chi2 is nan! tot_sys_cov diagonal is:", np.diag(tot_sys_cov))
                 ndf = len(diff) # don't include totally empty bins in the ndf
                 tot_p_value, tot_sigma = get_significance(tot_chi2, ndf)
                 s += "\n"
