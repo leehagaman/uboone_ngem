@@ -10,6 +10,106 @@ from scipy.special import erfinv, erfcinv, erfc
 from scipy.stats import chi2
 from scipy.stats import poisson
 
+"""
+        def calc_GoF(M_pred, M_data, cov):
+            M = np.matrix([w-x for w,x in zip(M_pred, M_data)])
+            Mt = M.transpose()
+            cov_inv = np.linalg.inv(np.matrix(cov))
+            Mret = np.matmul(M, np.matmul(cov_inv, Mt))
+            return Mret[0,0]
+
+        def chi2_decomposition(pred, meas, unfcov, save_name=None, interesting_component_index=None):
+            w, v = np.linalg.eig(unfcov)
+            print("eigenvalues:", w)
+            matrix_meas_temp = np.array(meas)
+            matrix_pred_temp = np.array(pred)
+            x = np.linspace(0,len(w)-1, 1001)
+            y1 = [-1,1]
+            y2 = [-2,2]
+            y3 = [-3,3]
+            plt.figure(figsize=(7,5))
+            plt.axhline(y3[0], color='red', alpha=0.2)
+            plt.axhline(y3[1], color='red', alpha=0.2)
+            plt.axhline(y2[0], color='orange', alpha=0.2)
+            plt.axhline(y2[1], color='orange', alpha=0.2)
+            plt.axhline(y1[0], color='green', alpha=0.2)
+            plt.axhline(y1[1], color='green', alpha=0.2)
+            plt.axhline(0, color='grey', alpha=0.2, ls='--')
+            plt.fill_between(x, y3[0], y2[0], color='red', alpha=0.2)
+            plt.fill_between(x, y2[0], y1[0], color='gold', alpha=0.2)
+            plt.fill_between(x, y1[0], y1[1], color='lime', alpha=0.2)
+            plt.fill_between(x, y1[1], y2[1], color='gold', alpha=0.2)
+            plt.fill_between(x, y2[1], y3[1], color='red', alpha=0.2)
+            plt.xlim(0,len(w)-1)
+            #plt.ylim(-5,5)
+            matrix_delta_lambda = [x-y for x,y in zip(np.matmul(matrix_meas_temp,v),np.matmul(matrix_pred_temp,v))]
+            print("x/sqrt(y) components:", [(x/np.sqrt(y)) for x,y in zip(matrix_delta_lambda,w)])
+            print("chi2 components:", [(x/np.sqrt(y))**2 for x,y in zip(matrix_delta_lambda,w)])
+            print("chi2 value from sum:", sum([(x/np.sqrt(y))**2 for x,y in zip(matrix_delta_lambda,w)])) # Should be the chi-square value
+
+            plt.plot(range(len(w)),[x/np.sqrt(y) for x,y in zip(matrix_delta_lambda,w)], marker='s', markersize=6, markerfacecolor='blue', markeredgecolor='black', linestyle = 'None')
+            plt.text(0.1, 0.1, r'Overall $\chi^{2}$/ndf = %1.1f/%i'%(calc_GoF(pred, meas, unfcov), len(w)), transform=plt.gca().transAxes, fontsize=16)
+            plt.xlabel('Bin Index', loc='right')
+            plt.ylabel(r'$\epsilon_i$ value', loc='top')
+            if save_name: 
+                plt.savefig(save_name+'_chi2_decomp.png')
+            plt.tight_layout()
+            plt.show()
+
+            
+        plt.figure()
+        plt.imshow(extracted_with_norm_var_and_stat_var_covs[0], origin="lower")
+        plt.colorbar()
+        plt.show()
+
+        plt.figure()
+        plt.imshow(extracted_with_norm_var_and_stat_var_covs[0] / np.outer(extracted_spectra[0], extracted_spectra[0]), origin="lower")
+        plt.colorbar()
+        plt.show()
+
+        print(np.min(extracted_with_norm_var_and_stat_var_covs[0] / np.outer(extracted_spectra[0], extracted_spectra[0])), np.max(extracted_with_norm_var_and_stat_var_covs[0] / np.outer(extracted_spectra[0], extracted_spectra[0])))
+
+        plt.figure()
+        plt.plot(extracted_spectra[0], label="extracted")
+        plt.errorbar(range(len(extracted_spectra[0])), extracted_spectra[0], yerr=np.sqrt(np.diag(np.linalg.inv(inv_extracted_with_norm_var_and_stat_var_covs[0]))), fmt="none")
+        plt.plot(nominal_spectrum[0], label="nominal")
+        plt.show()
+
+        plt.figure()
+        plt.plot(extracted_spectra[0] - nominal_spectrum[0])
+        plt.show()
+
+        print((extracted_spectra[0] - nominal_spectrum[0]) @ inv_extracted_with_norm_var_and_stat_var_covs[0] @ (extracted_spectra[0] - nominal_spectrum[0]))
+
+        chi2_decomposition(extracted_spectra[0], nominal_spectrum[0], np.linalg.inv(inv_extracted_with_norm_var_and_stat_var_covs[0]))
+
+
+        """
+
+
+def chi2_decomposition(pred, meas, cov):
+    # see https://journals.aps.org/prd/abstract/10.1103/PhysRevD.111.092010, equation 6
+
+    delta = np.array(meas) - np.array(pred)
+
+    cov_inv = np.linalg.inv(cov)
+    simple_chi2 = delta @ cov_inv @ delta
+
+    eigenvalues, eigenvectors = np.linalg.eig(cov)
+    epsilon_values = []
+    for eigenvalue, eigenvector in zip(eigenvalues, eigenvectors.T):
+        transformed_delta = delta @ eigenvector
+        epsilon = transformed_delta / np.sqrt(eigenvalue)
+        epsilon_values.append(epsilon)
+    epsilon_values = np.array(epsilon_values)
+
+    summed_decomp_chi2 = sum(epsilon_values**2)
+
+    if not np.isclose(summed_decomp_chi2, simple_chi2):
+        raise ValueError(f"Summed decomposition chi2 {summed_decomp_chi2} is not close to simple chi2 {simple_chi2}")
+
+    return epsilon_values
+    
 
 def get_significance(chisquare, ndf, printout=False):
     # probability of getting a more extreme result

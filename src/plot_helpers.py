@@ -2,12 +2,13 @@ import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import matplotlib.gridspec as gridspec
 
 from src.signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches
 from src.signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
 
 from src.systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
-from src.systematics import get_significance
+from src.systematics import get_significance, get_significance_from_p_value, chi2_decomposition
 
 from src.df_helpers import get_vals
 
@@ -99,7 +100,6 @@ def auto_binning(all_vals):
 
     bins, display_bins = add_underflow_overflow(bins, display_bins, include_overflow, include_underflow, log_x)
 
-    # check if bins is sorted
     if not np.all(np.diff(bins) > 0):
         raise ValueError(f"bins is not sorted: {bins}")
 
@@ -314,7 +314,7 @@ def make_histogram_plot(
         include_data=True, additional_scaling_factor=1.0, normalizing_POT=3.33e19, 
         include_legend=True, show=True,
         page_num=None,
-        include_ratio=True,
+        include_ratio=True, include_decomposition=False,
 
         # information for optional systematics
         selname=None,
@@ -334,6 +334,13 @@ def make_histogram_plot(
         print_sys_breakdown=False,
         
         ):
+
+    if include_decomposition and not include_ratio:
+        raise ValueError("include_decomposition requires include_ratio to be True")
+    if include_decomposition and not include_data:
+        raise ValueError("include_decomposition requires include_data to be True")
+    if include_decomposition and not use_rw_systematics:
+        raise ValueError("include_decomposition requires use_rw_systematics to be True")
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -358,8 +365,15 @@ def make_histogram_plot(
             display_bin_centers = (display_bins[:-1] + display_bins[1:]) / 2
 
 
-    # plotting the main histogram prediction, optionally with ratio
-    if include_ratio:
+    # plotting the main histogram prediction, optionally with ratio and decomposition
+    if include_decomposition:
+        fig = plt.figure(figsize=(10, 12))
+        gs = gridspec.GridSpec(4, 1, height_ratios=[2, 1, 0.01, 1])
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1])
+        # gs[2] is left blank as a spacer
+        ax3 = fig.add_subplot(gs[3])
+    elif include_ratio:
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
     else:
         fig, ax1 = plt.subplots(1, 1, figsize=(10, 6))
@@ -645,6 +659,49 @@ def make_histogram_plot(
         
         if page_num is not None:
             ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
+
+    if include_decomposition:
+
+        nodetvar_epsilons = chi2_decomposition(pred_counts, data_counts, nodetvar_sys_cov)
+        tot_epsilons = chi2_decomposition(pred_counts, data_counts, tot_sys_cov)
+        num_components = len(nodetvar_epsilons)
+
+        ax3.axhline(y=0, color='grey', linestyle='--', linewidth=1)
+
+        ax3.fill_between([0, num_components], -3, -2, color='red', alpha=0.2)
+        ax3.fill_between([0, num_components], -2, -1, color='gold', alpha=0.2)
+        ax3.fill_between([0, num_components], -1, 1, color='lime', alpha=0.2)
+        ax3.fill_between([0, num_components], 1, 2, color='gold', alpha=0.2)
+        ax3.fill_between([0, num_components], 2, 3, color='red', alpha=0.2)
+
+        ax3.scatter(np.arange(num_components), nodetvar_epsilons, color='b', label="No DetVar")
+        ax3.scatter(np.arange(num_components), tot_epsilons, color='k', label="Tot")
+
+        ax3.set_xlabel("Decomposition Index")
+        ax3.set_ylabel(r"$\epsilon_i^2$")
+        ax3.set_xlim(0, num_components)
+        ax3.set_ylim(-5, 5)
+        ax3.legend()
+
+        nodetvar_max_local_sigma = np.max(np.abs(nodetvar_epsilons))
+        tot_max_local_sigma = np.max(np.abs(tot_epsilons))
+
+        nodetvar_max_local_p_value = get_significance(nodetvar_max_local_sigma**2, 1)[0]
+        tot_max_local_p_value = get_significance(tot_max_local_sigma**2, 1)[0]
+
+        nodetvar_global_p_value = 1 - (1 - nodetvar_max_local_p_value)**num_components
+        tot_global_p_value = 1 - (1 - tot_max_local_p_value)**num_components
+
+        nodetvar_global_sigma = get_significance_from_p_value(nodetvar_global_p_value)
+        tot_global_sigma = get_significance_from_p_value(tot_global_p_value)
+
+        #nodetvar_str = f"No DetVar: max local $\sigma$ = {nodetvar_max_local_sigma:.2f}, p = {nodetvar_max_local_p_value:.2e}; global $\sigma$ = {nodetvar_global_sigma:.2f}, p = {nodetvar_global_p_value:.2e}"
+        #tot_str = f"Tot: max local $\sigma$ = {tot_max_local_sigma:.2f}, p = {tot_max_local_p_value:.2e}; global $\sigma$ = {tot_global_sigma:.2f}, p = {tot_global_p_value:.2e}"
+
+        nodetvar_str = f"No DetVar: max local $\sigma$ = {nodetvar_max_local_sigma:.2f}, global $\sigma$ = {nodetvar_global_sigma:.2f}"
+        tot_str = f"Tot: max local $\sigma$ = {tot_max_local_sigma:.2f}, global $\sigma$ = {tot_global_sigma:.2f}"
+
+        ax3.text(0.03, 0.97, nodetvar_str + "\n" + tot_str, transform=ax3.transAxes, fontsize=8, ha="left", va="top")
     
     
     if savename is not None:
