@@ -11,19 +11,17 @@ from scipy.stats import chi2
 from scipy.stats import poisson
 
 
-def chi2_decomposition(pred, meas, cov):
+def chi2_decomposition(diff, cov):
     # see https://journals.aps.org/prd/abstract/10.1103/PhysRevD.111.092010, equation 6
 
-    delta = np.array(meas) - np.array(pred)
-
     cov_inv = np.linalg.inv(cov)
-    simple_chi2 = delta @ cov_inv @ delta
+    simple_chi2 = diff @ cov_inv @ diff
 
     eigenvalues, eigenvectors = np.linalg.eig(cov)
     epsilon_values = []
     for eigenvalue, eigenvector in zip(eigenvalues, eigenvectors.T):
-        transformed_delta = delta @ eigenvector
-        epsilon = transformed_delta / np.sqrt(eigenvalue)
+        transformed_diff = diff @ eigenvector
+        epsilon = transformed_diff / np.sqrt(eigenvalue)
         epsilon_values.append(epsilon)
     epsilon_values = np.array(epsilon_values)
 
@@ -204,7 +202,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     return rw_sys_frac_cov_dic
 
 
-def create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_rounds):
+def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrapping):
 
     print("creating detvar systematic covariance matrices...")
 
@@ -220,13 +218,13 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_r
 
         matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
 
-        if detvar_bootstrapping_rounds is None:
+        if not use_detvar_bootstrapping:
             matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
             matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
             diff = matching_cv_counts - matching_var_counts
             curr_cov = np.outer(diff, diff)
             curr_frac_cov = curr_cov / np.outer(matching_cv_counts, matching_cv_counts)
-            curr_frac_cov = np.nan_to_num(curr_frac_cov)
+            curr_frac_cov = np.nan_to_num(curr_frac_cov, nan=0, posinf=0, neginf=0)
         else:
             # bootstrapping to estimate the statistical uncertainty on the CV-var difference
             # see page 68 of https://microboone-docdb.fnal.gov/cgi-bin/sso/RetrieveFile?docid=33302&filename=MicroBooNE_Wire_Cell_LEE_Analysis_Internal_Note-16.pdf&version=30
@@ -244,9 +242,12 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_r
             cv_val_weight_pairs = list(zip(matching_cv_vals, matching_cv_weights))
             var_val_weight_pairs = list(zip(matching_var_vals, matching_var_weights))
 
+            num_bootstrap_rounds = 5000
+            num_bootstrap_samples = 5000
+
             # sampling the CV and var spectra with replacement to get statistically plausible CV-var differences
             bootstrap_cv_var_diffs = [] # each row is a spectrum difference between CV and var for each bootstrap sample, each column is a sample
-            for bootstrap_i in tqdm(range(detvar_bootstrapping_rounds), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices"):
+            for bootstrap_i in tqdm(range(num_bootstrap_rounds), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices"):
                 
                 bootstrap_cv_indices = np.random.choice(len(matching_cv_vals), size=len(matching_cv_vals), replace=True)
                 bootstrap_cv_vals = matching_cv_vals[bootstrap_cv_indices]
@@ -264,7 +265,7 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_r
             bootstrap_cv_var_diff_cov = np.cov(bootstrap_cv_var_diffs, rowvar=False)
 
             # drawing samples from the bootstrap_cv_var_diff_cov covariance matrix, each called V_D in the note
-            bootstrap_cv_var_diff_samples = np.random.multivariate_normal(nominal_cv_var_diff, bootstrap_cv_var_diff_cov, size=1000)
+            bootstrap_cv_var_diff_samples = np.random.multivariate_normal(nominal_cv_var_diff, bootstrap_cv_var_diff_cov, size=num_bootstrap_samples)
 
             normal_distribution_samples = np.random.normal(0, 1, size=len(bootstrap_cv_var_diff_samples))
 
@@ -275,7 +276,7 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_r
             curr_cov = np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False)
 
             curr_frac_cov = curr_cov / np.outer(matching_cv_counts, matching_cv_counts)
-            curr_frac_cov = np.nan_to_num(curr_frac_cov)
+            curr_frac_cov = np.nan_to_num(curr_frac_cov, nan=0, posinf=0, neginf=0)
 
         detvar_sys_frac_cov_dic[vartype] = curr_frac_cov
 
@@ -293,14 +294,14 @@ def _key_hash(sel, var, bins):
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def _key_hash_detvar(sel, var, bins, detvar_bootstrapping_rounds):
+def _key_hash_detvar(sel, var, bins, use_detvar_bootstrapping):
     bins_arr = np.asarray(bins, dtype=float)
     h = hashlib.sha256()
     h.update(sel.encode("utf-8"))
     h.update(b"\x00")
     h.update(var.encode("utf-8"))
     h.update(b"\x00")
-    h.update(str(detvar_bootstrapping_rounds).encode("utf-8"))
+    h.update(str(use_detvar_bootstrapping).encode("utf-8"))
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
@@ -323,20 +324,20 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_fr
     return rw_sys_frac_cov_dic
 
 
-def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=False, detvar_bootstrapping_rounds=None):
+def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=False, use_detvar_bootstrapping=True):
     # detvar_df is not optional, it must be loaded by the user and must have the selection cuts applied to match those on mc_pred_df
 
     if not dont_load_detvar_from_systematic_cache:
-        key_h = _key_hash_detvar(selname, var, bins, detvar_bootstrapping_rounds)
+        key_h = _key_hash_detvar(selname, var, bins, use_detvar_bootstrapping)
         cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
         if os.path.exists(cache_path):
             print("loading DetVar systematic covariance matrices from cache...")
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["detvar_sys_frac_cov_dic"].item()
 
-    detvar_sys_frac_cov_dic = create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_rounds)
+    detvar_sys_frac_cov_dic = create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrapping)
 
-    key_h = _key_hash_detvar(selname, var, bins, detvar_bootstrapping_rounds)
+    key_h = _key_hash_detvar(selname, var, bins, use_detvar_bootstrapping)
     cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
     np.savez_compressed(cache_path, detvar_sys_frac_cov_dic=detvar_sys_frac_cov_dic)
 

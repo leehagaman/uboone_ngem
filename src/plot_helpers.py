@@ -319,7 +319,7 @@ def make_histogram_plot(
         dont_load_rw_from_systematic_cache=False, dont_load_detvar_from_systematic_cache=False,
         use_rw_systematics=False, weights_df=None,
         use_detvar_systematics=False, detvar_df=None,
-        detvar_bootstrapping_rounds=None,
+        use_detvar_bootstrapping=True,
         return_p_value_info=False,
 
         # optional detector variation histogram plot
@@ -493,7 +493,7 @@ def make_histogram_plot(
                 raise ValueError("detvar_df must be provided if use_detvar_systematics is True")
 
             detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
-                detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, detvar_bootstrapping_rounds=detvar_bootstrapping_rounds
+                detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, use_detvar_bootstrapping=use_detvar_bootstrapping
             )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
@@ -674,8 +674,8 @@ def make_histogram_plot(
 
     if include_decomposition:
 
-        nodetvar_epsilons = chi2_decomposition(pred_counts, data_counts, nodetvar_sys_cov)
-        tot_epsilons = chi2_decomposition(pred_counts, data_counts, tot_sys_cov)
+        nodetvar_epsilons = chi2_decomposition(diff, nodetvar_sys_cov)
+        tot_epsilons = chi2_decomposition(diff, tot_sys_cov)
         num_components = len(nodetvar_epsilons)
 
         ax3.axhline(y=0, color='grey', linestyle='--', linewidth=1)
