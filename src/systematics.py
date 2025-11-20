@@ -10,82 +10,6 @@ from scipy.special import erfinv, erfcinv, erfc
 from scipy.stats import chi2
 from scipy.stats import poisson
 
-"""
-        def calc_GoF(M_pred, M_data, cov):
-            M = np.matrix([w-x for w,x in zip(M_pred, M_data)])
-            Mt = M.transpose()
-            cov_inv = np.linalg.inv(np.matrix(cov))
-            Mret = np.matmul(M, np.matmul(cov_inv, Mt))
-            return Mret[0,0]
-
-        def chi2_decomposition(pred, meas, unfcov, save_name=None, interesting_component_index=None):
-            w, v = np.linalg.eig(unfcov)
-            print("eigenvalues:", w)
-            matrix_meas_temp = np.array(meas)
-            matrix_pred_temp = np.array(pred)
-            x = np.linspace(0,len(w)-1, 1001)
-            y1 = [-1,1]
-            y2 = [-2,2]
-            y3 = [-3,3]
-            plt.figure(figsize=(7,5))
-            plt.axhline(y3[0], color='red', alpha=0.2)
-            plt.axhline(y3[1], color='red', alpha=0.2)
-            plt.axhline(y2[0], color='orange', alpha=0.2)
-            plt.axhline(y2[1], color='orange', alpha=0.2)
-            plt.axhline(y1[0], color='green', alpha=0.2)
-            plt.axhline(y1[1], color='green', alpha=0.2)
-            plt.axhline(0, color='grey', alpha=0.2, ls='--')
-            plt.fill_between(x, y3[0], y2[0], color='red', alpha=0.2)
-            plt.fill_between(x, y2[0], y1[0], color='gold', alpha=0.2)
-            plt.fill_between(x, y1[0], y1[1], color='lime', alpha=0.2)
-            plt.fill_between(x, y1[1], y2[1], color='gold', alpha=0.2)
-            plt.fill_between(x, y2[1], y3[1], color='red', alpha=0.2)
-            plt.xlim(0,len(w)-1)
-            #plt.ylim(-5,5)
-            matrix_delta_lambda = [x-y for x,y in zip(np.matmul(matrix_meas_temp,v),np.matmul(matrix_pred_temp,v))]
-            print("x/sqrt(y) components:", [(x/np.sqrt(y)) for x,y in zip(matrix_delta_lambda,w)])
-            print("chi2 components:", [(x/np.sqrt(y))**2 for x,y in zip(matrix_delta_lambda,w)])
-            print("chi2 value from sum:", sum([(x/np.sqrt(y))**2 for x,y in zip(matrix_delta_lambda,w)])) # Should be the chi-square value
-
-            plt.plot(range(len(w)),[x/np.sqrt(y) for x,y in zip(matrix_delta_lambda,w)], marker='s', markersize=6, markerfacecolor='blue', markeredgecolor='black', linestyle = 'None')
-            plt.text(0.1, 0.1, r'Overall $\chi^{2}$/ndf = %1.1f/%i'%(calc_GoF(pred, meas, unfcov), len(w)), transform=plt.gca().transAxes, fontsize=16)
-            plt.xlabel('Bin Index', loc='right')
-            plt.ylabel(r'$\epsilon_i$ value', loc='top')
-            if save_name: 
-                plt.savefig(save_name+'_chi2_decomp.png')
-            plt.tight_layout()
-            plt.show()
-
-            
-        plt.figure()
-        plt.imshow(extracted_with_norm_var_and_stat_var_covs[0], origin="lower")
-        plt.colorbar()
-        plt.show()
-
-        plt.figure()
-        plt.imshow(extracted_with_norm_var_and_stat_var_covs[0] / np.outer(extracted_spectra[0], extracted_spectra[0]), origin="lower")
-        plt.colorbar()
-        plt.show()
-
-        print(np.min(extracted_with_norm_var_and_stat_var_covs[0] / np.outer(extracted_spectra[0], extracted_spectra[0])), np.max(extracted_with_norm_var_and_stat_var_covs[0] / np.outer(extracted_spectra[0], extracted_spectra[0])))
-
-        plt.figure()
-        plt.plot(extracted_spectra[0], label="extracted")
-        plt.errorbar(range(len(extracted_spectra[0])), extracted_spectra[0], yerr=np.sqrt(np.diag(np.linalg.inv(inv_extracted_with_norm_var_and_stat_var_covs[0]))), fmt="none")
-        plt.plot(nominal_spectrum[0], label="nominal")
-        plt.show()
-
-        plt.figure()
-        plt.plot(extracted_spectra[0] - nominal_spectrum[0])
-        plt.show()
-
-        print((extracted_spectra[0] - nominal_spectrum[0]) @ inv_extracted_with_norm_var_and_stat_var_covs[0] @ (extracted_spectra[0] - nominal_spectrum[0]))
-
-        chi2_decomposition(extracted_spectra[0], nominal_spectrum[0], np.linalg.inv(inv_extracted_with_norm_var_and_stat_var_covs[0]))
-
-
-        """
-
 
 def chi2_decomposition(pred, meas, cov):
     # see https://journals.aps.org/prd/abstract/10.1103/PhysRevD.111.092010, equation 6
@@ -280,7 +204,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     return rw_sys_frac_cov_dic
 
 
-def create_detvar_frac_cov_matrices(detvar_df, var, bins):
+def create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_rounds):
 
     print("creating detvar systematic covariance matrices...")
 
@@ -296,11 +220,64 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins):
 
         matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
 
-        matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
-        matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+        if detvar_bootstrapping_rounds is None:
+            matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+            matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+            diff = matching_cv_counts - matching_var_counts
+            curr_cov = np.outer(diff, diff)
+            curr_frac_cov = curr_cov / np.outer(matching_cv_counts, matching_cv_counts)
+            curr_frac_cov = np.nan_to_num(curr_frac_cov)
+        else:
+            # bootstrapping to estimate the statistical uncertainty on the CV-var difference
+            # see page 68 of https://microboone-docdb.fnal.gov/cgi-bin/sso/RetrieveFile?docid=33302&filename=MicroBooNE_Wire_Cell_LEE_Analysis_Internal_Note-16.pdf&version=30
+            # also see code at https://github.com/BNLIF/wcp-uboone-bdt/blob/05acfe6d3c2a175ff52573669be7ce8ba77c623c/src/mcm_1.h#L77
 
-        diff = matching_cv_counts - matching_var_counts
-        detvar_sys_frac_cov_dic[vartype] = np.nan_to_num(np.outer(diff, diff) / np.outer(matching_cv_counts, matching_cv_counts), nan=0, posinf=0, neginf=0)
+            matching_cv_vals = get_vals(matching_cv_df, var)
+            matching_cv_weights = matching_cv_df.get_column("wc_net_weight").to_numpy()
+            matching_var_vals = get_vals(matching_curr_df, var)
+            matching_var_weights = matching_curr_df.get_column("wc_net_weight").to_numpy()
+
+            matching_cv_counts = np.histogram(matching_cv_vals, weights=matching_cv_weights, bins=bins)[0]
+            matching_var_counts = np.histogram(matching_var_vals, weights=matching_var_weights, bins=bins)[0]
+            nominal_cv_var_diff = matching_var_counts - matching_cv_counts
+
+            cv_val_weight_pairs = list(zip(matching_cv_vals, matching_cv_weights))
+            var_val_weight_pairs = list(zip(matching_var_vals, matching_var_weights))
+
+            # sampling the CV and var spectra with replacement to get statistically plausible CV-var differences
+            bootstrap_cv_var_diffs = [] # each row is a spectrum difference between CV and var for each bootstrap sample, each column is a sample
+            for bootstrap_i in tqdm(range(detvar_bootstrapping_rounds), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices"):
+                
+                bootstrap_cv_indices = np.random.choice(len(matching_cv_vals), size=len(matching_cv_vals), replace=True)
+                bootstrap_cv_vals = matching_cv_vals[bootstrap_cv_indices]
+                bootstrap_cv_weights = matching_cv_weights[bootstrap_cv_indices]
+
+                bootstrap_var_indices = np.random.choice(len(matching_var_vals), size=len(matching_var_vals), replace=True)
+                bootstrap_var_vals = matching_var_vals[bootstrap_var_indices]
+                bootstrap_var_weights = matching_var_weights[bootstrap_var_indices]
+
+                bootstrap_cv_counts = np.histogram(bootstrap_cv_vals, weights=bootstrap_cv_weights, bins=bins)[0]
+                bootstrap_var_counts = np.histogram(bootstrap_var_vals, weights=bootstrap_var_weights, bins=bins)[0]
+                bootstrap_cv_var_diffs.append(bootstrap_var_counts - bootstrap_cv_counts)
+            
+            # building a covariance matrix to describe the statistical uncertainty on the CV-var difference, called M_R in the note
+            bootstrap_cv_var_diff_cov = np.cov(bootstrap_cv_var_diffs, rowvar=False)
+
+            # drawing samples from the bootstrap_cv_var_diff_cov covariance matrix, each called V_D in the note
+            bootstrap_cv_var_diff_samples = np.random.multivariate_normal(nominal_cv_var_diff, bootstrap_cv_var_diff_cov, size=1000)
+
+            normal_distribution_samples = np.random.normal(0, 1, size=len(bootstrap_cv_var_diff_samples))
+
+            # each called r * V_D
+            bootstrap_scaled_cv_var_diff_samples = normal_distribution_samples[:, None] * bootstrap_cv_var_diff_samples
+
+            # called M_D in the note
+            curr_cov = np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False)
+
+            curr_frac_cov = curr_cov / np.outer(matching_cv_counts, matching_cv_counts)
+            curr_frac_cov = np.nan_to_num(curr_frac_cov)
+
+        detvar_sys_frac_cov_dic[vartype] = curr_frac_cov
 
     print("done getting detvar systematic covariance matrices")
 
@@ -316,9 +293,20 @@ def _key_hash(sel, var, bins):
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_from_systematic_cache=False, weights_df=None):
+def _key_hash_detvar(sel, var, bins, detvar_bootstrapping_rounds):
+    bins_arr = np.asarray(bins, dtype=float)
+    h = hashlib.sha256()
+    h.update(sel.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(var.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(str(detvar_bootstrapping_rounds).encode("utf-8"))
+    h.update(bins_arr.tobytes())
+    return h.hexdigest()
 
-    if not dont_load_from_systematic_cache:
+def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None):
+
+    if not dont_load_rw_from_systematic_cache:
         key_h = _key_hash(selname, var, bins)
         cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"
         if os.path.exists(cache_path):
@@ -335,20 +323,20 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_from_
     return rw_sys_frac_cov_dic
 
 
-def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_from_systematic_cache=False):
+def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=False, detvar_bootstrapping_rounds=None):
     # detvar_df is not optional, it must be loaded by the user and must have the selection cuts applied to match those on mc_pred_df
 
-    if not dont_load_from_systematic_cache:
-        key_h = _key_hash(selname, var, bins)
+    if not dont_load_detvar_from_systematic_cache:
+        key_h = _key_hash_detvar(selname, var, bins, detvar_bootstrapping_rounds)
         cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
         if os.path.exists(cache_path):
             print("loading DetVar systematic covariance matrices from cache...")
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["detvar_sys_frac_cov_dic"].item()
 
-    detvar_sys_frac_cov_dic = create_detvar_frac_cov_matrices(detvar_df, var, bins)
+    detvar_sys_frac_cov_dic = create_detvar_frac_cov_matrices(detvar_df, var, bins, detvar_bootstrapping_rounds)
 
-    key_h = _key_hash(selname, var, bins)
+    key_h = _key_hash_detvar(selname, var, bins, detvar_bootstrapping_rounds)
     cache_path = f"{covariance_cache_location}/detvar_cov_{key_h}.npz"
     np.savez_compressed(cache_path, detvar_sys_frac_cov_dic=detvar_sys_frac_cov_dic)
 

@@ -233,8 +233,6 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         additional_scaling_factor=1.0, normalizing_POT=3.33e19, 
         page_num=None, savename=None, show=True, detvar_df=None):
 
-    if detvar_df is None:
-        raise ValueError("detvar_df must be provided")
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
 
@@ -318,9 +316,10 @@ def make_histogram_plot(
 
         # information for optional systematics
         selname=None,
-        dont_load_from_systematic_cache=False,
+        dont_load_rw_from_systematic_cache=False, dont_load_detvar_from_systematic_cache=False,
         use_rw_systematics=False, weights_df=None,
         use_detvar_systematics=False, detvar_df=None,
+        detvar_bootstrapping_rounds=None,
         return_p_value_info=False,
 
         # optional detector variation histogram plot
@@ -456,7 +455,7 @@ def make_histogram_plot(
             raise ValueError("selname must be provided if use_rw_systematics is True")
 
         rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
-            pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache, weights_df=weights_df
+            pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, dont_load_rw_from_systematic_cache=dont_load_rw_from_systematic_cache, weights_df=weights_df
         )
         combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
         for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
@@ -494,7 +493,7 @@ def make_histogram_plot(
                 raise ValueError("detvar_df must be provided if use_detvar_systematics is True")
 
             detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
-                detvar_df, selname, var, bins, dont_load_from_systematic_cache=dont_load_from_systematic_cache
+                detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, detvar_bootstrapping_rounds=detvar_bootstrapping_rounds
             )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
