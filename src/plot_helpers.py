@@ -451,6 +451,7 @@ def make_histogram_plot(
 
     # optionally including rw systematic uncertainties
     if use_rw_systematics:
+        
         if selname is None:
             raise ValueError("selname must be provided if use_rw_systematics is True")
 
@@ -551,6 +552,12 @@ def make_histogram_plot(
                 s += "WARNING: nodetvar_sys_cov is not invertible, using pseudo-inverse\n"
             s += f"No DetVar: $\chi^2/ndf$ = {nodetvar_chi2:.2f}/{ndf}, p = {nodetvar_p_value:.2e}, $\sigma$ = {nodetvar_sigma:.2f}"
 
+            p_value_info_dic = {}
+            p_value_info_dic["nodetvar_chi2"] = nodetvar_chi2
+            p_value_info_dic["nodetvar_p_value"] = nodetvar_p_value
+            p_value_info_dic["nodetvar_sigma"] = nodetvar_sigma
+            p_value_info_dic["nodetvar_inverse_success"] = nodetvar_inverse_success
+
             if use_detvar_systematics:
 
                 tot_sys_cov = np.delete(tot_sys_cov, empty_indices, axis=0)
@@ -571,6 +578,12 @@ def make_histogram_plot(
                 if not tot_inverse_success:
                     s += "WARNING: tot_sys_cov is not invertible, using pseudo-inverse\n"
                 s += f"$\chi^2/ndf$ = {tot_chi2:.2f}/{ndf}, p = {tot_p_value:.2e}, $\sigma$ = {tot_sigma:.2f}"
+
+                p_value_info_dic["tot_chi2"] = tot_chi2
+                p_value_info_dic["tot_p_value"] = tot_p_value
+                p_value_info_dic["tot_sigma"] = tot_sigma
+                p_value_info_dic["tot_inverse_success"] = tot_inverse_success
+                p_value_info_dic["ndf"] = ndf
 
             ax1.text(0.03, 0.97, s, transform=ax1.transAxes, fontsize=8, ha="left", va="top")
 
@@ -668,18 +681,18 @@ def make_histogram_plot(
 
         ax3.axhline(y=0, color='grey', linestyle='--', linewidth=1)
 
-        ax3.fill_between([0, num_components], -3, -2, color='red', alpha=0.2)
-        ax3.fill_between([0, num_components], -2, -1, color='gold', alpha=0.2)
-        ax3.fill_between([0, num_components], -1, 1, color='lime', alpha=0.2)
-        ax3.fill_between([0, num_components], 1, 2, color='gold', alpha=0.2)
-        ax3.fill_between([0, num_components], 2, 3, color='red', alpha=0.2)
+        ax3.fill_between([-0.5, num_components - 0.5], -3, -2, color='red', alpha=0.2)
+        ax3.fill_between([-0.5, num_components - 0.5], -2, -1, color='gold', alpha=0.2)
+        ax3.fill_between([-0.5, num_components - 0.5], -1, 1, color='lime', alpha=0.2)
+        ax3.fill_between([-0.5, num_components - 0.5], 1, 2, color='gold', alpha=0.2)
+        ax3.fill_between([-0.5, num_components - 0.5], 2, 3, color='red', alpha=0.2)
 
         ax3.scatter(np.arange(num_components), nodetvar_epsilons, color='b', label="No DetVar")
         ax3.scatter(np.arange(num_components), tot_epsilons, color='k', label="Tot")
 
         ax3.set_xlabel("Decomposition Index")
         ax3.set_ylabel(r"$\epsilon_i^2$")
-        ax3.set_xlim(0, num_components)
+        ax3.set_xlim(-0.5, num_components - 0.5)
         ax3.set_ylim(-5, 5)
         ax3.legend()
 
@@ -700,6 +713,15 @@ def make_histogram_plot(
 
         nodetvar_str = f"No DetVar: max local $\sigma$ = {nodetvar_max_local_sigma:.2f}, global $\sigma$ = {nodetvar_global_sigma:.2f}"
         tot_str = f"Tot: max local $\sigma$ = {tot_max_local_sigma:.2f}, global $\sigma$ = {tot_global_sigma:.2f}"
+
+        p_value_info_dic["nodetvar_max_local_sigma"] = nodetvar_max_local_sigma
+        p_value_info_dic["nodetvar_global_sigma"] = nodetvar_global_sigma
+        p_value_info_dic["tot_max_local_sigma"] = tot_max_local_sigma
+        p_value_info_dic["tot_global_sigma"] = tot_global_sigma
+        p_value_info_dic["nodetvar_max_local_p_value"] = nodetvar_max_local_p_value
+        p_value_info_dic["nodetvar_global_p_value"] = nodetvar_global_p_value
+        p_value_info_dic["tot_max_local_p_value"] = tot_max_local_p_value
+        p_value_info_dic["tot_global_p_value"] = tot_global_p_value
 
         ax3.text(0.03, 0.97, nodetvar_str + "\n" + tot_str, transform=ax3.transAxes, fontsize=8, ha="left", va="top")
     
@@ -723,8 +745,5 @@ def make_histogram_plot(
             include_total, include_pred_stat, include_data_stat, include_rw, just_genie_breakdown, include_detvar, just_detvar_breakdown, print_sys_breakdown)
 
     if return_p_value_info:
-        if use_rw_systematics and use_detvar_systematics and include_data:
-            return nodetvar_chi2, ndf, nodetvar_p_value, nodetvar_sigma, nodetvar_inverse_success, tot_chi2, tot_p_value, tot_sigma, tot_inverse_success
-        elif use_rw_systematics and include_data:
-            return nodetvar_chi2, ndf, nodetvar_p_value, nodetvar_sigma, nodetvar_inverse_success
+        return p_value_info_dic
     
