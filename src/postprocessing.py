@@ -317,13 +317,18 @@ def do_wc_postprocessing(df):
         has_photonuclear_absorption_flags = []
         has_pi0_dalitz_decay_flags = []
         max_true_prim_proton_energies = []
+        max_true_prim_proton_costhetas = []
+        max_true_prim_proton_phis = []
         sum_true_prim_proton_energies = []
         true_leading_shower_energies = []
         true_leading_shower_costhetas = []
+        true_leading_shower_phis = []
         true_subleading_shower_energies = []
         true_subleading_shower_costhetas = []
+        true_subleading_shower_phis = []
         true_leading_pi0_energies = []
         true_leading_pi0_costhetas = []
+        true_leading_pi0_phis = []
         true_leading_pi0_opening_angles = []
         true_outgoing_lepton_energies = []
         true_nums_prim_protons = []
@@ -334,13 +339,18 @@ def do_wc_postprocessing(df):
         truth_startMomentums = df["wc_truth_startMomentum"].to_numpy()
         for i in tqdm(range(df.shape[0]), desc="Adding WC truth particle variables", mininterval=10):
             max_true_prim_proton_energy = -1.
+            max_true_prim_proton_costheta = -2.
+            max_true_prim_proton_phi = -999.
             sum_true_prim_proton_energy = 0.
             max_shower_energy = -1.
             max_shower_costheta = -2.
+            max_shower_phi = -999.
             second_max_shower_energy = -1.
             second_max_shower_costheta = -2.
+            second_max_shower_phi = -999.
             max_pi0_energy = -1.
             max_pi0_costheta = -2.
+            max_pi0_phi = -999.
             max_pi0_opening_angle = -1.
             true_num_prim_protons = 0
             true_num_prim_protons_35 = 0
@@ -376,11 +386,14 @@ def do_wc_postprocessing(df):
                     if truth_startMomentum_list[j][3] * 1000. > max_shower_energy:
                         second_max_shower_energy = max_shower_energy
                         second_max_shower_costheta = max_shower_costheta
+                        second_max_shower_phi = max_shower_phi
                         max_shower_energy = truth_startMomentum_list[j][3] * 1000.
                         max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        max_shower_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
                     elif truth_startMomentum_list[j][3] * 1000. > second_max_shower_energy:
                         second_max_shower_energy = truth_startMomentum_list[j][3] * 1000.
                         second_max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        second_max_shower_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
 
                 if truth_pdg_list[j] == 111: # pi0
                     curr_pi0_energy = truth_startMomentum_list[j][3] * 1000. - 134.9768
@@ -389,6 +402,7 @@ def do_wc_postprocessing(df):
                         max_tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
                         max_z_momentum = truth_startMomentum_list[j][2]
                         max_pi0_costheta = max_z_momentum / max_tot_momentum
+                        max_pi0_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
 
                         pi0_daughter_indices = []
                         for k in range(num_particles):
@@ -422,31 +436,41 @@ def do_wc_postprocessing(df):
                     true_outgoing_lepton_energy = truth_startMomentum_list[j][3] * 1000.
 
             max_true_prim_proton_energies.append(max_true_prim_proton_energy)
+            max_true_prim_proton_costhetas.append(max_true_prim_proton_costheta)
+            max_true_prim_proton_phis.append(max_true_prim_proton_phi)
             sum_true_prim_proton_energies.append(sum_true_prim_proton_energy)
             true_outgoing_lepton_energies.append(true_outgoing_lepton_energy)
             true_nums_prim_protons.append(true_num_prim_protons)
             true_nums_prim_protons_35.append(true_num_prim_protons_35)
             true_leading_shower_energies.append(max_shower_energy)
             true_leading_shower_costhetas.append(max_shower_costheta)
+            true_leading_shower_phis.append(max_shower_phi)
             true_subleading_shower_energies.append(second_max_shower_energy)
             true_subleading_shower_costhetas.append(second_max_shower_costheta)
+            true_subleading_shower_phis.append(second_max_shower_phi)
             true_leading_pi0_energies.append(max_pi0_energy)
             true_leading_pi0_costhetas.append(max_pi0_costheta)
+            true_leading_pi0_phis.append(max_pi0_phi)
             true_leading_pi0_opening_angles.append(max_pi0_opening_angle)
             has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
             has_pi0_dalitz_decay_flags.append(has_pi0_dalitz_decay)
 
         df["wc_true_max_prim_proton_energy"] = max_true_prim_proton_energies
+        df["wc_true_max_prim_proton_costheta"] = max_true_prim_proton_costhetas
+        df["wc_true_max_prim_proton_phi"] = max_true_prim_proton_phis
         df["wc_true_sum_prim_proton_energy"] = sum_true_prim_proton_energies
         df["wc_true_outgoing_lepton_energy"] = true_outgoing_lepton_energies
         df["wc_true_num_prim_protons"] = true_nums_prim_protons
         df["wc_true_num_prim_protons_35"] = true_nums_prim_protons_35
         df["wc_true_leading_shower_energy"] = true_leading_shower_energies
         df["wc_true_leading_shower_costheta"] = true_leading_shower_costhetas
+        df["wc_true_leading_shower_phi"] = true_leading_shower_phis
         df["wc_true_subleading_shower_energy"] = true_subleading_shower_energies
         df["wc_true_subleading_shower_costheta"] = true_subleading_shower_costhetas
+        df["wc_true_subleading_shower_phi"] = true_subleading_shower_phis
         df["wc_true_leading_pi0_energy"] = true_leading_pi0_energies
         df["wc_true_leading_pi0_costheta"] = true_leading_pi0_costhetas
+        df["wc_true_leading_pi0_phi"] = true_leading_pi0_phis
         df["wc_true_leading_pi0_opening_angle"] = true_leading_pi0_opening_angles
         df["wc_true_has_photonuclear_absorption"] = pd.Series(has_photonuclear_absorption_flags, dtype=bool)
         df["wc_true_has_pi0_dalitz_decay"] = pd.Series(has_pi0_dalitz_decay_flags, dtype=bool)
@@ -550,6 +574,59 @@ def do_wc_postprocessing(df):
     df["wc_reco_shower_phi"] = shower_phis
     df["wc_reco_distance_to_boundary"] = distances_to_boundary
     df["wc_reco_backwards_projected_dist"] = backwards_projected_dists
+
+    max_prim_proton_energies = []
+    max_prim_proton_costhetas = []
+    max_prim_proton_phis = []
+    max_prim_other_track_energies = []
+    max_prim_other_track_costhetas = []
+    max_prim_other_track_phis = []
+    reco_pdg = df["wc_reco_pdg"].to_numpy()
+    reco_mother = df["wc_reco_mother"].to_numpy()
+    reco_startMomentum = df["wc_reco_startMomentum"].to_numpy()
+    for i in tqdm(range(df.shape[0]), desc="Adding WC reco prim proton and other track variables", mininterval=10):
+        if isinstance(reco_pdg[i], float) and np.isnan(reco_pdg[i]):
+            max_prim_proton_energies.append(np.nan)
+            max_prim_proton_costhetas.append(np.nan)
+            max_prim_proton_phis.append(np.nan)
+            max_prim_other_track_energies.append(np.nan)
+            max_prim_other_track_costhetas.append(np.nan)
+            max_prim_other_track_phis.append(np.nan)
+            continue
+
+        num_particles = len(reco_pdg[i])
+        max_prim_proton_energy = -1.
+        max_prim_proton_costheta = -2.
+        max_prim_proton_phi = -999.
+        max_prim_other_track_energy = -1.
+        max_prim_other_track_costheta = -2.
+        max_prim_other_track_phi = -999.
+        for j in range(num_particles):
+            if reco_mother[i][j] == 0: # primary
+                if reco_pdg[i][j] == 2212: # proton
+                    if reco_startMomentum[i][j][3] > max_prim_proton_energy:
+                        max_prim_proton_energy = reco_startMomentum[i][j][3]
+                        max_prim_proton_costheta = reco_startMomentum[i][j][2] / reco_startMomentum[i][j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        max_prim_proton_phi = np.arctan2(reco_startMomentum[i][j][0], reco_startMomentum[i][j][1]) * 180. / np.pi
+                elif reco_pdg[i][j] == 13: # other track (I think 13 is the only one)
+                    if reco_startMomentum[i][j][3] > max_prim_other_track_energy:
+                        max_prim_other_track_energy = reco_startMomentum[i][j][3]
+                        max_prim_other_track_costheta = reco_startMomentum[i][j][2] / reco_startMomentum[i][j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        max_prim_other_track_phi = np.arctan2(reco_startMomentum[i][j][0], reco_startMomentum[i][j][1]) * 180. / np.pi
+
+        max_prim_proton_energies.append(max_prim_proton_energy)
+        max_prim_proton_costhetas.append(max_prim_proton_costheta)
+        max_prim_proton_phis.append(max_prim_proton_phi)
+        max_prim_other_track_energies.append(max_prim_other_track_energy)
+        max_prim_other_track_costhetas.append(max_prim_other_track_costheta)
+        max_prim_other_track_phis.append(max_prim_other_track_phi)
+
+    df["wc_reco_max_prim_proton_energy"] = max_prim_proton_energies
+    df["wc_reco_max_prim_proton_costheta"] = max_prim_proton_costhetas
+    df["wc_reco_max_prim_proton_phi"] = max_prim_proton_phis
+    df["wc_reco_max_prim_other_track_energy"] = max_prim_other_track_energies
+    df["wc_reco_max_prim_other_track_costheta"] = max_prim_other_track_costhetas
+    df["wc_reco_max_prim_other_track_phi"] = max_prim_other_track_phis
 
     return df
 
