@@ -84,16 +84,14 @@ del1g_detailed_categories = [
                                     & pl.col('wc_truth_0pi0') & ~(pl.col('wc_truth_numuCCDeltaRad') | (pl.col('true_num_prim_gamma') >= 2)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                       "xkcd:azure", None),
     ("numuCC_0p",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_0p')
                                     & pl.col('wc_truth_0pi0') & ~(pl.col('wc_truth_numuCCDeltaRad') | (pl.col('true_num_prim_gamma') >= 2)) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),                                       "xkcd:electric blue", None),
-    ("pi0_dalitz_decay", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_true_has_pi0_dalitz_decay')",                                                                                          "xkcd:dark mint", None),
-    
+    ("other_outFV",     "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & ~(pl.col('wc_truth_1pi0') & ~pl.col('wc_true_has_pi0_dalitz_decay'))",                                                                                               "xkcd:bright purple", None),    
     ("multi_pi0",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV')
                     & (pl.col('wc_truth_multi_pi0') | (pl.col('wc_truth_1pi0') & (pl.col('wc_truth_NCDeltaRad') | pl.col('wc_truth_numuCCDeltaRad'))))
                     & ~(pl.col('wc_true_has_pi0_dalitz_decay') | pl.col('wc_truth_nueCC'))""".strip().replace("\n", ""),      "xkcd:ice blue", None), # also includes pi0 + Delta radiative
-
     ("eta_other",       """pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_notnueCC') & (pl.col('true_num_prim_gamma') >= 2)
                                     & ~pl.col('wc_truth_multi_pi0') & ~pl.col('wc_truth_1pi0') & ~(pl.col('wc_truth_NCDeltaRad') | pl.col('wc_truth_numuCCDeltaRad')) & ~pl.col('wc_true_has_pi0_dalitz_decay')""".strip().replace("\n", ""),             "xkcd:light aqua", None),
+    ("pi0_dalitz_decay", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_true_has_pi0_dalitz_decay')",                                                                                          "xkcd:dark mint", None),
     ("NC_no_gamma",     "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_notnueCC') & pl.col('wc_truth_notnumuCC') & pl.col('wc_truth_0pi0') & ~pl.col('wc_truth_NCDeltaRad') & ~pl.col('wc_true_has_pi0_dalitz_decay')",                                  "xkcd:burnt sienna", None),
-    ("other_outFV",     "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & ~(pl.col('wc_truth_1pi0') & ~pl.col('wc_true_has_pi0_dalitz_decay'))",                                                                                               "xkcd:bright purple", None),
     ("dirt",        "pl.col('filetype') == 'dirt_overlay'",                                                                                                                                       "xkcd:brown", None),
     ("ext",         "pl.col('filetype') == 'ext'",                                                                                                                                                "xkcd:green", None),
     ("del1g_Np",        "pl.col('del1g_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_Np') & pl.col('wc_truth_0mu')",                                                                                             "xkcd:yellow", "++++"),
@@ -147,11 +145,12 @@ del1g_detailed_category_labels_latex = [
     r"$\nu_\mu$ CC $Np$",
     r"$\nu_\mu$ CC $0p$",
 
-    r"$\pi^0$ Dalitz decay",
+    r"other out FV",
+
     r"multi $\pi^0$",
     r"Other $2\gamma$ ($\eta$)",
+    r"$\pi^0$ Dalitz decay",
     r"NC no $\gamma$",
-    r"other out FV",
     r"dirt",
     r"ext",
     r"del1g $1\gamma Np$",
@@ -186,11 +185,11 @@ del1g_simple_categories = [
     ("nueCC_0p",                get_cut_from_del1g('nueCC_0p'),                                                                                         "xkcd:electric green", None),
     ("numuCC_Np",               get_cut_from_del1g('numuCC_Np'),                                                                                        "xkcd:azure", None),
     ("numuCC_0p",               get_cut_from_del1g('numuCC_0p'),                                                                                        "xkcd:electric blue", None),
-    ("pi0_dalitz_decay",        get_cut_from_del1g('pi0_dalitz_decay'),                                                                                "xkcd:dark mint", None),
+    ("other_outFV_dirt",    f"({get_cut_from_del1g('other_outFV')}) | ({get_cut_from_del1g('dirt')})",                                                 "xkcd:bright purple", None),
     ("multi_pi0",               get_cut_from_del1g('multi_pi0'),                                                                                        "xkcd:ice blue", None), # also includes pi0 + Delta radiative
     ("eta_other",               get_cut_from_del1g('eta_other'),                                                                                        "xkcd:light aqua", None),
+    ("pi0_dalitz_decay",        get_cut_from_del1g('pi0_dalitz_decay'),                                                                                "xkcd:dark mint", None),
     ("NC_no_gamma",             get_cut_from_del1g('NC_no_gamma'),                                                                                      "xkcd:burnt sienna", None),
-    ("other_outFV_dirt",    f"({get_cut_from_del1g('other_outFV')}) | ({get_cut_from_del1g('dirt')})",                                                 "xkcd:bright purple", None),
     ("ext",                     get_cut_from_del1g('ext'),                                                                                              "xkcd:green", None),
     ("data",                    get_cut_from_del1g('data'),                                                                                             "xkcd:black", None),
 ]
@@ -213,11 +212,11 @@ del1g_simple_category_labels_latex = [
     r"$\nu_e$ CC $0p$",
     r"$\nu_\mu$ CC $Np$",
     r"$\nu_\mu$ CC $0p$",
-    r"$\pi^0$ Dalitz decay",
+    r"Other out-FV/dirt",
     r"Multi-$\pi^0$",
     r"Other $2\gamma$ ($\eta$)",
+    r"$\pi^0$ Dalitz decay",
     r"NC no $\gamma$",
-    r"Other out-FV/dirt",
     r"EXT",
     r"data",
 ]
