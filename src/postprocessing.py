@@ -1142,7 +1142,6 @@ def do_glee_postprocessing(df):
     isolation_num_unassoc_hits_win_1cm_trk = df["glee_isolation_num_unassoc_hits_win_1cm_trk"].to_numpy()
     isolation_num_unassoc_hits_win_2cm_trk = df["glee_isolation_num_unassoc_hits_win_2cm_trk"].to_numpy()
     isolation_num_unassoc_hits_win_5cm_trk = df["glee_isolation_num_unassoc_hits_win_5cm_trk"].to_numpy()
-
     min_isolation_min_dist_trk_unassoc = []
     min_isolation_min_dist_trk_shr = []
     min_isolation_nearest_shr_hit_to_trk_time = []
@@ -1157,10 +1156,8 @@ def do_glee_postprocessing(df):
     sum_isolation_num_unassoc_hits_win_1cm_trk = []
     sum_isolation_num_unassoc_hits_win_2cm_trk = []
     sum_isolation_num_unassoc_hits_win_5cm_trk = []
-
     for event_i in tqdm(range(len(isolation_min_dist_trk_shr)), desc="Analyzing gLEE isolation variables", mininterval=10):
-        min_isolation_min_dist_trk_unassoc = 1e9
-
+        min_dist = 1e9
         curr_min_isolation_min_dist_trk_unassoc = np.nan
         curr_min_isolation_min_dist_trk_shr = np.nan
         curr_min_isolation_nearest_shr_hit_to_trk_time = np.nan
@@ -1175,16 +1172,14 @@ def do_glee_postprocessing(df):
         curr_sum_isolation_num_unassoc_hits_win_1cm_trk = np.nan
         curr_sum_isolation_num_unassoc_hits_win_2cm_trk = np.nan
         curr_sum_isolation_num_unassoc_hits_win_5cm_trk = np.nan
-
         # ensuring we have a non-empty list of unassoc hits that we can loop over
         temp_list = isolation_min_dist_trk_unassoc[event_i]
         if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list[event_i]) == 0): 
-        
             # looping over all unassoc hits
             for unassoc_hit_j in range(len(temp_list)):
-
                 # saving values for the closest unassoc hit to the track
-                if isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j] < min_isolation_min_dist_trk_unassoc:
+                if isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j] < min_dist:
+                    min_dist = isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j]
                     curr_min_isolation_min_dist_trk_unassoc = isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j]
                     curr_min_isolation_min_dist_trk_shr = isolation_min_dist_trk_shr[event_i][unassoc_hit_j]
                     curr_min_isolation_nearest_shr_hit_to_trk_time = isolation_nearest_shr_hit_to_trk_time[event_i][unassoc_hit_j]
@@ -1199,7 +1194,6 @@ def do_glee_postprocessing(df):
                     curr_sum_isolation_num_unassoc_hits_win_1cm_trk = isolation_num_unassoc_hits_win_1cm_trk[event_i][unassoc_hit_j]
                     curr_sum_isolation_num_unassoc_hits_win_2cm_trk = isolation_num_unassoc_hits_win_2cm_trk[event_i][unassoc_hit_j]
                     curr_sum_isolation_num_unassoc_hits_win_5cm_trk = isolation_num_unassoc_hits_win_5cm_trk[event_i][unassoc_hit_j]
-
         min_isolation_min_dist_trk_unassoc.append(curr_min_isolation_min_dist_trk_unassoc)
         min_isolation_min_dist_trk_shr.append(curr_min_isolation_min_dist_trk_shr)
         min_isolation_nearest_shr_hit_to_trk_time.append(curr_min_isolation_nearest_shr_hit_to_trk_time)
@@ -1214,24 +1208,472 @@ def do_glee_postprocessing(df):
         sum_isolation_num_unassoc_hits_win_1cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_1cm_trk)
         sum_isolation_num_unassoc_hits_win_2cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_2cm_trk)
         sum_isolation_num_unassoc_hits_win_5cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_5cm_trk)
-
     glee_isolation_df = pd.DataFrame({
-        "glee_min_isolation_min_dist_trk_unassoc": min_isolation_min_dist_trk_unassoc,
-        "glee_min_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_shr,
-        "glee_min_isolation_nearest_shr_hit_to_trk_time": min_isolation_nearest_shr_hit_to_trk_time,
-        "glee_min_isolation_nearest_shr_hit_to_trk_wire": min_isolation_nearest_shr_hit_to_trk_wire,
-        "glee_min_isolation_nearest_unassoc_hit_to_trk_time": min_isolation_nearest_unassoc_hit_to_trk_time,
-        "glee_min_isolation_nearest_unassoc_hit_to_trk_wire": min_isolation_nearest_unassoc_hit_to_trk_wire,
-        "glee_sum_isolation_num_shr_hits_win_10cm_trk": sum_isolation_num_shr_hits_win_10cm_trk,
-        "glee_sum_isolation_num_shr_hits_win_1cm_trk": sum_isolation_num_shr_hits_win_1cm_trk,
-        "glee_sum_isolation_num_shr_hits_win_2cm_trk": sum_isolation_num_shr_hits_win_2cm_trk,
-        "glee_sum_isolation_num_shr_hits_win_5cm_trk": sum_isolation_num_shr_hits_win_5cm_trk,
-        "glee_sum_isolation_num_unassoc_hits_win_10cm_trk": sum_isolation_num_unassoc_hits_win_10cm_trk,
-        "glee_sum_isolation_num_unassoc_hits_win_1cm_trk": sum_isolation_num_unassoc_hits_win_1cm_trk,
-        "glee_sum_isolation_num_unassoc_hits_win_2cm_trk": sum_isolation_num_unassoc_hits_win_2cm_trk,
-        "glee_sum_isolation_num_unassoc_hits_win_5cm_trk": sum_isolation_num_unassoc_hits_win_5cm_trk,
+        "glee_dist_ranked_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_unassoc,
+        "glee_dist_ranked_isolation_min_dist_trk_unassoc": min_isolation_min_dist_trk_unassoc,
+        "glee_dist_ranked_isolation_nearest_shr_hit_to_trk_time": min_isolation_nearest_shr_hit_to_trk_time,
+        "glee_dist_ranked_isolation_nearest_shr_hit_to_trk_wire": min_isolation_nearest_shr_hit_to_trk_wire,
+        "glee_dist_ranked_isolation_nearest_unassoc_hit_to_trk_time": min_isolation_nearest_unassoc_hit_to_trk_time,
+        "glee_dist_ranked_isolation_nearest_unassoc_hit_to_trk_wire": min_isolation_nearest_unassoc_hit_to_trk_wire,
+        "glee_dist_ranked_isolation_num_shr_hits_win_10cm_trk": sum_isolation_num_shr_hits_win_10cm_trk,
+        "glee_dist_ranked_isolation_num_shr_hits_win_1cm_trk": sum_isolation_num_shr_hits_win_1cm_trk,
+        "glee_dist_ranked_isolation_num_shr_hits_win_2cm_trk": sum_isolation_num_shr_hits_win_2cm_trk,
+        "glee_dist_ranked_isolation_num_shr_hits_win_5cm_trk": sum_isolation_num_shr_hits_win_5cm_trk,
+        "glee_dist_ranked_isolation_num_unassoc_hits_win_10cm_trk": sum_isolation_num_unassoc_hits_win_10cm_trk,
+        "glee_dist_ranked_isolation_num_unassoc_hits_win_1cm_trk": sum_isolation_num_unassoc_hits_win_1cm_trk,
+        "glee_dist_ranked_isolation_num_unassoc_hits_win_2cm_trk": sum_isolation_num_unassoc_hits_win_2cm_trk,
+        "glee_dist_ranked_isolation_num_unassoc_hits_win_5cm_trk": sum_isolation_num_unassoc_hits_win_5cm_trk,
     }, index=df.index)
-    df = pd.concat([df, glee_isolation_df], axis=1)
+
+    trackstub_candidate_in_nu_slice = df["trackstub_candidate_in_nu_slice"].to_numpy()
+    trackstub_candidate_num_hits = df["trackstub_candidate_num_hits"].to_numpy()
+    trackstub_candidate_num_wires = df["trackstub_candidate_num_wires"].to_numpy()
+    trackstub_candidate_num_ticks = df["trackstub_candidate_num_ticks"].to_numpy()
+    trackstub_candidate_plane = df["trackstub_candidate_plane"].to_numpy()
+    trackstub_candidate_PCA = df["trackstub_candidate_PCA"].to_numpy()
+    trackstub_candidate_mean_ADC = df["trackstub_candidate_mean_ADC"].to_numpy()
+    trackstub_candidate_ADC_RMS = df["trackstub_candidate_ADC_RMS"].to_numpy()
+    trackstub_candidate_min_dist = df["trackstub_candidate_min_dist"].to_numpy()
+    trackstub_candidate_min_impact_parameter_to_shower = df["trackstub_candidate_min_impact_parameter_to_shower"].to_numpy()
+    trackstub_candidate_min_conversion_dist_to_shower_start = df["trackstub_candidate_min_conversion_dist_to_shower_start"].to_numpy()
+    trackstub_candidate_min_ioc_to_shower_start = df["trackstub_candidate_min_ioc_to_shower_start"].to_numpy()
+    trackstub_candidate_ioc_based_length = df["trackstub_candidate_ioc_based_length"].to_numpy()
+    trackstub_candidate_wire_tick_based_length = df["trackstub_candidate_wire_tick_based_length"].to_numpy()
+    trackstub_candidate_mean_ADC_first_half = df["trackstub_candidate_mean_ADC_first_half"].to_numpy()
+    trackstub_candidate_mean_ADC_second_half = df["trackstub_candidate_mean_ADC_second_half"].to_numpy()
+    trackstub_candidate_mean_ADC_first_to_second_ratio = df["trackstub_candidate_mean_ADC_first_to_second_ratio"].to_numpy()
+    trackstub_candidate_track_angle_wrt_shower_direction = df["trackstub_candidate_track_angle_wrt_shower_direction"].to_numpy()
+    trackstub_candidate_linear_fit_chi2 = df["trackstub_candidate_linear_fit_chi2"].to_numpy()
+    trackstub_candidate_energy = df["trackstub_candidate_energy"].to_numpy()
+
+    dist_ranked_trackstub_candidate_in_nu_slice = []
+    dist_ranked_trackstub_candidate_num_hits = []
+    dist_ranked_trackstub_candidate_num_wires = []
+    dist_ranked_trackstub_candidate_num_ticks = []
+    dist_ranked_trackstub_candidate_plane = []
+    dist_ranked_trackstub_candidate_PCA = []
+    dist_ranked_trackstub_candidate_mean_ADC = []
+    dist_ranked_trackstub_candidate_ADC_RMS = []
+    dist_ranked_trackstub_candidate_min_dist = []
+    dist_ranked_trackstub_candidate_min_impact_parameter_to_shower = []
+    dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = []
+    dist_ranked_trackstub_candidate_min_ioc_to_shower_start = []
+    dist_ranked_trackstub_candidate_ioc_based_length = []
+    dist_ranked_trackstub_candidate_wire_tick_based_length = []
+    dist_ranked_trackstub_candidate_mean_ADC_first_half = []
+    dist_ranked_trackstub_candidate_mean_ADC_second_half = []
+    dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = []
+    dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction = []
+    dist_ranked_trackstub_candidate_linear_fit_chi2 = []
+    dist_ranked_trackstub_candidate_energy = []
+    energy_ranked_trackstub_candidate_in_nu_slice = []
+    energy_ranked_trackstub_candidate_num_hits = []
+    energy_ranked_trackstub_candidate_num_wires = []
+    energy_ranked_trackstub_candidate_num_ticks = []
+    energy_ranked_trackstub_candidate_plane = []
+    energy_ranked_trackstub_candidate_PCA = []
+    energy_ranked_trackstub_candidate_mean_ADC = []
+    energy_ranked_trackstub_candidate_ADC_RMS = []
+    energy_ranked_trackstub_candidate_min_dist = []
+    energy_ranked_trackstub_candidate_min_impact_parameter_to_shower = []
+    energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = []
+    energy_ranked_trackstub_candidate_min_ioc_to_shower_start = []
+    energy_ranked_trackstub_candidate_ioc_based_length = []
+    energy_ranked_trackstub_candidate_wire_tick_based_length = []
+    energy_ranked_trackstub_candidate_mean_ADC_first_half = []
+    energy_ranked_trackstub_candidate_mean_ADC_second_half = []
+    energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = []
+    energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction = []
+    energy_ranked_trackstub_candidate_linear_fit_chi2 = []
+    energy_ranked_trackstub_candidate_energy = []
+    conv_ranked_trackstub_candidate_in_nu_slice = []
+    conv_ranked_trackstub_candidate_num_hits = []
+    conv_ranked_trackstub_candidate_num_wires = []
+    conv_ranked_trackstub_candidate_num_ticks = []
+    conv_ranked_trackstub_candidate_plane = []
+    conv_ranked_trackstub_candidate_PCA = []
+    conv_ranked_trackstub_candidate_mean_ADC = []
+    conv_ranked_trackstub_candidate_ADC_RMS = []
+    conv_ranked_trackstub_candidate_min_dist = []
+    conv_ranked_trackstub_candidate_min_impact_parameter_to_shower = []
+    conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = []
+    conv_ranked_trackstub_candidate_min_ioc_to_shower_start = []
+    conv_ranked_trackstub_candidate_ioc_based_length = []
+    conv_ranked_trackstub_candidate_wire_tick_based_length = []
+    conv_ranked_trackstub_candidate_mean_ADC_first_half = []
+    conv_ranked_trackstub_candidate_mean_ADC_second_half = []
+    conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = []
+    conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction = []
+    conv_ranked_trackstub_candidate_linear_fit_chi2 = []
+    conv_ranked_trackstub_candidate_energy = []
+    impact_param_ranked_trackstub_candidate_in_nu_slice = []
+    impact_param_ranked_trackstub_candidate_num_hits = []
+    impact_param_ranked_trackstub_candidate_num_wires = []
+    impact_param_ranked_trackstub_candidate_num_ticks = []
+    impact_param_ranked_trackstub_candidate_plane = []
+    impact_param_ranked_trackstub_candidate_PCA = []
+    impact_param_ranked_trackstub_candidate_mean_ADC = []
+    impact_param_ranked_trackstub_candidate_ADC_RMS = []
+    impact_param_ranked_trackstub_candidate_min_dist = []
+    impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower = []
+    impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = []
+    impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start = []
+    impact_param_ranked_trackstub_candidate_ioc_based_length = []
+    impact_param_ranked_trackstub_candidate_wire_tick_based_length = []
+    impact_param_ranked_trackstub_candidate_mean_ADC_first_half = []
+    impact_param_ranked_trackstub_candidate_mean_ADC_second_half = []
+    impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = []
+    impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction = []
+    impact_param_ranked_trackstub_candidate_linear_fit_chi2 = []
+    impact_param_ranked_trackstub_candidate_energy = []
+    for event_i in tqdm(range(len(trackstub_candidate_in_nu_slice)), desc="Analyzing gLEE trackstub variables", mininterval=10):
+        min_dist = 1e9
+        max_energy = 0
+        min_conv = 1e9
+        min_impact_param = 1e9
+        curr_dist_ranked_trackstub_candidate_in_nu_slice = np.nan
+        curr_dist_ranked_trackstub_candidate_num_hits = np.nan
+        curr_dist_ranked_trackstub_candidate_num_wires = np.nan
+        curr_dist_ranked_trackstub_candidate_num_ticks = np.nan
+        curr_dist_ranked_trackstub_candidate_plane = np.nan
+        curr_dist_ranked_trackstub_candidate_PCA = np.nan
+        curr_dist_ranked_trackstub_candidate_mean_ADC = np.nan
+        curr_dist_ranked_trackstub_candidate_ADC_RMS = np.nan
+        curr_dist_ranked_trackstub_candidate_min_dist = np.nan
+        curr_dist_ranked_trackstub_candidate_min_impact_parameter_to_shower = np.nan
+        curr_dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = np.nan
+        curr_dist_ranked_trackstub_candidate_min_ioc_to_shower_start = np.nan
+        curr_dist_ranked_trackstub_candidate_ioc_based_length = np.nan
+        curr_dist_ranked_trackstub_candidate_wire_tick_based_length = np.nan
+        curr_dist_ranked_trackstub_candidate_mean_ADC_first_half = np.nan
+        curr_dist_ranked_trackstub_candidate_mean_ADC_second_half = np.nan
+        curr_dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = np.nan
+        curr_dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction = np.nan
+        curr_dist_ranked_trackstub_candidate_linear_fit_chi2 = np.nan
+        curr_dist_ranked_trackstub_candidate_energy = np.nan
+        curr_energy_ranked_trackstub_candidate_in_nu_slice = np.nan
+        curr_energy_ranked_trackstub_candidate_num_hits = np.nan
+        curr_energy_ranked_trackstub_candidate_num_wires = np.nan
+        curr_energy_ranked_trackstub_candidate_num_ticks = np.nan
+        curr_energy_ranked_trackstub_candidate_plane = np.nan
+        curr_energy_ranked_trackstub_candidate_PCA = np.nan
+        curr_energy_ranked_trackstub_candidate_mean_ADC = np.nan
+        curr_energy_ranked_trackstub_candidate_ADC_RMS = np.nan
+        curr_energy_ranked_trackstub_candidate_min_dist = np.nan
+        curr_energy_ranked_trackstub_candidate_min_impact_parameter_to_shower = np.nan
+        curr_energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = np.nan
+        curr_energy_ranked_trackstub_candidate_min_ioc_to_shower_start = np.nan
+        curr_energy_ranked_trackstub_candidate_ioc_based_length = np.nan
+        curr_energy_ranked_trackstub_candidate_wire_tick_based_length = np.nan
+        curr_energy_ranked_trackstub_candidate_mean_ADC_first_half = np.nan
+        curr_energy_ranked_trackstub_candidate_mean_ADC_second_half = np.nan
+        curr_energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = np.nan
+        curr_energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction = np.nan
+        curr_energy_ranked_trackstub_candidate_linear_fit_chi2 = np.nan
+        curr_energy_ranked_trackstub_candidate_energy = np.nan
+        curr_conv_ranked_trackstub_candidate_in_nu_slice = np.nan
+        curr_conv_ranked_trackstub_candidate_num_hits = np.nan
+        curr_conv_ranked_trackstub_candidate_num_wires = np.nan
+        curr_conv_ranked_trackstub_candidate_num_ticks = np.nan
+        curr_conv_ranked_trackstub_candidate_plane = np.nan
+        curr_conv_ranked_trackstub_candidate_PCA = np.nan
+        curr_conv_ranked_trackstub_candidate_mean_ADC = np.nan
+        curr_conv_ranked_trackstub_candidate_ADC_RMS = np.nan
+        curr_conv_ranked_trackstub_candidate_min_dist = np.nan
+        curr_conv_ranked_trackstub_candidate_min_impact_parameter_to_shower = np.nan
+        curr_conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = np.nan
+        curr_conv_ranked_trackstub_candidate_min_ioc_to_shower_start = np.nan
+        curr_conv_ranked_trackstub_candidate_ioc_based_length = np.nan
+        curr_conv_ranked_trackstub_candidate_wire_tick_based_length = np.nan
+        curr_conv_ranked_trackstub_candidate_mean_ADC_first_half = np.nan
+        curr_conv_ranked_trackstub_candidate_mean_ADC_second_half = np.nan
+        curr_conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = np.nan
+        curr_conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction = np.nan
+        curr_conv_ranked_trackstub_candidate_linear_fit_chi2 = np.nan
+        curr_conv_ranked_trackstub_candidate_energy = np.nan
+        curr_impact_param_ranked_trackstub_candidate_in_nu_slice = np.nan
+        curr_impact_param_ranked_trackstub_candidate_num_hits = np.nan
+        curr_impact_param_ranked_trackstub_candidate_num_wires = np.nan
+        curr_impact_param_ranked_trackstub_candidate_num_ticks = np.nan
+        curr_impact_param_ranked_trackstub_candidate_plane = np.nan
+        curr_impact_param_ranked_trackstub_candidate_PCA = np.nan
+        curr_impact_param_ranked_trackstub_candidate_mean_ADC = np.nan
+        curr_impact_param_ranked_trackstub_candidate_ADC_RMS = np.nan
+        curr_impact_param_ranked_trackstub_candidate_min_dist = np.nan
+        curr_impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower = np.nan
+        curr_impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = np.nan
+        curr_impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start = np.nan
+        curr_impact_param_ranked_trackstub_candidate_ioc_based_length = np.nan
+        curr_impact_param_ranked_trackstub_candidate_wire_tick_based_length = np.nan
+        curr_impact_param_ranked_trackstub_candidate_mean_ADC_first_half = np.nan
+        curr_impact_param_ranked_trackstub_candidate_mean_ADC_second_half = np.nan
+        curr_impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = np.nan
+        curr_impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction = np.nan
+        curr_impact_param_ranked_trackstub_candidate_linear_fit_chi2 = np.nan
+        curr_impact_param_ranked_trackstub_candidate_energy = np.nan
+        # ensuring we have a non-empty list of unassoc hits that we can loop over
+        temp_list = trackstub_candidate_in_nu_slice[event_i]
+        if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list[event_i]) == 0): 
+            # looping over all unassoc hits
+            for unassoc_hit_j in range(len(temp_list)):
+                # saving values for the closest candidate
+                if trackstub_candidate_min_dist[event_i][unassoc_hit_j] < min_dist:
+                    min_dist = trackstub_candidate_min_dist[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_in_nu_slice = trackstub_candidate_in_nu_slice[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_num_hits = trackstub_candidate_num_hits[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_num_wires = trackstub_candidate_num_wires[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_num_ticks = trackstub_candidate_num_ticks[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_plane = trackstub_candidate_plane[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_PCA = trackstub_candidate_PCA[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_mean_ADC = trackstub_candidate_mean_ADC[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_ADC_RMS = trackstub_candidate_ADC_RMS[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_min_dist = trackstub_candidate_min_dist[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_min_impact_parameter_to_shower = trackstub_candidate_min_impact_parameter_to_shower[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = trackstub_candidate_min_conversion_dist_to_shower_start[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_min_ioc_to_shower_start = trackstub_candidate_min_ioc_to_shower_start[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_ioc_based_length = trackstub_candidate_ioc_based_length[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_wire_tick_based_length = trackstub_candidate_wire_tick_based_length[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_mean_ADC_first_half = trackstub_candidate_mean_ADC_first_half[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_mean_ADC_second_half = trackstub_candidate_mean_ADC_second_half[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = trackstub_candidate_mean_ADC_first_to_second_ratio[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction = trackstub_candidate_track_angle_wrt_shower_direction[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_linear_fit_chi2 = trackstub_candidate_linear_fit_chi2[event_i][unassoc_hit_j]
+                    curr_dist_ranked_trackstub_candidate_energy = trackstub_candidate_energy[event_i][unassoc_hit_j]
+                # saving values for the highest energy candidate
+                if trackstub_candidate_energy[event_i][unassoc_hit_j] > max_energy:
+                    max_energy = trackstub_candidate_energy[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_in_nu_slice = trackstub_candidate_in_nu_slice[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_num_hits = trackstub_candidate_num_hits[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_num_wires = trackstub_candidate_num_wires[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_num_ticks = trackstub_candidate_num_ticks[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_plane = trackstub_candidate_plane[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_PCA = trackstub_candidate_PCA[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_mean_ADC = trackstub_candidate_mean_ADC[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_ADC_RMS = trackstub_candidate_ADC_RMS[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_min_dist = trackstub_candidate_min_dist[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_min_impact_parameter_to_shower = trackstub_candidate_min_impact_parameter_to_shower[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = trackstub_candidate_min_conversion_dist_to_shower_start[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_min_ioc_to_shower_start = trackstub_candidate_min_ioc_to_shower_start[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_ioc_based_length = trackstub_candidate_ioc_based_length[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_wire_tick_based_length = trackstub_candidate_wire_tick_based_length[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_mean_ADC_first_half = trackstub_candidate_mean_ADC_first_half[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_mean_ADC_second_half = trackstub_candidate_mean_ADC_second_half[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = trackstub_candidate_mean_ADC_first_to_second_ratio[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction = trackstub_candidate_track_angle_wrt_shower_direction[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_linear_fit_chi2 = trackstub_candidate_linear_fit_chi2[event_i][unassoc_hit_j]
+                    curr_energy_ranked_trackstub_candidate_energy = trackstub_candidate_energy[event_i][unassoc_hit_j]
+                # saving values for the min conversion distance candidate
+                if trackstub_candidate_min_conversion_dist_to_shower_start[event_i][unassoc_hit_j] < min_conv:
+                    min_conv = trackstub_candidate_min_conversion_dist_to_shower_start[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_in_nu_slice = trackstub_candidate_in_nu_slice[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_num_hits = trackstub_candidate_num_hits[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_num_wires = trackstub_candidate_num_wires[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_num_ticks = trackstub_candidate_num_ticks[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_plane = trackstub_candidate_plane[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_PCA = trackstub_candidate_PCA[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_mean_ADC = trackstub_candidate_mean_ADC[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_ADC_RMS = trackstub_candidate_ADC_RMS[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_min_dist = trackstub_candidate_min_dist[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_min_impact_parameter_to_shower = trackstub_candidate_min_impact_parameter_to_shower[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = trackstub_candidate_min_conversion_dist_to_shower_start[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_min_ioc_to_shower_start = trackstub_candidate_min_ioc_to_shower_start[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_ioc_based_length = trackstub_candidate_ioc_based_length[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_wire_tick_based_length = trackstub_candidate_wire_tick_based_length[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_mean_ADC_first_half = trackstub_candidate_mean_ADC_first_half[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_mean_ADC_second_half = trackstub_candidate_mean_ADC_second_half[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = trackstub_candidate_mean_ADC_first_to_second_ratio[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction = trackstub_candidate_track_angle_wrt_shower_direction[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_linear_fit_chi2 = trackstub_candidate_linear_fit_chi2[event_i][unassoc_hit_j]
+                    curr_conv_ranked_trackstub_candidate_energy = trackstub_candidate_energy[event_i][unassoc_hit_j]
+                # saving values for the min impact parameter candidate
+                if trackstub_candidate_min_impact_parameter_to_shower[event_i][unassoc_hit_j] < min_impact_param:
+                    min_impact_param = trackstub_candidate_min_impact_parameter_to_shower[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_in_nu_slice = trackstub_candidate_in_nu_slice[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_num_hits = trackstub_candidate_num_hits[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_num_wires = trackstub_candidate_num_wires[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_num_ticks = trackstub_candidate_num_ticks[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_plane = trackstub_candidate_plane[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_PCA = trackstub_candidate_PCA[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_mean_ADC = trackstub_candidate_mean_ADC[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_ADC_RMS = trackstub_candidate_ADC_RMS[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_min_dist = trackstub_candidate_min_dist[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower = trackstub_candidate_min_impact_parameter_to_shower[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start = trackstub_candidate_min_conversion_dist_to_shower_start[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start = trackstub_candidate_min_ioc_to_shower_start[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_ioc_based_length = trackstub_candidate_ioc_based_length[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_wire_tick_based_length = trackstub_candidate_wire_tick_based_length[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_mean_ADC_first_half = trackstub_candidate_mean_ADC_first_half[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_mean_ADC_second_half = trackstub_candidate_mean_ADC_second_half[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio = trackstub_candidate_mean_ADC_first_to_second_ratio[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction = trackstub_candidate_track_angle_wrt_shower_direction[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_linear_fit_chi2 = trackstub_candidate_linear_fit_chi2[event_i][unassoc_hit_j]
+                    curr_impact_param_ranked_trackstub_candidate_energy = trackstub_candidate_energy[event_i][unassoc_hit_j]
+
+        dist_ranked_trackstub_candidate_in_nu_slice.append(curr_dist_ranked_trackstub_candidate_in_nu_slice)
+        dist_ranked_trackstub_candidate_num_hits.append(curr_dist_ranked_trackstub_candidate_num_hits)
+        dist_ranked_trackstub_candidate_num_wires.append(curr_dist_ranked_trackstub_candidate_num_wires)
+        dist_ranked_trackstub_candidate_num_ticks.append(curr_dist_ranked_trackstub_candidate_num_ticks)
+        dist_ranked_trackstub_candidate_plane.append(curr_dist_ranked_trackstub_candidate_plane)
+        dist_ranked_trackstub_candidate_PCA.append(curr_dist_ranked_trackstub_candidate_PCA)
+        dist_ranked_trackstub_candidate_mean_ADC.append(curr_dist_ranked_trackstub_candidate_mean_ADC)
+        dist_ranked_trackstub_candidate_ADC_RMS.append(curr_dist_ranked_trackstub_candidate_ADC_RMS)
+        dist_ranked_trackstub_candidate_min_dist.append(curr_dist_ranked_trackstub_candidate_min_dist)
+        dist_ranked_trackstub_candidate_min_impact_parameter_to_shower.append(curr_dist_ranked_trackstub_candidate_min_impact_parameter_to_shower)
+        dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start.append(curr_dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start)
+        dist_ranked_trackstub_candidate_min_ioc_to_shower_start.append(curr_dist_ranked_trackstub_candidate_min_ioc_to_shower_start)
+        dist_ranked_trackstub_candidate_ioc_based_length.append(curr_dist_ranked_trackstub_candidate_ioc_based_length)
+        dist_ranked_trackstub_candidate_wire_tick_based_length.append(curr_dist_ranked_trackstub_candidate_wire_tick_based_length)
+        dist_ranked_trackstub_candidate_mean_ADC_first_half.append(curr_dist_ranked_trackstub_candidate_mean_ADC_first_half)
+        dist_ranked_trackstub_candidate_mean_ADC_second_half.append(curr_dist_ranked_trackstub_candidate_mean_ADC_second_half)
+        dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio.append(curr_dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio)
+        dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction.append(curr_dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction)
+        dist_ranked_trackstub_candidate_linear_fit_chi2.append(curr_dist_ranked_trackstub_candidate_linear_fit_chi2)
+        dist_ranked_trackstub_candidate_energy.append(curr_dist_ranked_trackstub_candidate_energy)
+        energy_ranked_trackstub_candidate_in_nu_slice.append(curr_energy_ranked_trackstub_candidate_in_nu_slice)
+        energy_ranked_trackstub_candidate_num_hits.append(curr_energy_ranked_trackstub_candidate_num_hits)
+        energy_ranked_trackstub_candidate_num_wires.append(curr_energy_ranked_trackstub_candidate_num_wires)
+        energy_ranked_trackstub_candidate_num_ticks.append(curr_energy_ranked_trackstub_candidate_num_ticks)
+        energy_ranked_trackstub_candidate_plane.append(curr_energy_ranked_trackstub_candidate_plane)
+        energy_ranked_trackstub_candidate_PCA.append(curr_energy_ranked_trackstub_candidate_PCA)
+        energy_ranked_trackstub_candidate_mean_ADC.append(curr_energy_ranked_trackstub_candidate_mean_ADC)
+        energy_ranked_trackstub_candidate_ADC_RMS.append(curr_energy_ranked_trackstub_candidate_ADC_RMS)
+        energy_ranked_trackstub_candidate_min_dist.append(curr_energy_ranked_trackstub_candidate_min_dist)
+        energy_ranked_trackstub_candidate_min_impact_parameter_to_shower.append(curr_energy_ranked_trackstub_candidate_min_impact_parameter_to_shower)
+        energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start.append(curr_energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start)
+        energy_ranked_trackstub_candidate_min_ioc_to_shower_start.append(curr_energy_ranked_trackstub_candidate_min_ioc_to_shower_start)
+        energy_ranked_trackstub_candidate_ioc_based_length.append(curr_energy_ranked_trackstub_candidate_ioc_based_length)
+        energy_ranked_trackstub_candidate_wire_tick_based_length.append(curr_energy_ranked_trackstub_candidate_wire_tick_based_length)
+        energy_ranked_trackstub_candidate_mean_ADC_first_half.append(curr_energy_ranked_trackstub_candidate_mean_ADC_first_half)
+        energy_ranked_trackstub_candidate_mean_ADC_second_half.append(curr_energy_ranked_trackstub_candidate_mean_ADC_second_half)
+        energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio.append(curr_energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio)
+        energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction.append(curr_energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction)
+        energy_ranked_trackstub_candidate_linear_fit_chi2.append(curr_energy_ranked_trackstub_candidate_linear_fit_chi2)
+        energy_ranked_trackstub_candidate_energy.append(curr_energy_ranked_trackstub_candidate_energy)
+        conv_ranked_trackstub_candidate_in_nu_slice.append(curr_conv_ranked_trackstub_candidate_in_nu_slice)
+        conv_ranked_trackstub_candidate_num_hits.append(curr_conv_ranked_trackstub_candidate_num_hits)
+        conv_ranked_trackstub_candidate_num_wires.append(curr_conv_ranked_trackstub_candidate_num_wires)
+        conv_ranked_trackstub_candidate_num_ticks.append(curr_conv_ranked_trackstub_candidate_num_ticks)
+        conv_ranked_trackstub_candidate_plane.append(curr_conv_ranked_trackstub_candidate_plane)
+        conv_ranked_trackstub_candidate_PCA.append(curr_conv_ranked_trackstub_candidate_PCA)
+        conv_ranked_trackstub_candidate_mean_ADC.append(curr_conv_ranked_trackstub_candidate_mean_ADC)
+        conv_ranked_trackstub_candidate_ADC_RMS.append(curr_conv_ranked_trackstub_candidate_ADC_RMS)
+        conv_ranked_trackstub_candidate_min_dist.append(curr_conv_ranked_trackstub_candidate_min_dist)
+        conv_ranked_trackstub_candidate_min_impact_parameter_to_shower.append(curr_conv_ranked_trackstub_candidate_min_impact_parameter_to_shower)
+        conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start.append(curr_conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start)
+        conv_ranked_trackstub_candidate_min_ioc_to_shower_start.append(curr_conv_ranked_trackstub_candidate_min_ioc_to_shower_start)
+        conv_ranked_trackstub_candidate_ioc_based_length.append(curr_conv_ranked_trackstub_candidate_ioc_based_length)
+        conv_ranked_trackstub_candidate_wire_tick_based_length.append(curr_conv_ranked_trackstub_candidate_wire_tick_based_length)
+        conv_ranked_trackstub_candidate_mean_ADC_first_half.append(curr_conv_ranked_trackstub_candidate_mean_ADC_first_half)
+        conv_ranked_trackstub_candidate_mean_ADC_second_half.append(curr_conv_ranked_trackstub_candidate_mean_ADC_second_half)
+        conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio.append(curr_conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio)
+        conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction.append(curr_conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction)
+        conv_ranked_trackstub_candidate_linear_fit_chi2.append(curr_conv_ranked_trackstub_candidate_linear_fit_chi2)
+        conv_ranked_trackstub_candidate_energy.append(curr_conv_ranked_trackstub_candidate_energy)
+        impact_param_ranked_trackstub_candidate_in_nu_slice.append(curr_impact_param_ranked_trackstub_candidate_in_nu_slice)
+        impact_param_ranked_trackstub_candidate_num_hits.append(curr_impact_param_ranked_trackstub_candidate_num_hits)
+        impact_param_ranked_trackstub_candidate_num_wires.append(curr_impact_param_ranked_trackstub_candidate_num_wires)
+        impact_param_ranked_trackstub_candidate_num_ticks.append(curr_impact_param_ranked_trackstub_candidate_num_ticks)
+        impact_param_ranked_trackstub_candidate_plane.append(curr_impact_param_ranked_trackstub_candidate_plane)
+        impact_param_ranked_trackstub_candidate_PCA.append(curr_impact_param_ranked_trackstub_candidate_PCA)
+        impact_param_ranked_trackstub_candidate_mean_ADC.append(curr_impact_param_ranked_trackstub_candidate_mean_ADC)
+        impact_param_ranked_trackstub_candidate_ADC_RMS.append(curr_impact_param_ranked_trackstub_candidate_ADC_RMS)
+        impact_param_ranked_trackstub_candidate_min_dist.append(curr_impact_param_ranked_trackstub_candidate_min_dist)
+        impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower.append(curr_impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower)
+        impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start.append(curr_impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start)
+        impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start.append(curr_impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start)
+        impact_param_ranked_trackstub_candidate_ioc_based_length.append(curr_impact_param_ranked_trackstub_candidate_ioc_based_length)
+        impact_param_ranked_trackstub_candidate_wire_tick_based_length.append(curr_impact_param_ranked_trackstub_candidate_wire_tick_based_length)
+        impact_param_ranked_trackstub_candidate_mean_ADC_first_half.append(curr_impact_param_ranked_trackstub_candidate_mean_ADC_first_half)
+        impact_param_ranked_trackstub_candidate_mean_ADC_second_half.append(curr_impact_param_ranked_trackstub_candidate_mean_ADC_second_half)
+        impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio.append(curr_impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio)
+        impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction.append(curr_impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction)
+        impact_param_ranked_trackstub_candidate_linear_fit_chi2.append(curr_impact_param_ranked_trackstub_candidate_linear_fit_chi2)
+        impact_param_ranked_trackstub_candidate_energy.append(curr_impact_param_ranked_trackstub_candidate_energy)
+
+    glee_trackstub_candidate_df = pd.DataFrame({
+        "glee_dist_ranked_trackstub_candidate_in_nu_slice": dist_ranked_trackstub_candidate_in_nu_slice,
+        "glee_dist_ranked_trackstub_candidate_num_hits": dist_ranked_trackstub_candidate_num_hits,
+        "glee_dist_ranked_trackstub_candidate_num_wires": dist_ranked_trackstub_candidate_num_wires,
+        "glee_dist_ranked_trackstub_candidate_num_ticks": dist_ranked_trackstub_candidate_num_ticks,
+        "glee_dist_ranked_trackstub_candidate_plane": dist_ranked_trackstub_candidate_plane,
+        "glee_dist_ranked_trackstub_candidate_PCA": dist_ranked_trackstub_candidate_PCA,
+        "glee_dist_ranked_trackstub_candidate_mean_ADC": dist_ranked_trackstub_candidate_mean_ADC,
+        "glee_dist_ranked_trackstub_candidate_ADC_RMS": dist_ranked_trackstub_candidate_ADC_RMS,
+        "glee_dist_ranked_trackstub_candidate_min_dist": dist_ranked_trackstub_candidate_min_dist,
+        "glee_dist_ranked_trackstub_candidate_min_impact_parameter_to_shower": dist_ranked_trackstub_candidate_min_impact_parameter_to_shower,
+        "glee_dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start": dist_ranked_trackstub_candidate_min_conversion_dist_to_shower_start,
+        "glee_dist_ranked_trackstub_candidate_min_ioc_to_shower_start": dist_ranked_trackstub_candidate_min_ioc_to_shower_start,
+        "glee_dist_ranked_trackstub_candidate_ioc_based_length": dist_ranked_trackstub_candidate_ioc_based_length,
+        "glee_dist_ranked_trackstub_candidate_wire_tick_based_length": dist_ranked_trackstub_candidate_wire_tick_based_length,
+        "glee_dist_ranked_trackstub_candidate_mean_ADC_first_half": dist_ranked_trackstub_candidate_mean_ADC_first_half,
+        "glee_dist_ranked_trackstub_candidate_mean_ADC_second_half": dist_ranked_trackstub_candidate_mean_ADC_second_half,
+        "glee_dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio": dist_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio,
+        "glee_dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction": dist_ranked_trackstub_candidate_track_angle_wrt_shower_direction,
+        "glee_dist_ranked_trackstub_candidate_linear_fit_chi2": dist_ranked_trackstub_candidate_linear_fit_chi2,
+        "glee_dist_ranked_trackstub_candidate_energy": dist_ranked_trackstub_candidate_energy,
+        "glee_energy_ranked_trackstub_candidate_in_nu_slice": energy_ranked_trackstub_candidate_in_nu_slice,
+        "glee_energy_ranked_trackstub_candidate_num_hits": energy_ranked_trackstub_candidate_num_hits,
+        "glee_energy_ranked_trackstub_candidate_num_wires": energy_ranked_trackstub_candidate_num_wires,
+        "glee_energy_ranked_trackstub_candidate_num_ticks": energy_ranked_trackstub_candidate_num_ticks,
+        "glee_energy_ranked_trackstub_candidate_plane": energy_ranked_trackstub_candidate_plane,
+        "glee_energy_ranked_trackstub_candidate_PCA": energy_ranked_trackstub_candidate_PCA,
+        "glee_energy_ranked_trackstub_candidate_mean_ADC": energy_ranked_trackstub_candidate_mean_ADC,
+        "glee_energy_ranked_trackstub_candidate_ADC_RMS": energy_ranked_trackstub_candidate_ADC_RMS,
+        "glee_energy_ranked_trackstub_candidate_min_dist": energy_ranked_trackstub_candidate_min_dist,
+        "glee_energy_ranked_trackstub_candidate_min_impact_parameter_to_shower": energy_ranked_trackstub_candidate_min_impact_parameter_to_shower,
+        "glee_energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start": energy_ranked_trackstub_candidate_min_conversion_dist_to_shower_start,
+        "glee_energy_ranked_trackstub_candidate_min_ioc_to_shower_start": energy_ranked_trackstub_candidate_min_ioc_to_shower_start,
+        "glee_energy_ranked_trackstub_candidate_ioc_based_length": energy_ranked_trackstub_candidate_ioc_based_length,
+        "glee_energy_ranked_trackstub_candidate_wire_tick_based_length": energy_ranked_trackstub_candidate_wire_tick_based_length,
+        "glee_energy_ranked_trackstub_candidate_mean_ADC_first_half": energy_ranked_trackstub_candidate_mean_ADC_first_half,
+        "glee_energy_ranked_trackstub_candidate_mean_ADC_second_half": energy_ranked_trackstub_candidate_mean_ADC_second_half,
+        "glee_energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio": energy_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio,
+        "glee_energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction": energy_ranked_trackstub_candidate_track_angle_wrt_shower_direction,
+        "glee_energy_ranked_trackstub_candidate_linear_fit_chi2": energy_ranked_trackstub_candidate_linear_fit_chi2,
+        "glee_energy_ranked_trackstub_candidate_energy": energy_ranked_trackstub_candidate_energy,
+        "glee_conv_ranked_trackstub_candidate_in_nu_slice": conv_ranked_trackstub_candidate_in_nu_slice,
+        "glee_conv_ranked_trackstub_candidate_num_hits": conv_ranked_trackstub_candidate_num_hits,
+        "glee_conv_ranked_trackstub_candidate_num_wires": conv_ranked_trackstub_candidate_num_wires,
+        "glee_conv_ranked_trackstub_candidate_num_ticks": conv_ranked_trackstub_candidate_num_ticks,
+        "glee_conv_ranked_trackstub_candidate_plane": conv_ranked_trackstub_candidate_plane,
+        "glee_conv_ranked_trackstub_candidate_PCA": conv_ranked_trackstub_candidate_PCA,
+        "glee_conv_ranked_trackstub_candidate_mean_ADC": conv_ranked_trackstub_candidate_mean_ADC,
+        "glee_conv_ranked_trackstub_candidate_ADC_RMS": conv_ranked_trackstub_candidate_ADC_RMS,
+        "glee_conv_ranked_trackstub_candidate_min_dist": conv_ranked_trackstub_candidate_min_dist,
+        "glee_conv_ranked_trackstub_candidate_min_impact_parameter_to_shower": conv_ranked_trackstub_candidate_min_impact_parameter_to_shower,
+        "glee_conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start": conv_ranked_trackstub_candidate_min_conversion_dist_to_shower_start,
+        "glee_conv_ranked_trackstub_candidate_min_ioc_to_shower_start": conv_ranked_trackstub_candidate_min_ioc_to_shower_start,
+        "glee_conv_ranked_trackstub_candidate_ioc_based_length": conv_ranked_trackstub_candidate_ioc_based_length,
+        "glee_conv_ranked_trackstub_candidate_wire_tick_based_length": conv_ranked_trackstub_candidate_wire_tick_based_length,
+        "glee_conv_ranked_trackstub_candidate_mean_ADC_first_half": conv_ranked_trackstub_candidate_mean_ADC_first_half,
+        "glee_conv_ranked_trackstub_candidate_mean_ADC_second_half": conv_ranked_trackstub_candidate_mean_ADC_second_half,
+        "glee_conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio": conv_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio,
+        "glee_conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction": conv_ranked_trackstub_candidate_track_angle_wrt_shower_direction,
+        "glee_conv_ranked_trackstub_candidate_linear_fit_chi2": conv_ranked_trackstub_candidate_linear_fit_chi2,
+        "glee_conv_ranked_trackstub_candidate_energy": conv_ranked_trackstub_candidate_energy,
+        "glee_impact_param_ranked_trackstub_candidate_in_nu_slice": impact_param_ranked_trackstub_candidate_in_nu_slice,
+        "glee_impact_param_ranked_trackstub_candidate_num_hits": impact_param_ranked_trackstub_candidate_num_hits,
+        "glee_impact_param_ranked_trackstub_candidate_num_wires": impact_param_ranked_trackstub_candidate_num_wires,
+        "glee_impact_param_ranked_trackstub_candidate_num_ticks": impact_param_ranked_trackstub_candidate_num_ticks,
+        "glee_impact_param_ranked_trackstub_candidate_plane": impact_param_ranked_trackstub_candidate_plane,
+        "glee_impact_param_ranked_trackstub_candidate_PCA": impact_param_ranked_trackstub_candidate_PCA,
+        "glee_impact_param_ranked_trackstub_candidate_mean_ADC": impact_param_ranked_trackstub_candidate_mean_ADC,
+        "glee_impact_param_ranked_trackstub_candidate_ADC_RMS": impact_param_ranked_trackstub_candidate_ADC_RMS,
+        "glee_impact_param_ranked_trackstub_candidate_min_dist": impact_param_ranked_trackstub_candidate_min_dist,
+        "glee_impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower": impact_param_ranked_trackstub_candidate_min_impact_parameter_to_shower,
+        "glee_impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start": impact_param_ranked_trackstub_candidate_min_conversion_dist_to_shower_start,
+        "glee_impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start": impact_param_ranked_trackstub_candidate_min_ioc_to_shower_start,
+        "glee_impact_param_ranked_trackstub_candidate_ioc_based_length": impact_param_ranked_trackstub_candidate_ioc_based_length,
+        "glee_impact_param_ranked_trackstub_candidate_wire_tick_based_length": impact_param_ranked_trackstub_candidate_wire_tick_based_length,
+        "glee_impact_param_ranked_trackstub_candidate_mean_ADC_first_half": impact_param_ranked_trackstub_candidate_mean_ADC_first_half,
+        "glee_impact_param_ranked_trackstub_candidate_mean_ADC_second_half": impact_param_ranked_trackstub_candidate_mean_ADC_second_half,
+        "glee_impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio": impact_param_ranked_trackstub_candidate_mean_ADC_first_to_second_ratio,
+        "glee_impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction": impact_param_ranked_trackstub_candidate_track_angle_wrt_shower_direction,
+        "glee_impact_param_ranked_trackstub_candidate_linear_fit_chi2": impact_param_ranked_trackstub_candidate_linear_fit_chi2,
+        "glee_impact_param_ranked_trackstub_candidate_energy": impact_param_ranked_trackstub_candidate_energy,
+    }, index=df.index)
+
+    df = pd.concat([df, glee_isolation_df, glee_trackstub_candidate_df], axis=1)
 
     return df
 
