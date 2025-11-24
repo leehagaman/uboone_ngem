@@ -1128,8 +1128,8 @@ def do_pandora_postprocessing(df):
 
 def do_glee_postprocessing(df):
 
-    isolation_min_dist_trk_shr = df["glee_isolation_min_dist_trk_shr"].to_numpy()
     isolation_min_dist_trk_unassoc = df["glee_isolation_min_dist_trk_unassoc"].to_numpy()
+    isolation_min_dist_trk_shr = df["glee_isolation_min_dist_trk_shr"].to_numpy()
     isolation_nearest_shr_hit_to_trk_time = df["glee_isolation_nearest_shr_hit_to_trk_time"].to_numpy()
     isolation_nearest_shr_hit_to_trk_wire = df["glee_isolation_nearest_shr_hit_to_trk_wire"].to_numpy()
     isolation_nearest_unassoc_hit_to_trk_time = df["glee_isolation_nearest_unassoc_hit_to_trk_time"].to_numpy()
@@ -1143,8 +1143,8 @@ def do_glee_postprocessing(df):
     isolation_num_unassoc_hits_win_2cm_trk = df["glee_isolation_num_unassoc_hits_win_2cm_trk"].to_numpy()
     isolation_num_unassoc_hits_win_5cm_trk = df["glee_isolation_num_unassoc_hits_win_5cm_trk"].to_numpy()
 
-    min_isolation_min_dist_trk_shr = []
     min_isolation_min_dist_trk_unassoc = []
+    min_isolation_min_dist_trk_shr = []
     min_isolation_nearest_shr_hit_to_trk_time = []
     min_isolation_nearest_shr_hit_to_trk_wire = []
     min_isolation_nearest_unassoc_hit_to_trk_time = []
@@ -1159,58 +1159,65 @@ def do_glee_postprocessing(df):
     sum_isolation_num_unassoc_hits_win_5cm_trk = []
 
     for event_i in tqdm(range(len(isolation_min_dist_trk_shr)), desc="Analyzing gLEE isolation variables", mininterval=10):
-        curr_isolation_min_dist_trk_shr = isolation_min_dist_trk_shr[event_i]
-        if isinstance(curr_isolation_min_dist_trk_shr, (float, np.floating)) or not hasattr(curr_isolation_min_dist_trk_shr, '__len__'):
-            # It's a scalar, treat as empty list (will append NaN values)
-            min_isolation_min_dist_trk_shr.append(np.nan)
-            min_isolation_min_dist_trk_unassoc.append(np.nan)
-            min_isolation_nearest_shr_hit_to_trk_time.append(np.nan)
-            min_isolation_nearest_shr_hit_to_trk_wire.append(np.nan)
-            min_isolation_nearest_unassoc_hit_to_trk_time.append(np.nan)
-            min_isolation_nearest_unassoc_hit_to_trk_wire.append(np.nan)
-            sum_isolation_num_shr_hits_win_10cm_trk.append(np.nan)
-            sum_isolation_num_shr_hits_win_1cm_trk.append(np.nan)
-            sum_isolation_num_shr_hits_win_2cm_trk.append(np.nan)
-            sum_isolation_num_shr_hits_win_5cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_10cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_1cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_2cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_5cm_trk.append(np.nan)
-            continue
-        if len(isolation_min_dist_trk_shr[event_i]) == 0:
-            min_isolation_min_dist_trk_shr.append(np.nan)
-            min_isolation_min_dist_trk_unassoc.append(np.nan)
-            min_isolation_nearest_shr_hit_to_trk_time.append(np.nan)
-            min_isolation_nearest_shr_hit_to_trk_wire.append(np.nan)
-            min_isolation_nearest_unassoc_hit_to_trk_time.append(np.nan)
-            min_isolation_nearest_unassoc_hit_to_trk_wire.append(np.nan)
-            sum_isolation_num_shr_hits_win_10cm_trk.append(np.nan)
-            sum_isolation_num_shr_hits_win_1cm_trk.append(np.nan)
-            sum_isolation_num_shr_hits_win_2cm_trk.append(np.nan)
-            sum_isolation_num_shr_hits_win_5cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_10cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_1cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_2cm_trk.append(np.nan)
-            sum_isolation_num_unassoc_hits_win_5cm_trk.append(np.nan)
-        else:
-            min_isolation_min_dist_trk_shr.append(np.min(isolation_min_dist_trk_shr[event_i]))
-            min_isolation_min_dist_trk_unassoc.append(np.min(isolation_min_dist_trk_unassoc[event_i]))
-            min_isolation_nearest_shr_hit_to_trk_time.append(np.min(isolation_nearest_shr_hit_to_trk_time[event_i]))
-            min_isolation_nearest_shr_hit_to_trk_wire.append(np.min(isolation_nearest_shr_hit_to_trk_wire[event_i]))
-            min_isolation_nearest_unassoc_hit_to_trk_time.append(np.min(isolation_nearest_unassoc_hit_to_trk_time[event_i]))
-            min_isolation_nearest_unassoc_hit_to_trk_wire.append(np.min(isolation_nearest_unassoc_hit_to_trk_wire[event_i]))
-            sum_isolation_num_shr_hits_win_10cm_trk.append(np.sum(isolation_num_shr_hits_win_10cm_trk[event_i]))
-            sum_isolation_num_shr_hits_win_1cm_trk.append(np.sum(isolation_num_shr_hits_win_1cm_trk[event_i]))
-            sum_isolation_num_shr_hits_win_2cm_trk.append(np.sum(isolation_num_shr_hits_win_2cm_trk[event_i]))
-            sum_isolation_num_shr_hits_win_5cm_trk.append(np.sum(isolation_num_shr_hits_win_5cm_trk[event_i]))
-            sum_isolation_num_unassoc_hits_win_10cm_trk.append(np.sum(isolation_num_unassoc_hits_win_10cm_trk[event_i]))
-            sum_isolation_num_unassoc_hits_win_1cm_trk.append(np.sum(isolation_num_unassoc_hits_win_1cm_trk[event_i]))
-            sum_isolation_num_unassoc_hits_win_2cm_trk.append(np.sum(isolation_num_unassoc_hits_win_2cm_trk[event_i]))
-            sum_isolation_num_unassoc_hits_win_5cm_trk.append(np.sum(isolation_num_unassoc_hits_win_5cm_trk[event_i]))
+        min_isolation_min_dist_trk_unassoc = 1e9
+
+        curr_min_isolation_min_dist_trk_unassoc = np.nan
+        curr_min_isolation_min_dist_trk_shr = np.nan
+        curr_min_isolation_nearest_shr_hit_to_trk_time = np.nan
+        curr_min_isolation_nearest_shr_hit_to_trk_wire = np.nan
+        curr_min_isolation_nearest_unassoc_hit_to_trk_time = np.nan
+        curr_min_isolation_nearest_unassoc_hit_to_trk_wire = np.nan
+        curr_sum_isolation_num_shr_hits_win_10cm_trk = np.nan
+        curr_sum_isolation_num_shr_hits_win_1cm_trk = np.nan
+        curr_sum_isolation_num_shr_hits_win_2cm_trk = np.nan
+        curr_sum_isolation_num_shr_hits_win_5cm_trk = np.nan
+        curr_sum_isolation_num_unassoc_hits_win_10cm_trk = np.nan
+        curr_sum_isolation_num_unassoc_hits_win_1cm_trk = np.nan
+        curr_sum_isolation_num_unassoc_hits_win_2cm_trk = np.nan
+        curr_sum_isolation_num_unassoc_hits_win_5cm_trk = np.nan
+
+        # ensuring we have a non-empty list of unassoc hits that we can loop over
+        temp_list = isolation_min_dist_trk_unassoc[event_i]
+        if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list[event_i]) == 0): 
+        
+            # looping over all unassoc hits
+            for unassoc_hit_j in range(len(temp_list)):
+
+                # saving values for the closest unassoc hit to the track
+                if isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j] < min_isolation_min_dist_trk_unassoc:
+                    curr_min_isolation_min_dist_trk_unassoc = isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j]
+                    curr_min_isolation_min_dist_trk_shr = isolation_min_dist_trk_shr[event_i][unassoc_hit_j]
+                    curr_min_isolation_nearest_shr_hit_to_trk_time = isolation_nearest_shr_hit_to_trk_time[event_i][unassoc_hit_j]
+                    curr_min_isolation_nearest_shr_hit_to_trk_wire = isolation_nearest_shr_hit_to_trk_wire[event_i][unassoc_hit_j]
+                    curr_min_isolation_nearest_unassoc_hit_to_trk_time = isolation_nearest_unassoc_hit_to_trk_time[event_i][unassoc_hit_j]
+                    curr_min_isolation_nearest_unassoc_hit_to_trk_wire = isolation_nearest_unassoc_hit_to_trk_wire[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_shr_hits_win_10cm_trk = isolation_num_shr_hits_win_10cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_shr_hits_win_1cm_trk = isolation_num_shr_hits_win_1cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_shr_hits_win_2cm_trk = isolation_num_shr_hits_win_2cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_shr_hits_win_5cm_trk = isolation_num_shr_hits_win_5cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_unassoc_hits_win_10cm_trk = isolation_num_unassoc_hits_win_10cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_unassoc_hits_win_1cm_trk = isolation_num_unassoc_hits_win_1cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_unassoc_hits_win_2cm_trk = isolation_num_unassoc_hits_win_2cm_trk[event_i][unassoc_hit_j]
+                    curr_sum_isolation_num_unassoc_hits_win_5cm_trk = isolation_num_unassoc_hits_win_5cm_trk[event_i][unassoc_hit_j]
+
+        min_isolation_min_dist_trk_unassoc.append(curr_min_isolation_min_dist_trk_unassoc)
+        min_isolation_min_dist_trk_shr.append(curr_min_isolation_min_dist_trk_shr)
+        min_isolation_nearest_shr_hit_to_trk_time.append(curr_min_isolation_nearest_shr_hit_to_trk_time)
+        min_isolation_nearest_shr_hit_to_trk_wire.append(curr_min_isolation_nearest_shr_hit_to_trk_wire)
+        min_isolation_nearest_unassoc_hit_to_trk_time.append(curr_min_isolation_nearest_unassoc_hit_to_trk_time)
+        min_isolation_nearest_unassoc_hit_to_trk_wire.append(curr_min_isolation_nearest_unassoc_hit_to_trk_wire)
+        sum_isolation_num_shr_hits_win_10cm_trk.append(curr_sum_isolation_num_shr_hits_win_10cm_trk)
+        sum_isolation_num_shr_hits_win_1cm_trk.append(curr_sum_isolation_num_shr_hits_win_1cm_trk)
+        sum_isolation_num_shr_hits_win_2cm_trk.append(curr_sum_isolation_num_shr_hits_win_2cm_trk)
+        sum_isolation_num_shr_hits_win_5cm_trk.append(curr_sum_isolation_num_shr_hits_win_5cm_trk)
+        sum_isolation_num_unassoc_hits_win_10cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_10cm_trk)
+        sum_isolation_num_unassoc_hits_win_1cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_1cm_trk)
+        sum_isolation_num_unassoc_hits_win_2cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_2cm_trk)
+        sum_isolation_num_unassoc_hits_win_5cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_5cm_trk)
 
     glee_isolation_df = pd.DataFrame({
-        "glee_min_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_shr,
         "glee_min_isolation_min_dist_trk_unassoc": min_isolation_min_dist_trk_unassoc,
+        "glee_min_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_shr,
         "glee_min_isolation_nearest_shr_hit_to_trk_time": min_isolation_nearest_shr_hit_to_trk_time,
         "glee_min_isolation_nearest_shr_hit_to_trk_wire": min_isolation_nearest_shr_hit_to_trk_wire,
         "glee_min_isolation_nearest_unassoc_hit_to_trk_time": min_isolation_nearest_unassoc_hit_to_trk_time,
