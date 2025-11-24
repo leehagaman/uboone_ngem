@@ -59,3 +59,12 @@ nohup python -u src/train.py --name all_vars > train_nohup.out 2>&1 &
 python src/train.py --name all_vars_small
 ```
 
+## Creating Many Plots
+
+```
+python src/plot_many_variables.py --num_plots 3
+
+nohup python -u  src/plot_many_variables.py > many_plots_nohup.out 2>&1 &
+
+```
+

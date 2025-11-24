@@ -1,9 +1,16 @@
+import sys
+from pathlib import Path
+
+# Add project root to path to allow imports with src. prefix
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import numpy as np
 import polars as pl
 import xgboost as xgb
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from pathlib import Path
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from datetime import datetime
@@ -11,10 +18,10 @@ import os
 import argparse
 import time
 
-from signal_categories import topological_category_labels, train_category_labels
-from ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars, glee_training_vars, pandora_training_vars, pandora_scalar_training_vars, combined_postprocessing_training_vars
+from src.signal_categories import topological_category_labels, train_category_labels
+from src.ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars, glee_training_vars, pandora_training_vars, pandora_scalar_training_vars, combined_postprocessing_training_vars
 
-from file_locations import intermediate_files_location
+from src.file_locations import intermediate_files_location
 
 if __name__ == "__main__":
     main_start_time = time.time()

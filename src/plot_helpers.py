@@ -4,15 +4,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.gridspec as gridspec
 
-from src.signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches
-from src.signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
-
-from src.systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
-from src.systematics import get_significance, get_significance_from_p_value, chi2_decomposition
-
-from src.df_helpers import get_vals
-
-from src.file_locations import intermediate_files_location
+from .signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches
+from .signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
+from .systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
+from .systematics import get_significance, get_significance_from_p_value, chi2_decomposition
+from .df_helpers import get_vals
+from .file_locations import intermediate_files_location
 
 
 def custom_step(bins, counts, ax=None, **kwargs):
@@ -64,6 +61,16 @@ def add_underflow_overflow(bins, display_bins, include_overflow, include_underfl
 
 def auto_binning(all_vals):
 
+    include_underflow = False
+    include_overflow = False
+    log_x = False
+
+    # Filter out NaN and infinite values
+    all_vals = all_vals[np.isfinite(all_vals)]
+    
+    if len(all_vals) == 0:
+        raise ValueError("all_vals contains no finite values after filtering NaN/inf")
+
     min_val = np.min(all_vals)
     max_val = np.max(all_vals)
 
@@ -90,14 +97,16 @@ def auto_binning(all_vals):
         include_overflow = False
         include_underflow = False
     elif 0 < lower_common_edge and 10_000 < upper_common_edge and np.log10(upper_common_edge) - np.log10(lower_common_edge) > 3:
-        print("choosing log bins:", bins)
         bins = np.logspace(np.log10(lower_common_edge) - 0.01, np.log10(upper_common_edge) + 0.01, 21)
+        print("choosing log bins:", bins)
         log_x = True
     else:
         width = upper_common_edge - lower_common_edge
         bins = np.linspace(lower_common_edge - 0.01, upper_common_edge + 0.01, 21)
         print("choosing linear bins:", bins)
 
+    # Initialize display_bins before calling add_underflow_overflow
+    display_bins = bins.copy()
     bins, display_bins = add_underflow_overflow(bins, display_bins, include_overflow, include_underflow, log_x)
 
     if not np.all(np.diff(bins) > 0):
@@ -141,13 +150,15 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
             print(f"Total (no Data Stat): {np.sqrt(np.diag(tot_pred_sys_frac_cov))}")
     
     if include_pred_stat:
-        pred_stat_frac_cov = pred_stat_cov / np.outer(pred_counts, pred_counts)
+        denom = np.outer(pred_counts, pred_counts)
+        pred_stat_frac_cov = np.divide(pred_stat_cov, denom, out=np.zeros_like(pred_stat_cov), where=(denom != 0))
         pred_stat_frac_cov = np.nan_to_num(pred_stat_frac_cov, nan=0, posinf=0, neginf=0)
         custom_step(display_bins, np.sqrt(np.diag(pred_stat_frac_cov)), label="Pred Stat", ls="-")
         if print_sys_breakdown:
             print(f"Pred Stat: {np.sqrt(np.diag(pred_stat_frac_cov))}")
     if include_data_stat:
-        data_stat_frac_cov = data_stat_cov / np.outer(pred_counts, pred_counts)
+        denom = np.outer(pred_counts, pred_counts)
+        data_stat_frac_cov = np.divide(data_stat_cov, denom, out=np.zeros_like(data_stat_cov), where=(denom != 0))
         data_stat_frac_cov = np.nan_to_num(data_stat_frac_cov, nan=0, posinf=0, neginf=0)
         custom_step(display_bins, np.sqrt(np.diag(data_stat_frac_cov)), label="Data Stat", ls="-")
         if print_sys_breakdown:
@@ -157,7 +168,8 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         tot_genie_frac_cov = np.zeros((len(display_bins)-1, len(display_bins)-1))
         for rw_sys_name, rw_sys_frac_cov_mc in rw_sys_frac_cov_dic.items():
             rw_sys_cov = rw_sys_frac_cov_mc * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
-            rw_sys_frac_cov = rw_sys_cov / np.outer(pred_counts, pred_counts)
+            denom = np.outer(pred_counts, pred_counts)
+            rw_sys_frac_cov = np.divide(rw_sys_cov, denom, out=np.zeros_like(rw_sys_cov), where=(denom != 0))
             rw_sys_frac_cov = np.nan_to_num(rw_sys_frac_cov, nan=0, posinf=0, neginf=0)
             if rw_sys_name in [
                     "All_UBGenie",
@@ -194,7 +206,8 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         tot_detvar_frac_cov = np.zeros((len(display_bins)-1, len(display_bins)-1))
         for detvar_sys_name, detvar_sys_frac_cov_mc in detvar_sys_frac_cov_dic.items():
             detvar_sys_cov = detvar_sys_frac_cov_mc * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
-            detvar_sys_frac_cov = detvar_sys_cov / np.outer(pred_counts, pred_counts)
+            denom = np.outer(pred_counts, pred_counts)
+            detvar_sys_frac_cov = np.divide(detvar_sys_cov, denom, out=np.zeros_like(detvar_sys_cov), where=(denom != 0))
             detvar_sys_frac_cov = np.nan_to_num(detvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_detvar_frac_cov += detvar_sys_frac_cov
             if not just_detvar_breakdown:
@@ -464,10 +477,11 @@ def make_histogram_plot(
         data_stat_cov = get_data_stat_cov(data_counts, pred_counts)
         pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column("wc_net_weight").to_numpy(), bins)
         nodetvar_sys_cov = combined_rw_sys_cov + data_stat_cov + pred_stat_cov
-        nodetvar_sys_frac_cov = nodetvar_sys_cov / np.outer(pred_counts, pred_counts)
+        denom = np.outer(pred_counts, pred_counts)
+        nodetvar_sys_frac_cov = np.divide(nodetvar_sys_cov, denom, out=np.zeros_like(nodetvar_sys_cov), where=(denom != 0))
         nodetvar_sys_frac_cov = np.nan_to_num(nodetvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
         nodetvar_pred_sys_cov = combined_rw_sys_cov + pred_stat_cov
-        nodetvar_pred_sys_frac_cov = nodetvar_pred_sys_cov / np.outer(pred_counts, pred_counts)
+        nodetvar_pred_sys_frac_cov = np.divide(nodetvar_pred_sys_cov, denom, out=np.zeros_like(nodetvar_pred_sys_cov), where=(denom != 0))
         nodetvar_pred_sys_frac_cov = np.nan_to_num(nodetvar_pred_sys_frac_cov, nan=0, posinf=0, neginf=0)
         nodetvar_pred_sys_frac_errors = np.sqrt(np.diag(nodetvar_pred_sys_frac_cov))
         for i in range(len(pred_counts)):
@@ -499,13 +513,14 @@ def make_histogram_plot(
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
                 combined_detvar_sys_frac_cov_mc += detvar_sys_frac_cov
             combined_detvar_sys_cov = combined_detvar_sys_frac_cov_mc * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
-            combined_detvar_sys_frac_cov = combined_detvar_sys_cov / np.outer(pred_counts, pred_counts)
+            denom = np.outer(pred_counts, pred_counts)
+            combined_detvar_sys_frac_cov = np.divide(combined_detvar_sys_cov, denom, out=np.zeros_like(combined_detvar_sys_cov), where=(denom != 0))
             combined_detvar_sys_frac_cov = np.nan_to_num(combined_detvar_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_sys_cov = combined_detvar_sys_cov + combined_rw_sys_cov + data_stat_cov + pred_stat_cov
-            tot_sys_frac_cov = tot_sys_cov / np.outer(pred_counts, pred_counts)
+            tot_sys_frac_cov = np.divide(tot_sys_cov, denom, out=np.zeros_like(tot_sys_cov), where=(denom != 0))
             tot_sys_frac_cov = np.nan_to_num(tot_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_pred_sys_cov = combined_detvar_sys_cov + combined_rw_sys_cov + pred_stat_cov
-            tot_pred_sys_frac_cov = tot_pred_sys_cov / np.outer(pred_counts, pred_counts)
+            tot_pred_sys_frac_cov = np.divide(tot_pred_sys_cov, denom, out=np.zeros_like(tot_pred_sys_cov), where=(denom != 0))
             tot_pred_sys_frac_cov = np.nan_to_num(tot_pred_sys_frac_cov, nan=0, posinf=0, neginf=0)
             tot_pred_sys_frac_errors = np.sqrt(np.diag(tot_pred_sys_frac_cov))
 

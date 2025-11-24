@@ -3,8 +3,8 @@ import os
 import hashlib
 from tqdm import tqdm
 import polars as pl
-from src.file_locations import intermediate_files_location, covariance_cache_location
-from src.df_helpers import get_vals
+from .file_locations import intermediate_files_location, covariance_cache_location
+from .df_helpers import get_vals
 
 from scipy.special import erfinv, erfcinv, erfc
 from scipy.stats import chi2
@@ -155,15 +155,18 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
     All_UBGenie_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("All_UBGenie").to_numpy(), non_genie_cv_weights, description="All_UBGenie")
     All_UBGenie_cov = create_cov_matrix(All_UBGenie_hists, cv_hist)
-    rw_sys_frac_cov_dic["All_UBGenie"] = np.nan_to_num(All_UBGenie_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
+    denom = np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["All_UBGenie"] = np.nan_to_num(np.divide(All_UBGenie_cov, denom, out=np.zeros_like(All_UBGenie_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
     flux_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("flux_all").to_numpy(), normal_weights, description="flux")
     flux_cov = create_cov_matrix(flux_hists, cv_hist)
-    rw_sys_frac_cov_dic["flux"] = np.nan_to_num(flux_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
+    denom = np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["flux"] = np.nan_to_num(np.divide(flux_cov, denom, out=np.zeros_like(flux_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
     reint_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("reint_all").to_numpy(), normal_weights, description="reinteraction")
     reint_cov = create_cov_matrix(reint_hists, cv_hist)
-    rw_sys_frac_cov_dic["reinteraction"] = np.nan_to_num(reint_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
+    denom = np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["reinteraction"] = np.nan_to_num(np.divide(reint_cov, denom, out=np.zeros_like(reint_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
     print("creating GENIE unisim systematic covariance matrices...")
 
@@ -195,7 +198,8 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
         unisim_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column(unisim_type).to_numpy(), other_weights, description=unisim_type, quiet=True)
         unisim_cov = create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=num_unis)
-        rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(unisim_cov / np.outer(cv_hist, cv_hist), nan=0, posinf=0, neginf=0)
+        denom = np.outer(cv_hist, cv_hist)
+        rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(np.divide(unisim_cov, denom, out=np.zeros_like(unisim_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
     print("done getting reweightable systematic covariance matrices")
 
@@ -223,7 +227,8 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
             diff = matching_cv_counts - matching_var_counts
             curr_cov = np.outer(diff, diff)
-            curr_frac_cov = curr_cov / np.outer(matching_cv_counts, matching_cv_counts)
+            denom = np.outer(matching_cv_counts, matching_cv_counts)
+            curr_frac_cov = np.divide(curr_cov, denom, out=np.zeros_like(curr_cov), where=(denom != 0))
             curr_frac_cov = np.nan_to_num(curr_frac_cov, nan=0, posinf=0, neginf=0)
         else:
             # bootstrapping to estimate the statistical uncertainty on the CV-var difference
@@ -275,7 +280,8 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             # called M_D in the note
             curr_cov = np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False)
 
-            curr_frac_cov = curr_cov / np.outer(matching_cv_counts, matching_cv_counts)
+            denom = np.outer(matching_cv_counts, matching_cv_counts)
+            curr_frac_cov = np.divide(curr_cov, denom, out=np.zeros_like(curr_cov), where=(denom != 0))
             curr_frac_cov = np.nan_to_num(curr_frac_cov, nan=0, posinf=0, neginf=0)
 
         detvar_sys_frac_cov_dic[vartype] = curr_frac_cov
