@@ -429,7 +429,10 @@ def do_wc_postprocessing(df):
                     true_num_prim_protons += 1
                     if truth_startMomentum_list[j][3] * 1000. - 938.272088 > 35.:
                         true_num_prim_protons_35 += 1
-                    max_true_prim_proton_energy = max(max_true_prim_proton_energy, truth_startMomentum_list[j][3] * 1000. - 938.272088)
+                    if truth_startMomentum_list[j][3] * 1000. - 938.272088 > max_true_prim_proton_energy:
+                        max_true_prim_proton_energy = truth_startMomentum_list[j][3] * 1000. - 938.272088
+                        max_true_prim_proton_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        max_true_prim_proton_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
                     sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
 
                 if truth_mother_list[j] == 0 and 11 <= abs(truth_pdg_list[j]) <= 16: # lepton
@@ -1251,7 +1254,7 @@ def do_glee_postprocessing(df):
         curr_sum_isolation_num_unassoc_hits_win_5cm_trk = np.nan
         # ensuring we have a non-empty list of unassoc hits that we can loop over
         temp_list = isolation_min_dist_trk_unassoc[event_i]
-        if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list[event_i]) == 0): 
+        if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list) == 0): 
             # looping over all unassoc hits
             for unassoc_hit_j in range(len(temp_list)):
                 # saving values for the closest unassoc hit to the track
@@ -1286,8 +1289,8 @@ def do_glee_postprocessing(df):
         sum_isolation_num_unassoc_hits_win_2cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_2cm_trk)
         sum_isolation_num_unassoc_hits_win_5cm_trk.append(curr_sum_isolation_num_unassoc_hits_win_5cm_trk)
     glee_isolation_df = pd.DataFrame({
-        "glee_dist_ranked_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_unassoc,
         "glee_dist_ranked_isolation_min_dist_trk_unassoc": min_isolation_min_dist_trk_unassoc,
+        "glee_dist_ranked_isolation_min_dist_trk_shr": min_isolation_min_dist_trk_shr,
         "glee_dist_ranked_isolation_nearest_shr_hit_to_trk_time": min_isolation_nearest_shr_hit_to_trk_time,
         "glee_dist_ranked_isolation_nearest_shr_hit_to_trk_wire": min_isolation_nearest_shr_hit_to_trk_wire,
         "glee_dist_ranked_isolation_nearest_unassoc_hit_to_trk_time": min_isolation_nearest_unassoc_hit_to_trk_time,
@@ -1302,26 +1305,26 @@ def do_glee_postprocessing(df):
         "glee_dist_ranked_isolation_num_unassoc_hits_win_5cm_trk": sum_isolation_num_unassoc_hits_win_5cm_trk,
     }, index=df.index)
 
-    trackstub_candidate_in_nu_slice = df["trackstub_candidate_in_nu_slice"].to_numpy()
-    trackstub_candidate_num_hits = df["trackstub_candidate_num_hits"].to_numpy()
-    trackstub_candidate_num_wires = df["trackstub_candidate_num_wires"].to_numpy()
-    trackstub_candidate_num_ticks = df["trackstub_candidate_num_ticks"].to_numpy()
-    trackstub_candidate_plane = df["trackstub_candidate_plane"].to_numpy()
-    trackstub_candidate_PCA = df["trackstub_candidate_PCA"].to_numpy()
-    trackstub_candidate_mean_ADC = df["trackstub_candidate_mean_ADC"].to_numpy()
-    trackstub_candidate_ADC_RMS = df["trackstub_candidate_ADC_RMS"].to_numpy()
-    trackstub_candidate_min_dist = df["trackstub_candidate_min_dist"].to_numpy()
-    trackstub_candidate_min_impact_parameter_to_shower = df["trackstub_candidate_min_impact_parameter_to_shower"].to_numpy()
-    trackstub_candidate_min_conversion_dist_to_shower_start = df["trackstub_candidate_min_conversion_dist_to_shower_start"].to_numpy()
-    trackstub_candidate_min_ioc_to_shower_start = df["trackstub_candidate_min_ioc_to_shower_start"].to_numpy()
-    trackstub_candidate_ioc_based_length = df["trackstub_candidate_ioc_based_length"].to_numpy()
-    trackstub_candidate_wire_tick_based_length = df["trackstub_candidate_wire_tick_based_length"].to_numpy()
-    trackstub_candidate_mean_ADC_first_half = df["trackstub_candidate_mean_ADC_first_half"].to_numpy()
-    trackstub_candidate_mean_ADC_second_half = df["trackstub_candidate_mean_ADC_second_half"].to_numpy()
-    trackstub_candidate_mean_ADC_first_to_second_ratio = df["trackstub_candidate_mean_ADC_first_to_second_ratio"].to_numpy()
-    trackstub_candidate_track_angle_wrt_shower_direction = df["trackstub_candidate_track_angle_wrt_shower_direction"].to_numpy()
-    trackstub_candidate_linear_fit_chi2 = df["trackstub_candidate_linear_fit_chi2"].to_numpy()
-    trackstub_candidate_energy = df["trackstub_candidate_energy"].to_numpy()
+    trackstub_candidate_in_nu_slice = df["glee_trackstub_candidate_in_nu_slice"].to_numpy()
+    trackstub_candidate_num_hits = df["glee_trackstub_candidate_num_hits"].to_numpy()
+    trackstub_candidate_num_wires = df["glee_trackstub_candidate_num_wires"].to_numpy()
+    trackstub_candidate_num_ticks = df["glee_trackstub_candidate_num_ticks"].to_numpy()
+    trackstub_candidate_plane = df["glee_trackstub_candidate_plane"].to_numpy()
+    trackstub_candidate_PCA = df["glee_trackstub_candidate_PCA"].to_numpy()
+    trackstub_candidate_mean_ADC = df["glee_trackstub_candidate_mean_ADC"].to_numpy()
+    trackstub_candidate_ADC_RMS = df["glee_trackstub_candidate_ADC_RMS"].to_numpy()
+    trackstub_candidate_min_dist = df["glee_trackstub_candidate_min_dist"].to_numpy()
+    trackstub_candidate_min_impact_parameter_to_shower = df["glee_trackstub_candidate_min_impact_parameter_to_shower"].to_numpy()
+    trackstub_candidate_min_conversion_dist_to_shower_start = df["glee_trackstub_candidate_min_conversion_dist_to_shower_start"].to_numpy()
+    trackstub_candidate_min_ioc_to_shower_start = df["glee_trackstub_candidate_min_ioc_to_shower_start"].to_numpy()
+    trackstub_candidate_ioc_based_length = df["glee_trackstub_candidate_ioc_based_length"].to_numpy()
+    trackstub_candidate_wire_tick_based_length = df["glee_trackstub_candidate_wire_tick_based_length"].to_numpy()
+    trackstub_candidate_mean_ADC_first_half = df["glee_trackstub_candidate_mean_ADC_first_half"].to_numpy()
+    trackstub_candidate_mean_ADC_second_half = df["glee_trackstub_candidate_mean_ADC_second_half"].to_numpy()
+    trackstub_candidate_mean_ADC_first_to_second_ratio = df["glee_trackstub_candidate_mean_ADC_first_to_second_ratio"].to_numpy()
+    trackstub_candidate_track_angle_wrt_shower_direction = df["glee_trackstub_candidate_track_angle_wrt_shower_direction"].to_numpy()
+    trackstub_candidate_linear_fit_chi2 = df["glee_trackstub_candidate_linear_fit_chi2"].to_numpy()
+    trackstub_candidate_energy = df["glee_trackstub_candidate_energy"].to_numpy()
 
     dist_ranked_trackstub_candidate_in_nu_slice = []
     dist_ranked_trackstub_candidate_num_hits = []
@@ -1490,7 +1493,7 @@ def do_glee_postprocessing(df):
         curr_impact_param_ranked_trackstub_candidate_energy = np.nan
         # ensuring we have a non-empty list of unassoc hits that we can loop over
         temp_list = trackstub_candidate_in_nu_slice[event_i]
-        if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list[event_i]) == 0): 
+        if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list) == 0): 
             # looping over all unassoc hits
             for unassoc_hit_j in range(len(temp_list)):
                 # saving values for the closest candidate
