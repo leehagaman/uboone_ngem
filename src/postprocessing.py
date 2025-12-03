@@ -6,7 +6,7 @@ import warnings
 
 from collections import defaultdict
 
-from ntuple_variables.variables import pandora_vector_vars_with_prefix, vector_columns
+from ntuple_variables.variables import pandora_vector_vars, vector_columns
 from signal_categories import topological_category_queries, topological_category_labels
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
@@ -1163,41 +1163,41 @@ def do_blip_postprocessing(df):
 def do_pandora_postprocessing(df):
 
     vector_var_dic = {}
-    for var in pandora_vector_vars_with_prefix:
+    for var in pandora_vector_vars:
         vector_var_dic[var] = df[var].to_numpy()
     
     processed_var_dic = defaultdict(list)
 
-    num_events = len(vector_var_dic[pandora_vector_vars_with_prefix[0]])
+    num_events = len(vector_var_dic[pandora_vector_vars[0]])
     for event_i in tqdm(range(num_events), desc="Analyzing pandora pfps", mininterval=10):
         curr_event_vector_var_dic = {}
-        for var in pandora_vector_vars_with_prefix:
+        for var in pandora_vector_vars:
             curr_event_vector_var_dic[var] = vector_var_dic[var][event_i]
 
         curr_event_processed_var_dic = {}
 
-        for var in pandora_vector_vars_with_prefix:
-            curr_event_processed_var_dic[f"pandora_max3_len_trk_{var[8:]}"] = np.nan
-            curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"] = np.nan
-            curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"] = np.nan
+        for var in pandora_vector_vars:
+            curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = np.nan
+            curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = np.nan
+            curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = np.nan
         
         max_pfp_len = 0
         max2_pfp_len = -1
         max3_pfp_len = -2
-        for pfp_i in range(len(curr_event_vector_var_dic[pandora_vector_vars_with_prefix[0]])):
+        for pfp_i in range(len(curr_event_vector_var_dic[pandora_vector_vars[0]])):
             curr_pfp_len = curr_event_vector_var_dic["pandora_trk_len_v"][pfp_i]
             if curr_pfp_len > max_pfp_len:
-                for var in pandora_vector_vars_with_prefix:
-                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var[8:]}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
-                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"] = curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"]
-                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"] = curr_event_vector_var_dic[var][pfp_i]
+                for var in pandora_vector_vars:
+                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
+                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"]
+                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[var][pfp_i]
             elif curr_pfp_len > max2_pfp_len:
-                for var in pandora_vector_vars_with_prefix:
-                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var[8:]}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
-                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"] = curr_event_vector_var_dic[var][pfp_i]
+                for var in pandora_vector_vars:
+                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
+                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_vector_var_dic[var][pfp_i]
             elif curr_pfp_len > max3_pfp_len:
-                for var in pandora_vector_vars_with_prefix:
-                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"] = curr_event_vector_var_dic[var][pfp_i]
+                for var in pandora_vector_vars:
+                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[var][pfp_i]
         
         for processed_var in curr_event_processed_var_dic.keys():
             processed_var_dic[processed_var].append(curr_event_processed_var_dic[processed_var])

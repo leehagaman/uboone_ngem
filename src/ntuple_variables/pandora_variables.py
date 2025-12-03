@@ -342,6 +342,10 @@ pandora_vector_vars_with_prefix = [f"pandora_{var}" for var in pandora_vector_va
 pandora_vars = pandora_non_BDT_vars + pandora_scalar_vars + pandora_vector_vars
 
 pandora_postprocessing_vars = []
+for var in pandora_vector_vars:
+    pandora_postprocessing_vars.append(f"pandora_max3_len_trk_{var}")
+    pandora_postprocessing_vars.append(f"pandora_max2_len_trk_{var}")
+    pandora_postprocessing_vars.append(f"pandora_max_len_trk_{var}")
 
 pandora_training_vars = [f"pandora_{var}" for var in pandora_scalar_vars] + pandora_postprocessing_vars
 
