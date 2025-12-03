@@ -18,6 +18,8 @@ import polars as pl
 
 import argparse
 import time
+import shutil
+from pypdf import PdfWriter
 
 from src.signal_categories import topological_category_labels, topological_category_colors, topological_category_labels_latex, topological_category_hatches, topological_categories_dic
 from src.signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
@@ -40,6 +42,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_plots", type=int, default=None)
     parser.add_argument("--vars", type=str, default=None)
+    parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/all_bdt_vars before starting")
     args = parser.parse_args()
 
     if args.vars is None:
@@ -77,26 +80,89 @@ if __name__ == "__main__":
         pl.col("filetype") == "data"
     )
 
+    # Create directory for individual pages
+    pages_dir = PROJECT_ROOT / "plots" / "all_bdt_vars"
+    
+    # Clear previous files if requested
+    if args.clear_prev:
+        if pages_dir.exists():
+            print(f"Clearing all files in {pages_dir}...")
+            for file_path in pages_dir.iterdir():
+                if file_path.is_file():
+                    file_path.unlink()
+                elif file_path.is_dir():
+                    shutil.rmtree(file_path)
+            print("Cleared previous files.")
+        else:
+            print(f"Directory {pages_dir} does not exist, nothing to clear.")
+    
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    
     all_p_value_info = []
-    with PdfPages(PROJECT_ROOT / "plots" / "all_bdt_vars_open_data.pdf") as pdf:
-        for i, var in tqdm(enumerate(vars), total=len(vars)):
-            print("\nplotting", var)
+    individual_pdf_paths = []
+    
+    for i, var in enumerate(vars):
+        # Create filename for individual page and CSV
+        page_filename = f"{var}.pdf"
+        csv_filename = f"{var}.csv"
+        page_path = pages_dir / page_filename
+        csv_path = pages_dir / csv_filename
+        
+        # Skip if page already exists
+        if page_path.exists():
+            print(f"\nskipping {var} ({i+1}/{len(vars)}) - already exists")
+            individual_pdf_paths.append(page_path)
+            # Try to load p_value_info from CSV if it exists
+            if csv_path.exists():
+                try:
+                    p_value_info_df = pd.read_csv(csv_path)
+                    p_value_info_dic = p_value_info_df.iloc[0].to_dict()
+                    all_p_value_info.append(p_value_info_dic)
+                except Exception as e:
+                    print(f"  Warning: Could not load CSV for {var}: {e}")
+                    all_p_value_info.append({"var": var, "skipped": True})
+            else:
+                all_p_value_info.append({"var": var, "skipped": True})
+            continue
+        
+        print("\nplotting", var, f"({i+1}/{len(vars)})")
 
-            p_value_info_dic = make_histogram_plot(pred_sel_df=pred_df, data_sel_df=data_df, 
-                include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
-                var=var, title="Preselection", selname="wc_generic_sel",
-                include_ratio=True, include_decomposition=True,
-                use_rw_systematics=True, use_detvar_systematics=True, detvar_df=presel_detvar_df,
-                page_num=i+1, weights_df=presel_weights_df,
-                show=False, return_p_value_info=True,
-                )
+        p_value_info_dic = make_histogram_plot(pred_sel_df=pred_df, data_sel_df=data_df, 
+            include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
+            var=var, title="Preselection", selname="wc_generic_sel",
+            include_ratio=True, include_decomposition=True,
+            use_rw_systematics=True, use_detvar_systematics=True, detvar_df=presel_detvar_df,
+            page_num=i+1, weights_df=presel_weights_df,
+            show=False, return_p_value_info=True,
+            )
 
-            all_p_value_info.append(p_value_info_dic)
-            pdf.savefig()
-            plt.close()
+        all_p_value_info.append(p_value_info_dic)
+        
+        # Save individual page
+        plt.savefig(page_path)
+        plt.close()
+        individual_pdf_paths.append(page_path)
+        
+        # Save p-value info as CSV
+        p_value_info_df = pd.DataFrame([p_value_info_dic])
+        p_value_info_df.to_csv(csv_path, index=False)
+    
+    # Concatenate all pages into one PDF
+    print("\nConcatenating all pages into final PDF...")
+    final_pdf_path = PROJECT_ROOT / "plots" / "all_bdt_vars.pdf"
+    pdf_writer = PdfWriter()
+    
+    for page_path in individual_pdf_paths:
+        if page_path.exists():
+            pdf_writer.append(str(page_path))
+    
+    with open(final_pdf_path, 'wb') as output_pdf:
+        pdf_writer.write(output_pdf)
+    
+    print(f"Final PDF saved to {final_pdf_path}")
 
     print("saving all_p_value_info to a pickle file...")
-    with open(f"{intermediate_files_location}/all_p_value_info.pkl", "wb") as f:
+    with open(PROJECT_ROOT / "plots" / "all_p_value_info.pkl", "wb") as f:
         pickle.dump(all_p_value_info, f)
 
     main_end_time = time.time()

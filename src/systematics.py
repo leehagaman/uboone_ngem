@@ -119,7 +119,7 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
 
     # creating the histogram for each universe (with pre-computed bin indices)
     hists = np.zeros((num_bins, num_unis))
-    for uni_i, uni_weights in tqdm(enumerate(sys_weight_arrs.T), total=num_unis, desc=f"Creating {description} universe histograms", disable=quiet):
+    for uni_i, uni_weights in tqdm(enumerate(sys_weight_arrs.T), total=num_unis, desc=f"Creating {description} universe histograms", disable=quiet, mininterval=10):
         hists[:, uni_i] = np.bincount(bin_indices, weights=uni_weights*other_weights, minlength=num_bins)
 
     return hists
@@ -252,7 +252,7 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
 
             # sampling the CV and var spectra with replacement to get statistically plausible CV-var differences
             bootstrap_cv_var_diffs = [] # each row is a spectrum difference between CV and var for each bootstrap sample, each column is a sample
-            for bootstrap_i in tqdm(range(num_bootstrap_rounds), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices"):
+            for bootstrap_i in tqdm(range(num_bootstrap_rounds), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices", mininterval=10):
                 
                 bootstrap_cv_indices = np.random.choice(len(matching_cv_vals), size=len(matching_cv_vals), replace=True)
                 bootstrap_cv_vals = matching_cv_vals[bootstrap_cv_indices]

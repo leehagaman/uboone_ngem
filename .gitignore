@@ -13,3 +13,4 @@ tmp/*
 !tmp/.gitkeep
 small_data_files/genie_univs/*
 training_outputs/*/*.csv
+plots/all_bdt_vars/*

@@ -71,6 +71,9 @@ def auto_binning(all_vals):
     if len(all_vals) == 0:
         raise ValueError("all_vals contains no finite values after filtering NaN/inf")
 
+    if all_vals.dtype == bool:
+        all_vals = all_vals.astype(int)
+
     min_val = np.min(all_vals)
     max_val = np.max(all_vals)
 
@@ -88,12 +91,12 @@ def auto_binning(all_vals):
     print(f"choosing bins automatically, min_val = {min_val:.4e}, max_val = {max_val:.4e}, lower_common_edge = {lower_common_edge:.4e}, upper_common_edge = {upper_common_edge:.4e}")
 
     # if min_val, lower_common_edge, max_val, upper_common_edge are all integers, then use integers for the bins
-    if min_val.is_integer() and lower_common_edge.is_integer() and max_val.is_integer() and upper_common_edge.is_integer():
-        print("choosing integer bins")
-        bins = np.arange(min_val, max_val + 1)
+    if min_val.is_integer() and lower_common_edge.is_integer() and max_val.is_integer() and upper_common_edge.is_integer() and max_val - min_val <= 30:
+        bins = np.arange(min_val, max_val + 2) - 0.5
+        print("choosing integer bins:", bins)
     elif len(np.unique(all_vals)) == 2:
-        print("choosing two bins")
         bins = np.array([min_val - 0.5, (min_val + max_val) / 2, max_val + 0.5])
+        print("choosing two bins: ", bins)
         include_overflow = False
         include_underflow = False
     elif 0 < lower_common_edge and 10_000 < upper_common_edge and np.log10(upper_common_edge) - np.log10(lower_common_edge) > 3:
@@ -567,6 +570,7 @@ def make_histogram_plot(
             s += f"No DetVar: $\chi^2/ndf$ = {nodetvar_chi2:.2f}/{ndf}, p = {nodetvar_p_value:.2e}, $\sigma$ = {nodetvar_sigma:.2f}"
 
             p_value_info_dic = {}
+            p_value_info_dic["var"] = var
             p_value_info_dic["nodetvar_chi2"] = nodetvar_chi2
             p_value_info_dic["nodetvar_p_value"] = nodetvar_p_value
             p_value_info_dic["nodetvar_sigma"] = nodetvar_sigma
@@ -678,14 +682,10 @@ def make_histogram_plot(
         if log_x:
             ax2.set_xscale("log")
 
-        if page_num is not None:
-            ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
     else:
         # Set x-axis label on main plot when ratio panel is not included
         ax1.set_xlabel(display_var)
         
-        if page_num is not None:
-            ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
 
     if include_decomposition:
 
@@ -738,6 +738,14 @@ def make_histogram_plot(
         p_value_info_dic["tot_global_p_value"] = tot_global_p_value
 
         ax3.text(0.03, 0.97, nodetvar_str + "\n" + tot_str, transform=ax3.transAxes, fontsize=8, ha="left", va="top")
+
+    if page_num is not None:
+        if include_ratio and not include_decomposition:
+            ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
+        elif include_decomposition:
+            ax3.text(-0.1, -0.3, f"{page_num}", transform=ax3.transAxes, fontsize=8, ha="left", va="bottom")
+        else:
+            ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
     
     
     if savename is not None:
