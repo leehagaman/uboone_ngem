@@ -6,11 +6,54 @@ import warnings
 
 from collections import defaultdict
 
-from ntuple_variables.variables import pandora_vector_vars, vector_columns
+from ntuple_variables.variables import pandora_vector_vars, pandora_vector_vars_with_prefix, vector_columns
 from signal_categories import topological_category_queries, topological_category_labels
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
 from signal_categories import filetype_category_queries, filetype_category_labels
+
+def change_dtypes(df):
+    """
+    Convert Float64 to Float32 and Int64 to Int32 to reduce memory usage.
+    Clips Int64 values to Int32 range before conversion.
+    """
+    print("Converting dtypes to reduce memory usage...")
+    memory_before = df.estimated_size() / (1024**3)
+    print(f"Estimated memory usage before conversion: {memory_before:.4f} GB")
+    print()
+
+    # Get columns to convert
+    float64_cols = [col for col, dtype in df.schema.items() if dtype == pl.Float64]
+    int64_cols = [col for col, dtype in df.schema.items() if dtype == pl.Int64]
+
+    print(f"Converting {len(float64_cols)} Float64 columns to Float32")
+    print(f"Converting {len(int64_cols)} Int64 columns to Int32 (clipping values to Int32 range)")
+    print()
+
+    # Convert Float64 to Float32
+    if float64_cols:
+        df = df.with_columns([pl.col(col).cast(pl.Float32) for col in float64_cols])
+
+    # Convert Int64 to Int32, clipping values to Int32 range
+    # Int32 range: -2,147,483,648 to 2,147,483,647
+    int32_min = -2147483648
+    int32_max = 2147483647
+
+    if int64_cols:
+        # Clip values to Int32 range, then cast to Int32
+        df = df.with_columns([
+            pl.col(col).clip(int32_min, int32_max).cast(pl.Int32) 
+            for col in int64_cols
+        ])
+        print(f"Converted {len(int64_cols)} Int64 columns to Int32")
+
+    memory_after = df.estimated_size() / (1024**3)
+    memory_saved_gb = memory_before - memory_after
+    print(f"\nEstimated memory usage after conversion: {memory_after:.4f} GB")
+    print(f"Memory saved: {memory_saved_gb:.4f} GB ({memory_saved_gb/memory_before*100:.1f}%)")
+    print()
+
+    return df
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
@@ -1163,15 +1206,15 @@ def do_blip_postprocessing(df):
 def do_pandora_postprocessing(df):
 
     vector_var_dic = {}
-    for var in pandora_vector_vars:
+    for var in pandora_vector_vars_with_prefix:
         vector_var_dic[var] = df[var].to_numpy()
     
     processed_var_dic = defaultdict(list)
 
-    num_events = len(vector_var_dic[pandora_vector_vars[0]])
+    num_events = len(vector_var_dic[pandora_vector_vars_with_prefix[0]])
     for event_i in tqdm(range(num_events), desc="Analyzing pandora pfps", mininterval=10):
         curr_event_vector_var_dic = {}
-        for var in pandora_vector_vars:
+        for var in pandora_vector_vars_with_prefix:
             curr_event_vector_var_dic[var] = vector_var_dic[var][event_i]
 
         curr_event_processed_var_dic = {}
@@ -1184,20 +1227,20 @@ def do_pandora_postprocessing(df):
         max_pfp_len = 0
         max2_pfp_len = -1
         max3_pfp_len = -2
-        for pfp_i in range(len(curr_event_vector_var_dic[pandora_vector_vars[0]])):
+        for pfp_i in range(len(curr_event_vector_var_dic[pandora_vector_vars_with_prefix[0]])):
             curr_pfp_len = curr_event_vector_var_dic["pandora_trk_len_v"][pfp_i]
             if curr_pfp_len > max_pfp_len:
                 for var in pandora_vector_vars:
-                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
-                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max_len_trk_{var[8:]}"]
-                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[var][pfp_i]
+                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"]
+                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"]
+                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[f"pandora_{var}"][pfp_i]
             elif curr_pfp_len > max2_pfp_len:
                 for var in pandora_vector_vars:
-                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var[8:]}"]
-                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_vector_var_dic[var][pfp_i]
+                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"]
+                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_vector_var_dic[f"pandora_{var}"][pfp_i]
             elif curr_pfp_len > max3_pfp_len:
                 for var in pandora_vector_vars:
-                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[var][pfp_i]
+                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[f"pandora_{var}"][pfp_i]
         
         for processed_var in curr_event_processed_var_dic.keys():
             processed_var_dic[processed_var].append(curr_event_processed_var_dic[processed_var])

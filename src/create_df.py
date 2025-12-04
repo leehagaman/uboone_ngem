@@ -13,7 +13,7 @@ from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
-from postprocessing import remove_vector_variables
+from postprocessing import remove_vector_variables, change_dtypes
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -417,6 +417,7 @@ if __name__ == "__main__":
         
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
         all_df = add_signal_categories(all_df)
+        all_df = change_dtypes(all_df)
 
         file_RSEs = []
         for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):

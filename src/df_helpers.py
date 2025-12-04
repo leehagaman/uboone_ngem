@@ -1,6 +1,9 @@
 import polars as pl
 import numpy as np
 
+def lazy_height(lf):
+    return lf.select(pl.len()).collect().item()
+
 def get_vals(df, var):
     if var == "(wc_flash_measPe - wc_flash_predPe) / wc_flash_predPe":
         vals = (df.get_column("wc_flash_measPe") - df.get_column("wc_flash_predPe")) / df.get_column("wc_flash_predPe")
