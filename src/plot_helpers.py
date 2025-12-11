@@ -91,8 +91,9 @@ def auto_binning(all_vals):
     print(f"choosing bins automatically, min_val = {min_val:.4e}, max_val = {max_val:.4e}, lower_common_edge = {lower_common_edge:.4e}, upper_common_edge = {upper_common_edge:.4e}")
 
     # if min_val, lower_common_edge, max_val, upper_common_edge are all integers, then use integers for the bins
-    if min_val.is_integer() and lower_common_edge.is_integer() and max_val.is_integer() and upper_common_edge.is_integer() and max_val - min_val <= 30:
-        bins = np.arange(min_val, max_val + 2) - 0.5
+    if (min_val.is_integer() and lower_common_edge.is_integer() and max_val.is_integer() and upper_common_edge.is_integer()
+                and -1e6 < lower_common_edge and upper_common_edge < 1e6 and upper_common_edge - lower_common_edge <= 30):
+        bins = np.arange(lower_common_edge, upper_common_edge + 2) - 0.5
         print("choosing integer bins:", bins)
     elif len(np.unique(all_vals)) == 2:
         bins = np.array([min_val - 0.5, (min_val + max_val) / 2, max_val + 0.5])
