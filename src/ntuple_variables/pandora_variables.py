@@ -330,7 +330,7 @@ pandora_vector_vars = [
     #"trk_pida_v",
     #"trk_pida_v_v",
     # "trkshrscore_v", # seems to be usually an empty list, and then occasionally [0], with no nonzero values
-    # "trk_llr_pid_score_v", # removing llr variables, advice from Giuseppe, https://microboone.slack.com/archives/C04PSEK91FZ/p1765482781972259
+    "trk_llr_pid_score_v",
     "trk_len_v",
     "trk_distance_v",
     "trk_score_v",
