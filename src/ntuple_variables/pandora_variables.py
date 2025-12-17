@@ -280,13 +280,13 @@ pandora_scalar_vars = [
     "slcng2hip",
     "slcng2mcl",
     "slcng2dfs",
-    "slcng2bkg",
+    #"slcng2bkg", # removing bkg variables, advice from Giuseppe, https://microboone.slack.com/archives/C04PSEK91FZ/p1765482781972259
     "clung2shr",
     "clung2mip",
     "clung2hip",
     "clung2mcl",
     "clung2dfs",
-    "clung2bkg",
+    #"clung2bkg",
 ]
 
 pandora_vector_vars = [
