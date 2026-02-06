@@ -41,7 +41,7 @@ def process_rw_sys_root_file(filename, frac_events = 1):
     elif "beam_on" in filename.lower():
         filetype = "data"
     else:
-        raise ValueError("Unknown filetype!", filename, filetype)
+        raise ValueError("Unknown filetype!", filename)
 
     if filetype == "data" or filetype == "ext" or filetype == "isotropic_one_gamma_overlay" or filetype == "delete_one_gamma_overlay":
         raise ValueError("Data, EXT, and 1g overlay files don't have systematics variables!")
@@ -99,18 +99,23 @@ def process_rw_sys_root_file(filename, frac_events = 1):
         detailed_run_period = "4c"
     elif "4d.root" in filename:
         detailed_run_period = "4d"
+    elif "4bcd.root" in filename:
+        detailed_run_period = "4bcd"
     elif "5.root" in filename:
         detailed_run_period = "5"
-    elif "run4b" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+    
+    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+        detailed_run_period = "4a"
+    elif "run4b" in filename.lower():
         detailed_run_period = "4b"
     elif "run4c" in filename.lower():
         detailed_run_period = "4c"
     elif "run4d" in filename.lower():
         detailed_run_period = "4d"
+    elif "run4bcd" in filename.lower():
+        detailed_run_period = "4bcd"
     elif "run5" in filename.lower():
         detailed_run_period = "5"
-    elif "run45" in filename.lower():
-        detailed_run_period = "45"
     else:
         raise ValueError("Invalid detailed run period!", filename)
 
@@ -164,6 +169,9 @@ if __name__ == "__main__":
         if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
             continue
         if "UNUSED" in filename or "older_downloads" in filename:
+            continue
+
+        if "nfs000000150070ba7d00000751" in filename: # TEMPORARY: weird file in directory now
             continue
 
         if "beam_on" in filename.lower() or "beamon" in filename.lower():

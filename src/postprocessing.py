@@ -3,6 +3,7 @@ import pandas as pd
 import polars as pl
 from tqdm import tqdm
 import warnings
+import copy
 
 from collections import defaultdict
 
@@ -28,7 +29,6 @@ def change_dtypes(df):
 
     print(f"Converting {len(float64_cols)} Float64 columns to Float32")
     print(f"Converting {len(int64_cols)} Int64 columns to Int32 (clipping values to Int32 range)")
-    print()
 
     # Convert Float64 to Float32
     if float64_cols:
@@ -41,31 +41,157 @@ def change_dtypes(df):
 
     if int64_cols:
         # Clip values to Int32 range, then cast to Int32
+        print(f"Converting {len(int64_cols)} Int64 columns to Int32")
         df = df.with_columns([
             pl.col(col).clip(int32_min, int32_max).cast(pl.Int32) 
             for col in int64_cols
         ])
-        print(f"Converted {len(int64_cols)} Int64 columns to Int32")
 
     memory_after = df.estimated_size() / (1024**3)
     memory_saved_gb = memory_before - memory_after
     print(f"\nEstimated memory usage after conversion: {memory_after:.4f} GB")
     print(f"Memory saved: {memory_saved_gb:.4f} GB ({memory_saved_gb/memory_before*100:.1f}%)")
-    print()
 
     return df
+
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
     print("pot_dic:")
-    for k, v in pot_dic.items():
+    detailed_run_periods = []
+    for k, v in sorted(pot_dic.items(), key=lambda item: item[0]):
         print(f"    {k}: {v}")
+        filetype, detailed_run_period = k
+        detailed_run_periods.append(detailed_run_period)
+    detailed_run_periods = sorted(set(detailed_run_periods))
+    print()
+
+
+    # keep 4a separately normalized, since it's different from the rest of run 4
+    # eventually, this will be used to separately normalize run 1, run 2, run 3, etc.
+    df = df.with_columns([
+        pl.when(
+            
+        pl.col("detailed_run_period") == "4a").then(pl.lit("4a"))
+
+        .when(pl.col("detailed_run_period") == "4b").then(pl.lit("4nota5"))
+        .when(pl.col("detailed_run_period") == "4c").then(pl.lit("4nota5"))
+        .when(pl.col("detailed_run_period") == "4d").then(pl.lit("4nota5"))
+        .when(pl.col("detailed_run_period") == "4bcd").then(pl.lit("4nota5"))
+        .when(pl.col("detailed_run_period") == "5").then(pl.lit("4nota5"))
+
+        .otherwise(pl.lit("error!"))
+        .alias("normalizing_run_period")
+    ])
+
+    normalizing_run_period_pot_dic = defaultdict(float)
+    for k, v in pot_dic.items():
+        filetype, detailed_run_period = k
+
+        if detailed_run_period == "4a":
+            normalizing_run_period_pot_dic[(filetype, "4a")] += v
+        
+        elif detailed_run_period == "4b":
+            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
+        elif detailed_run_period == "4c":
+            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
+        elif detailed_run_period == "4d":
+            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
+        elif detailed_run_period == "4bcd":
+            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
+        elif detailed_run_period == "5":
+            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
+        
+        else:
+            raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
+
+    print("normalizing_run_period_pot_dic:")
+    for k, v in sorted(normalizing_run_period_pot_dic.items(), key=lambda item: item[0]):
+        print(f"    {k}: {v}")
+    print()
+
+    norm_goal_pot_dic = {
+        "4a": 0,
+        "4nota5": 0,
+    }
+    data_in_files = False
+    for k, v in pot_dic.items():
+        filetype, detailed_run_period = k
+        if filetype == "data":
+            data_in_files = True
+
+            if detailed_run_period == "4a":
+                norm_goal_pot_dic["4a"] += v
+
+            elif detailed_run_period == "4b":
+                norm_goal_pot_dic["4nota5"] += v
+            elif detailed_run_period == "4c":
+                norm_goal_pot_dic["4nota5"] += v
+            elif detailed_run_period == "4d":
+                norm_goal_pot_dic["4nota5"] += v
+            elif detailed_run_period == "4bcd":
+                norm_goal_pot_dic["4nota5"] += v
+            elif detailed_run_period == "5":
+                norm_goal_pot_dic["4nota5"] += v
+
+            else:
+                raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
+
+    if data_in_files:
+        total_norm_goal_pot = sum(norm_goal_pot_dic.values())
+        extra_pot_scale_factor = normalizing_POT / total_norm_goal_pot
+        print(f"applying extra pot scale factor {extra_pot_scale_factor} to norm_goal_pot_dic...")
+        for k, v in norm_goal_pot_dic.items():
+            norm_goal_pot_dic[k] = v * extra_pot_scale_factor
+    else: # no data (possibly DetVar processing), just normalize to CV POTs found earlier
+        norm_goal_pot_dic = copy.deepcopy(normalizing_run_period_pot_dic)
+    
+    print("norm_goal_pot_dic:")
+    for k, v in sorted(norm_goal_pot_dic.items(), key=lambda item: item[0]):
+        print(f"    {k}: {v}")
+    print()
+
+    # apply norm_goal_pot_dic to df
+    df = df.with_columns([
+        pl.when(pl.col("normalizing_run_period") == "4a").then(pl.lit(norm_goal_pot_dic["4a"]))
+        .when(pl.col("normalizing_run_period") == "4nota5").then(pl.lit(norm_goal_pot_dic["4nota5"]))
+        .otherwise(pl.lit(None).cast(pl.Float64))
+        .alias("norm_goal_pot")
+    ])
 
     original_length = df.height
 
-    summed_POT_nc_1pi0 = pot_dic['nc_pi0_overlay'] + pot_dic['nu_overlay']
-    summed_POT_nue_cc = pot_dic['nue_overlay'] + pot_dic['nu_overlay']
-    summed_POT_numucc_pi0 = pot_dic['numucc_pi0_overlay'] + pot_dic['nu_overlay']
+    summed_POT_nc_1pi0_dic = {}
+    summed_POT_nue_cc_dic = {}
+    summed_POT_numucc_pi0_dic = {}
+    for detailed_run_period in detailed_run_periods:
+        summed_POT_nc_1pi0_dic[detailed_run_period] = 0
+        summed_POT_nue_cc_dic[detailed_run_period] = 0
+        summed_POT_numucc_pi0_dic[detailed_run_period] = 0
+        
+        for k, normalizing_pot in normalizing_run_period_pot_dic.items():
+            filetype, normalizing_run_period = k
+            if filetype == 'nc_pi0_overlay' or filetype == 'nu_overlay':
+                summed_POT_nc_1pi0_dic[detailed_run_period] += normalizing_pot
+            if filetype == 'nue_overlay' or filetype == 'nu_overlay':
+                summed_POT_nue_cc_dic[detailed_run_period] += normalizing_pot
+            if filetype == 'numucc_pi0_overlay' or filetype == 'nu_overlay':
+                summed_POT_numucc_pi0_dic[detailed_run_period] += normalizing_pot
+
+    print("summed_POT_nc_1pi0_dic:")
+    for k, v in sorted(summed_POT_nc_1pi0_dic.items(), key=lambda item: item[0]):
+        print(f"    {k}: {v}")
+    print()
+
+    print("summed_POT_nue_cc_dic:")
+    for k, v in sorted(summed_POT_nue_cc_dic.items(), key=lambda item: item[0]):
+        print(f"    {k}: {v}")
+    print()
+
+    print("summed_POT_numucc_pi0_dic:")
+    for k, v in sorted(summed_POT_numucc_pi0_dic.items(), key=lambda item: item[0]):
+        print(f"    {k}: {v}")
+    print()
 
     print("creating masks...")
 
@@ -126,34 +252,59 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     iso1g_mask = pl.col("filetype") == 'isotropic_one_gamma_overlay'
     data_mask = pl.col("filetype") == 'data'
 
-    print("adding wc_event_type_POT variable...")
+    print("adding wc_normrunperiod_eventtype_POT variable...")
 
-    # Build the wc_event_type_POT column using nested when-then-otherwise
-    # Start with default values from pot_dic, building a chain
-    wc_event_type_POT_expr = None
-    for filetype in pot_dic.keys():
-        if wc_event_type_POT_expr is None:
-            wc_event_type_POT_expr = pl.when(pl.col("filetype") == filetype).then(pl.lit(pot_dic[filetype]))
+    # Building the wc_normrunperiod_eventtype_POT column using nested when-then-otherwise
+    # Starting with default values from pot_dic, building a chain
+    wc_normrunperiod_eventtype_POT_expr = None
+    for k, normalizing_pot in sorted(normalizing_run_period_pot_dic.items(), key=lambda item: item[0]):
+        filetype, normalizing_run_period = k
+        if normalizing_pot == 0:
+            raise ValueError(f"normalizing_pot is zero for {filetype} {normalizing_run_period}!")
+        if wc_normrunperiod_eventtype_POT_expr is None:
+            wc_normrunperiod_eventtype_POT_expr = pl.when((pl.col("filetype") == filetype) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(normalizing_pot))
         else:
-            wc_event_type_POT_expr = wc_event_type_POT_expr.when(pl.col("filetype") == filetype).then(pl.lit(pot_dic[filetype]))
+            wc_normrunperiod_eventtype_POT_expr = wc_normrunperiod_eventtype_POT_expr.when((pl.col("filetype") == filetype) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(normalizing_pot))
     
-    # Add the final otherwise clause (shouldn't happen if all filetypes are covered, but for safety)
-    wc_event_type_POT_expr = wc_event_type_POT_expr.otherwise(pl.lit(None).cast(pl.Float64))
+    # Add the final otherwise clause (shouldn't happen if all filetypes are covered, will error if used later)
+    wc_normrunperiod_eventtype_POT_expr = wc_normrunperiod_eventtype_POT_expr.otherwise(pl.lit(None).cast(pl.Float64))
     
     # Override with summed POTs for specific masks (these are checked first)
-    wc_event_type_POT_expr = (
-        pl.when(nc_pi0_overlay_true_nc_1pi0_mask).then(pl.lit(summed_POT_nc_1pi0))
-        .when(nu_overlay_true_nc_1pi0_mask).then(pl.lit(summed_POT_nc_1pi0))
-        .when(numucc_pi0_overlay_true_numucc_pi0_mask).then(pl.lit(summed_POT_numucc_pi0))
-        .when(nu_overlay_true_numucc_pi0_mask).then(pl.lit(summed_POT_numucc_pi0))
-        .when(nue_overlay_true_nue_cc_mask).then(pl.lit(summed_POT_nue_cc))
-        .when(nu_overlay_true_nue_cc_mask).then(pl.lit(summed_POT_nue_cc))
-        .otherwise(wc_event_type_POT_expr)
-    )
-
+    for filetype, normalizing_run_period in normalizing_run_period_pot_dic.keys():
+        wc_normrunperiod_eventtype_POT_expr = (
+            pl.when((nc_pi0_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[detailed_run_period]))
+            .when((nu_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[detailed_run_period]))
+            .when((numucc_pi0_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[detailed_run_period]))
+            .when((nu_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[detailed_run_period]))
+            .when((nue_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[detailed_run_period]))
+            .when((nu_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[detailed_run_period]))
+            .otherwise(wc_normrunperiod_eventtype_POT_expr)
+        )
+    
+    # Apply the expression to the dataframe
     df = df.with_columns([
-        wc_event_type_POT_expr.alias("wc_event_type_POT")
+        wc_normrunperiod_eventtype_POT_expr.alias("wc_normrunperiod_eventtype_POT")
     ])
+
+    # check for null wc_normrunperiod_eventtype_POT values
+    if df["wc_normrunperiod_eventtype_POT"].is_null().any() or (df["wc_normrunperiod_eventtype_POT"] == 0).any():
+        num_null = df["wc_normrunperiod_eventtype_POT"].is_null().sum()
+        num_zero = (df["wc_normrunperiod_eventtype_POT"] == 0).sum()
+
+        print(f"about to run debug loop, with {min(df.height, 10)=}")
+
+        zeros_df = df.filter(df["wc_normrunperiod_eventtype_POT"] == 0)
+
+        # print filetype, detailed_run_period, normalizing_run_period for each zero value
+        for i in range(min(zeros_df.height, 10)):
+            if zeros_df["wc_normrunperiod_eventtype_POT"][i] == 0:
+                wc_normrunperiod_eventtype_POT = zeros_df["wc_normrunperiod_eventtype_POT"][i]
+                filetype = zeros_df["filetype"][i]
+                detailed_run_period = zeros_df["detailed_run_period"][i]
+                normalizing_run_period = zeros_df["normalizing_run_period"][i]
+                print(f"wc_normrunperiod_eventtype_POT: {wc_normrunperiod_eventtype_POT}, filetype: {filetype}, detailed_run_period: {detailed_run_period}, normalizing_run_period: {normalizing_run_period}")
+
+        raise ValueError(f"wc_normrunperiod_eventtype_POT has {num_null} null values and {num_zero} values equal to zero!")
 
     # Filter out unwanted events by keeping only the events we want
     combined_mask = (
@@ -183,13 +334,29 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
         .then(pl.lit(1.0))
         .otherwise(weight_temp)
     )
+
+    df = df.with_columns([
+        weight_temp.alias("weight_cv_weight_spline")
+    ])
+
+    # check for null, nan or infinite values in weight_cv_weight_spline
+    if df["weight_cv_weight_spline"].is_null().any() or df["weight_cv_weight_spline"].is_nan().any() or df["weight_cv_weight_spline"].is_infinite().any():
+        num_null = df["weight_cv_weight_spline"].is_null().sum()
+        num_nan = df["weight_cv_weight_spline"].is_nan().sum()
+        num_infinite = df["weight_cv_weight_spline"].is_infinite().sum()
+        raise ValueError(f"weight_cv_weight_spline has {num_null} null, {num_nan} nan or {num_infinite} infinite values!")
     
     # Compute final net weight
-    wc_net_weight = weight_temp * pl.lit(normalizing_POT) / pl.col("wc_event_type_POT")
-    
     df = df.with_columns([
-        wc_net_weight.alias("wc_net_weight")
+        (pl.col("weight_cv_weight_spline") * (pl.col("norm_goal_pot") / pl.col("wc_normrunperiod_eventtype_POT"))).alias("wc_net_weight")
     ])
+
+    # check for null, nan or infinite values in wc_net_weight
+    if df["wc_net_weight"].is_null().any() or df["wc_net_weight"].is_nan().any() or df["wc_net_weight"].is_infinite().any():
+        num_null = df["wc_net_weight"].is_null().sum()
+        num_nan = df["wc_net_weight"].is_nan().sum()
+        num_infinite = df["wc_net_weight"].is_infinite().sum()
+        raise ValueError(f"wc_net_weight has {num_null} null, {num_nan} nan or {num_infinite} infinite values!")
 
     final_length = df.height
 

@@ -41,7 +41,7 @@ def process_root_file(filename, frac_events = 1):
     elif "beam_on" in filename.lower():
         filetype = "data"
     else:
-        raise ValueError("Unknown filetype!", filename, filetype)
+        raise ValueError("Unknown filetype!", filename)
     
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -51,28 +51,23 @@ def process_root_file(filename, frac_events = 1):
 
     f = uproot.open(f"{data_files_location}/{filename}")
 
-    if filetype == "data": # quartering the data to use as open data
-        curr_frac_events = frac_events / 4
-    else:
-        curr_frac_events = frac_events
-
     # determine how many events to read based on requested fraction
     if not (0.0 < frac_events <= 1.0):
         raise ValueError("--frac_events/-f must be in the interval (0, 1].")
     total_entries = f["wcpselection"]["T_eval"].num_entries
-    n_events = total_entries if curr_frac_events >= 1.0 else max(1, int(total_entries * curr_frac_events))
+    n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
     slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
-    print(f"{total_entries=}, {curr_frac_events=}, {n_events=}")
+    print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
 
     curr_wc_T_pf_vars = wc_T_pf_vars
 
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
-    if "v10_04_07_09" in filename:
+    if "v10_04_07_09" in filename or filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root":
         print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
         curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
-            
+    
 
     # loading Wire-Cell variables
     dic = {}
@@ -90,24 +85,38 @@ def process_root_file(filename, frac_events = 1):
         dic[col] = dic[col].tolist()
     wc_df = pd.DataFrame(dic)
 
-    if filetype == "ext":
-        # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
+    # data and EXT POT and trigger numbers from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4
+    # also from Karan's processing, https://docs.google.com/document/d/1SWZtfo9MIGpODVopGwWTM2LNEN-d7GmkWhYOmChK4kk/edit?tab=t.0
 
-        # trigger numbers from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4
-        if filename == "MCC9.10_Run4b_v10_04_07_09_Run4b_BNB_beam_off_surprise_reco2_hist.root":
-            ext_num_triggers = 88445969
-            corresponding_data_num_triggers = 31582916
-            corresponding_data_POT = 1.332e20
-            file_POT_total = corresponding_data_POT * ext_num_triggers / corresponding_data_num_triggers
+    # using these numbers for now
+    # eventually can replace these with the full data statistics, to get a more accurate POT/trigger ratio in each run period
+    run4a_open_data_POT = 2.098e19
+    run4a_open_data_num_triggers = 4836758
+    run4a_pot_per_trigger = run4a_open_data_POT / run4a_open_data_num_triggers
+
+    run4b_open_data_POT = 4.038e19
+    run4b_open_data_num_triggers = 9218529
+    run4b_pot_per_trigger = run4b_open_data_POT / run4b_open_data_num_triggers
+
+    if filetype == "ext":
+        
+        if filename == "checkout_MCC9.10_Run4a_BNB_beam_off_data_surprise_reco2_hist.root": # run 4a
+            run4a_ext_num_triggers = 9755645
+            file_POT_total = run4a_ext_num_triggers * run4a_pot_per_trigger
+        elif filename == "checkout_MCC9.10_Run4b_v10_04_07_09_Run4b_BNB_beam_off_surprise_reco2_hist.root": # run 4b
+            run4b_ext_num_triggers = 31980654
+            file_POT_total = run4b_ext_num_triggers * run4b_pot_per_trigger
         else:
             raise ValueError("Invalid EXT file, num triggers not found!")
     elif filetype == "data":
-        if filename == "MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root":
-            file_POT_total = 1.332e20
+        if filename == "checkout_MCC9.10_Run4a_BNB_beam_on_data_surprise_reco2_hist_opendata_19550.root": # run 4a open data
+            file_POT_total = run4a_open_data_POT
+        elif filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root": # run 4b open data
+            file_POT_total = run4b_open_data_POT
         else:
             raise ValueError("Invalid data file!")
     
-    file_POT = file_POT_total * curr_frac_events
+    file_POT = file_POT_total * frac_events
     wc_df["wc_file_POT"] = file_POT
     
     # loading blip variables
@@ -166,18 +175,23 @@ def process_root_file(filename, frac_events = 1):
         detailed_run_period = "4c"
     elif "4d.root" in filename:
         detailed_run_period = "4d"
+    elif "4bcd.root" in filename:
+        detailed_run_period = "4bcd"
     elif "5.root" in filename:
         detailed_run_period = "5"
-    elif "run4b" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+    
+    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+        detailed_run_period = "4a"
+    elif "run4b" in filename.lower():
         detailed_run_period = "4b"
     elif "run4c" in filename.lower():
         detailed_run_period = "4c"
     elif "run4d" in filename.lower():
         detailed_run_period = "4d"
+    elif "run4bcd" in filename.lower():
+        detailed_run_period = "4bcd"
     elif "run5" in filename.lower():
         detailed_run_period = "5"
-    elif "run45" in filename.lower():
-        detailed_run_period = "45"
     else:
         raise ValueError("Invalid detailed run period!", filename)
 
@@ -198,7 +212,7 @@ def process_root_file(filename, frac_events = 1):
         progress_str += f" (f={frac_events})"
     print(progress_str)
 
-    return filetype, all_df, file_POT
+    return filetype, detailed_run_period, all_df, file_POT
 
 
 if __name__ == "__main__":
@@ -233,15 +247,6 @@ if __name__ == "__main__":
 
         print("Starting loop over root files...")
         all_df_pl = pl.DataFrame()
-        all_nc_pi0_POTs = []
-        all_numucc_pi0_POTs = []
-        all_nu_POTs = []
-        all_nue_POTs = []
-        all_dirt_POTs = []
-        all_ext_POTs = []
-        all_delete_one_gamma_POTs = []
-        all_isotropic_one_gamma_POTs = []
-        all_data_POTs = []
 
         filenames_with_unused = os.listdir(data_files_location)
         filenames_with_unused.sort()
@@ -256,37 +261,23 @@ if __name__ == "__main__":
             if "UNUSED" in filename or "older_downloads" in filename:
                 continue
 
+            if "nfs000000150070ba7d00000751" in filename: # TEMPORARY: weird file in directory now
+                continue
+
             if "detvar" in filename.lower():
                 continue
 
             filenames.append(filename)
 
+        pot_dic = {}
+
         for file_num, filename in enumerate(filenames):
 
             print(f"Processing file {file_num} / {len(filenames)}")
 
-            filetype, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
-            if filetype == "nc_pi0_overlay":
-                all_nc_pi0_POTs.append(curr_POT)
-            elif filetype == "numucc_pi0_overlay":
-                all_numucc_pi0_POTs.append(curr_POT)
-            elif filetype == "nu_overlay":
-                all_nu_POTs.append(curr_POT)
-            elif filetype == "nue_overlay":
-                all_nue_POTs.append(curr_POT)
-            elif filetype == "dirt_overlay":
-                all_dirt_POTs.append(curr_POT)
-            elif filetype == "ext":
-                all_ext_POTs.append(curr_POT)
-            elif filetype == "delete_one_gamma_overlay":
-                all_delete_one_gamma_POTs.append(curr_POT)
-            elif filetype == "isotropic_one_gamma_overlay":
-                all_isotropic_one_gamma_POTs.append(curr_POT)
-            elif filetype == "data":
-                all_data_POTs.append(curr_POT)
-            else:
-                raise ValueError("Unknown filetype!", filetype)
+            filetype, detailed_run_period, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
 
+            pot_dic[(filetype, detailed_run_period)] = curr_POT
 
             print("doing post-processing that requires vector variables...")
 
@@ -320,7 +311,6 @@ if __name__ == "__main__":
             curr_df_pl.write_parquet(parquet_path)
             print("saved to parquet file")
 
-            # Immediately reload the parquet shard to ensure on-disk integrity
             print(f"Reloading {parquet_path} to ensure on-disk integrity...")
             reloaded_df = pl.read_parquet(parquet_path)
             if "filetype" not in reloaded_df.columns:
@@ -337,24 +327,13 @@ if __name__ == "__main__":
 
                 # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
-        pot_dic = {
-            "nc_pi0_overlay": sum(all_nc_pi0_POTs),
-            "numucc_pi0_overlay": sum(all_numucc_pi0_POTs),
-            "nu_overlay": sum(all_nu_POTs),
-            "nue_overlay": sum(all_nue_POTs),
-            "dirt_overlay": sum(all_dirt_POTs),
-            "ext": sum(all_ext_POTs),
-            "delete_one_gamma_overlay": sum(all_delete_one_gamma_POTs),
-            "isotropic_one_gamma_overlay": sum(all_isotropic_one_gamma_POTs),
-            "data": sum(all_data_POTs),
-        }
 
         print("saving pot_dic to csv file...")
         if os.path.exists(f"{intermediate_files_location}/pot_dic.csv"):
             os.remove(f"{intermediate_files_location}/pot_dic.csv")
         with open(f"{intermediate_files_location}/pot_dic.csv", "w") as f:
             for key, value in pot_dic.items():
-                f.write(f"{key},{value}\n")
+                f.write(f"{key[0]},{key[1]},{value}\n")
 
         print("done creating file-level dataframes for each file")
 
@@ -365,8 +344,8 @@ if __name__ == "__main__":
         with open(f"{intermediate_files_location}/pot_dic.csv", "r") as f:
             pot_dic = {}
             for line in f:
-                key, value = line.strip().split(",")
-                pot_dic[key] = float(value)
+                filetype, detailed_run_period, value = line.strip().split(",")
+                pot_dic[(filetype, detailed_run_period)] = float(value)
 
         for file in os.listdir(intermediate_files_location):
             if file == "presel_df_train_vars.parquet" or file == "all_df.parquet":
@@ -410,10 +389,13 @@ if __name__ == "__main__":
         print("doing post-processing that doesn't require vector variables using polars...")
 
         all_df = do_combined_postprocessing(all_df)
-        if pot_dic["data"] > 0:
-            normalizing_POT = pot_dic["data"]
-        else:
-            normalizing_POT = 1.11e21
+
+        normalizing_POT = 0
+        for key, value in pot_dic.items():
+            if key[0] == "data":
+                normalizing_POT += value
+        if normalizing_POT == 0:
+            normalizing_POT = 1.11e21 # if we don't use a data file, assume we want full runs 1-5 data
         
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
         all_df = add_signal_categories(all_df)

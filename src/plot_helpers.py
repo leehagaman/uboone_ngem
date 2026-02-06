@@ -247,7 +247,7 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
 
 
 def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, include_overflow=True, include_underflow=False, log_x=False, log_y=False,
-        additional_scaling_factor=1.0, normalizing_POT=3.33e19, 
+        additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
         page_num=None, savename=None, show=True, detvar_df=None):
 
 
@@ -303,7 +303,7 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         if log_x:
             ax2.set_xscale("log")
 
-    ax1.set_ylabel(f"MC Pred counts (no EXT) (weighted\nto {additional_scaling_factor*normalizing_POT:.2e} POT)")
+    ax1.set_ylabel(f"MC Pred counts (no EXT) (weighted\nto {additional_scaling_factor*(2.098e19+4.038e19):.2e} POT)")
     ax1.set_xlim(display_bins[0], display_bins[-1])
     if log_x:
         ax1.set_xscale("log")
@@ -326,7 +326,7 @@ def make_histogram_plot(
         var=None, display_var=None, breakdown_type="del1g_detailed", 
         title=None, savename=None,
         iso1g_norm_factor=None, del1g_norm_factor=None, 
-        include_data=True, additional_scaling_factor=1.0, normalizing_POT=3.33e19, 
+        include_data=True, additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
         include_legend=True, show=True,
         page_num=None,
         include_ratio=True, include_decomposition=False,
@@ -458,7 +458,7 @@ def make_histogram_plot(
         max_y = max(max_y, np.max(data_counts))
 
         ax1.errorbar(display_bin_centers, data_counts, yerr=np.sqrt(data_counts), fmt="o", color="k", lw=0.5, 
-                    capsize=2, capthick=1, markersize=2, label=f"3.33e19 POT Run 4b Data ({np.sum(data_counts)})")
+                    capsize=2, capthick=1, markersize=2, label=f"{2.098e19+4.038e19:.2e} POT Run 4a+4b Open Data ({np.sum(data_counts)})")
 
         diff = data_counts - pred_counts
 
@@ -610,9 +610,9 @@ def make_histogram_plot(
         display_var = var
     
     if additional_scaling_factor != 1.0:
-        ax1.set_ylabel(f"Counts (weighted\nto {additional_scaling_factor*normalizing_POT:.2e} POT)")
+        ax1.set_ylabel(f"Counts (weighted\nto {additional_scaling_factor*(2.098e19+4.038e19):.2e} POT)")
     else:
-        ax1.set_ylabel(f"Counts (weighted\nto {normalizing_POT:.2e} POT)")
+        ax1.set_ylabel(f"Counts (weighted\nto {2.098e19+4.038e19:.2e} POT)")
     ax1.set_title(title)
     ax1.set_xlim(display_bins[0], display_bins[-1])
     if log_x:

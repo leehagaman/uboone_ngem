@@ -43,6 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_plots", type=int, default=None)
     parser.add_argument("--vars", type=str, default=None)
     parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/all_bdt_vars before starting")
+    parser.add_argument("--no-systematics", action="store_true", help="Do not use systematics")
     args = parser.parse_args()
 
     if args.vars is None:
@@ -69,9 +70,10 @@ if __name__ == "__main__":
     all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
     print(f"{all_df.shape=}")
 
-    print("loading presel_weights_df.parquet...")
-    presel_weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
-    print(f"{presel_weights_df.shape=}")
+    if not args.no_systematics:
+        print("loading presel_weights_df.parquet...")
+        presel_weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
+        print(f"{presel_weights_df.shape=}")
 
     pred_df = all_df.filter(
         ~pl.col("filetype").is_in(["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"])
@@ -127,13 +129,28 @@ if __name__ == "__main__":
         
         print("\nplotting", var, f"({i+1}/{len(vars)})")
 
+        if args.no_systematics:
+            use_rw_systematics = False
+            use_detvar_systematics = False
+            detvar_df = None
+            include_decomposition = False
+            weights_df = None
+            return_p_value_info = False
+        else:
+            use_rw_systematics = True
+            use_detvar_systematics = True
+            detvar_df = presel_detvar_df
+            include_decomposition = True
+            weights_df = presel_weights_df
+            return_p_value_info = True
+
         p_value_info_dic = make_histogram_plot(pred_sel_df=pred_df, data_sel_df=data_df, 
             include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
             var=var, title="Preselection", selname="wc_generic_sel",
-            include_ratio=True, include_decomposition=True,
-            use_rw_systematics=True, use_detvar_systematics=True, detvar_df=presel_detvar_df,
-            page_num=i+1, weights_df=presel_weights_df,
-            show=False, return_p_value_info=True,
+            include_ratio=True, include_decomposition=include_decomposition,
+            use_rw_systematics=use_rw_systematics, use_detvar_systematics=use_detvar_systematics, detvar_df=detvar_df,
+            page_num=i+1, weights_df=weights_df,
+            show=False, return_p_value_info=return_p_value_info,
             )
 
         all_p_value_info.append(p_value_info_dic)
