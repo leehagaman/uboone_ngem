@@ -1361,14 +1361,90 @@ def do_blip_postprocessing(df):
         closest_upstream_blip_energy.append(curr_closest_upstream_blip_energy)
         closest_upstream_blip_dx.append(curr_closest_upstream_blip_dx)
         closest_upstream_blip_dw.append(curr_closest_upstream_blip_dw)
+
     df["blip_closest_upstream_distance"] = closest_upstream_blip_distance
     df["blip_closest_upstream_angle"] = closest_upstream_blip_angle
     df["blip_closest_upstream_impact_parameter"] = closest_upstream_blip_impact_parameter
     df["blip_closest_upstream_energy"] = closest_upstream_blip_energy
     df["blip_closest_upstream_dx"] = closest_upstream_blip_dx
     df["blip_closest_upstream_dw"] = closest_upstream_blip_dw
+
     
+    # -----------------------------------------
+    # Part B: vertex → blips (multiple vertices, multiple radii)
+    # -----------------------------------------
+    radii_cm = [5, 10, 30, 50, 75, 100]
+
+    vertices = {
+        "wc": ("wc_reco_nuvtxX", "wc_reco_nuvtxY", "wc_reco_nuvtxZ"),
+        "pandora_pelee": ("pandora_reco_nu_vtx_sce_x", "pandora_reco_nu_vtx_sce_y", "pandora_reco_nu_vtx_sce_z"),
+        "pandora_glee": ("glee_reco_vertex_x", "glee_reco_vertex_y", "glee_reco_vertex_z"),
+        "lantern": ("lantern_vtxX", "lantern_vtxY", "lantern_vtxZ"),
+    }
+
+    # pull vertex arrays once
+    vtx_arrays = {}
+    for key, (cx, cy, cz) in vertices.items():
+        vtx_arrays[key] = (df[cx].to_numpy(), df[cy].to_numpy(), df[cz].to_numpy())
+
+    # outputs: per vertex
+    out_minDist = {k: [] for k in vertices}
+    out_minE = {k: [] for k in vertices}
+    out_nWithin = {k: {R: [] for R in radii_cm} for k in vertices}
+
+    for event_index in tqdm(range(len(df)), desc="Vertex → blips (WC/Pandora/LANTERN)", mininterval=10):
+
+        blip_xs = all_blip_x[event_index]
+        blip_ys = all_blip_y[event_index]
+        blip_zs = all_blip_z[event_index]
+        blip_energies = all_blip_energy[event_index]
+
+        has_blips = (blip_xs is not None) and (len(blip_xs) > 0)
+
+        # If no blips, fill defaults for all vertices
+        if not has_blips:
+            for key in vertices:
+                out_minDist[key].append(np.inf)
+                out_minE[key].append(np.nan)
+                for R in radii_cm:
+                    out_nWithin[key][R].append(0)
+            continue
+
+        bx = np.asarray(blip_xs, dtype=float)
+        by = np.asarray(blip_ys, dtype=float)
+        bz = np.asarray(blip_zs, dtype=float)
+        be = np.asarray(blip_energies, dtype=float)
+
+        for key in vertices:
+            vx_arr, vy_arr, vz_arr = vtx_arrays[key]
+            vx, vy, vz = vx_arr[event_index], vy_arr[event_index], vz_arr[event_index]
+
+            # bad vertex
+            if not (np.isfinite(vx) and np.isfinite(vy) and np.isfinite(vz)):
+                out_minDist[key].append(np.inf)
+                out_minE[key].append(np.nan)
+                for R in radii_cm:
+                    out_nWithin[key][R].append(0)
+                continue
+
+            d = np.sqrt((bx - vx)**2 + (by - vy)**2 + (bz - vz)**2)
+
+            jmin = int(np.argmin(d))
+            out_minDist[key].append(float(d[jmin]))
+            out_minE[key].append(float(be[jmin]))
+
+            for R in radii_cm:
+                out_nWithin[key][R].append(int(np.sum(d < R)))
+
+    # attach columns
+    for key in vertices:
+        df[f"{key}_blip_minDist"] = out_minDist[key]
+        df[f"{key}_blip_minDist_energy"] = out_minE[key]
+        for R in radii_cm:
+            df[f"{key}_blip_nWithin_{R}cm"] = out_nWithin[key][R]
+
     return df
+
 
 def do_pandora_postprocessing(df):
 
