@@ -136,15 +136,17 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
             else:
                 raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
-
     if data_in_files:
         total_norm_goal_pot = sum(norm_goal_pot_dic.values())
         extra_pot_scale_factor = normalizing_POT / total_norm_goal_pot
         print(f"applying extra pot scale factor {extra_pot_scale_factor} to norm_goal_pot_dic...")
         for k, v in norm_goal_pot_dic.items():
             norm_goal_pot_dic[k] = v * extra_pot_scale_factor
-    else: # no data (possibly DetVar processing), just normalize to CV POTs found earlier
-        norm_goal_pot_dic = copy.deepcopy(normalizing_run_period_pot_dic)
+    else: # no data (possibly DetVar processing), just normalize to nu_overlay CV POTs found earlier
+        for k, v in normalizing_run_period_pot_dic.items():
+            filetype, normalizing_run_period = k
+            if filetype == 'nu_overlay':
+                norm_goal_pot_dic[normalizing_run_period] += v
     
     print("norm_goal_pot_dic:")
     for k, v in sorted(norm_goal_pot_dic.items(), key=lambda item: item[0]):

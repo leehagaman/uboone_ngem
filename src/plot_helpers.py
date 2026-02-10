@@ -262,7 +262,7 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
     ratios_by_var_dic = {}
 
     total_cv_weight = np.sum(cv_df.get_column("wc_net_weight").to_numpy())
-    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "Recomb2", "SCE"]:
+    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
         curr_filetype_rse_df = curr_df.select(["filetype", "run", "subrun", "event"])
@@ -288,7 +288,7 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
 
     ax1.set_xticklabels([])
 
-    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "Recomb2", "SCE"]:
+    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
         
         ratios = ratios_by_var_dic[vartype]
         custom_step(display_bins, ratios, ax=ax2, label=vartype)                

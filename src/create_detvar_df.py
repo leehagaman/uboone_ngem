@@ -48,7 +48,7 @@ def process_root_file(filename, frac_events = 1):
     elif "wmx" in filename.lower():
         vartype = "WireModX"
     elif "wmyz" in filename.lower():
-        vartype = "WireModMYZ"
+        vartype = "WireModYZ"
     elif "recomb2" in filename.lower():
         vartype = "Recomb2"
     elif "sce" in filename.lower():
