@@ -64,7 +64,8 @@ def process_root_file(filename, frac_events = 1):
     curr_wc_T_pf_vars = wc_T_pf_vars
 
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
-    if "v10_04_07_09" in filename or filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root":
+    if (("v10_04_07_09" in filename) or (filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root")
+                 or (filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root")):
         print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
         curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
     
