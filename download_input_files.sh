@@ -23,7 +23,7 @@ REMOTE_HOST="uboonegpvm01.fnal.gov"
 # From https://cdcvs.fnal.gov/redmine/projects/uboone-physics-analysis/wiki/MCC910_Samples
 # or from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4/edit?gid=450838812#gid=450838812
 # Using BNB WC processed files with all trees
-# Updated 2026_01
+# Updated 2026_02
 FILES_TO_COPY=(
     
     #nu overlay files

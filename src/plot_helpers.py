@@ -74,12 +74,14 @@ def auto_binning(all_vals):
     if all_vals.dtype == bool:
         all_vals = all_vals.astype(int)
 
+    all_vals = np.array(all_vals)
+
     min_val = np.min(all_vals)
     max_val = np.max(all_vals)
 
-    # calculate the 10% and 90% edges of all_vals
-    lower_common_edge = np.percentile(all_vals, 5)
-    upper_common_edge = np.percentile(all_vals, 95)
+    # calculate the 5% and 95% edges of all_vals
+    lower_common_edge = np.percentile(all_vals[(all_vals > -1e10) & (all_vals < 1e10)], 5)
+    upper_common_edge = np.percentile(all_vals[(all_vals > -1e10) & (all_vals < 1e10)], 95)
 
     if min_val != lower_common_edge:
         print("including underflow")
@@ -246,7 +248,7 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
     if show: plt.show()
 
 
-def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, include_overflow=True, include_underflow=False, log_x=False, log_y=False,
+def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x=False, log_y=False,
         additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
         page_num=None, savename=None, show=True, detvar_df=None):
 
@@ -256,6 +258,7 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
     cv_counts = np.histogram(get_vals(cv_df, var), weights=cv_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0]
+    min_nonzero_y = np.min(cv_counts[cv_counts > 0])
     max_y = np.max(cv_counts)
     ax1.hist(display_bin_centers, weights=cv_counts, bins=display_bins, histtype="step", color="k", lw=2, zorder=-1, label="CV")
 
@@ -284,6 +287,7 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
 
         ratios_by_var_dic[vartype] = var_over_cv_ratio
 
+        min_nonzero_y = min(min_nonzero_y, np.min(scaled_var_over_cv_ratio[scaled_var_over_cv_ratio > 0]))
         max_y = max(max_y, np.max(scaled_var_over_cv_ratio))
 
     ax1.set_xticklabels([])
@@ -299,20 +303,24 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         ax2.set_xlabel(display_var)
         ax2.set_ylabel("Var/CV")
         ax2.set_xlim(display_bins[0], display_bins[-1])
-        ax2.set_ylim(0.5, 1.5)
+        #ax2.set_ylim(0.5, 1.5)
+        ax2.set_ylim(0.75, 1.25)
         if log_x:
             ax2.set_xscale("log")
 
-    ax1.set_ylabel(f"MC Pred counts (no EXT) (weighted\nto {additional_scaling_factor*(2.098e19+4.038e19):.2e} POT)")
+    ax1.set_ylabel(f"MC Pred counts (no Dirt/EXT)")
     ax1.set_xlim(display_bins[0], display_bins[-1])
     if log_x:
         ax1.set_xscale("log")
     if log_y:
         ax1.set_yscale("log")
-        ax1.set_ylim(0.01, max_y * 10)
+        ax1.set_ylim(min_nonzero_y / 10, max_y * 10)
     else:
         ax1.set_ylim(0, max_y * 1.2)
     ax1.legend(ncol=1, loc='upper right', fontsize=12)
+
+    if page_num is not None:
+        ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
 
     if savename is not None:
         plt.savefig(f"../plots/{savename}_det_variation_histograms.pdf")
