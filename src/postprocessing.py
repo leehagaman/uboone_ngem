@@ -1493,7 +1493,6 @@ def do_pandora_postprocessing(df):
     return pd.concat([df, pd.DataFrame(processed_var_dic)], axis=1)
 
 
-
 def do_glee_postprocessing(df):
 
     isolation_min_dist_trk_unassoc = df["glee_isolation_min_dist_trk_unassoc"].to_numpy()

@@ -353,7 +353,3 @@ pandora_training_vars = [f"pandora_{var}" for var in pandora_scalar_vars] + pand
 
 pandora_scalar_training_vars = [f"pandora_{var}" for var in pandora_scalar_vars]
 pandora_vector_training_vars = [f"pandora_{var}" for var in pandora_vector_vars]
-
-pandora_scalar_first_half_training_vars = pandora_scalar_training_vars[:len(pandora_scalar_training_vars)//2]
-pandora_scalar_second_half_training_vars = pandora_scalar_training_vars[len(pandora_scalar_training_vars)//2:]
-

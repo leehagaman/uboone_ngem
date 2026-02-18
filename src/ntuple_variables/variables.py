@@ -185,3 +185,13 @@ duplicate_bdt_vars = [
 ]
 
 combined_training_vars = [var for var in combined_training_vars_with_duplicates if var not in duplicate_bdt_vars]
+
+# pandora MCS has some known issues
+not_using_for_training_vars = ["pandora_trk_energy_muon_mcs"] # pandora MCS has some known issues
+
+# nugraph hit fractions see some data/pred disagreement, better to use pfng2semlabel for these
+not_using_for_training_vars += ["pandora_max_len_trk_pfng2shrfrac", "pandora_max_len_trk_pfng2mipfrac", "pandora_max_len_trk_pfng2hipfrac", "pandora_max_len_trk_pfng2mclfrac", "pandora_max_len_trk_pfng2dfsfrac"]
+not_using_for_training_vars += ["pandora_max2_len_trk_pfng2shrfrac", "pandora_max2_len_trk_pfng2mipfrac", "pandora_max2_len_trk_pfng2hipfrac", "pandora_max2_len_trk_pfng2mclfrac", "pandora_max2_len_trk_pfng2dfsfrac"]
+not_using_for_training_vars += ["pandora_max3_len_trk_pfng2shrfrac", "pandora_max3_len_trk_pfng2mipfrac", "pandora_max3_len_trk_pfng2hipfrac", "pandora_max3_len_trk_pfng2mclfrac", "pandora_max3_len_trk_pfng2dfsfrac"]
+
+combined_training_vars = [var for var in combined_training_vars if var not in not_using_for_training_vars]
