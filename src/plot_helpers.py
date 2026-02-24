@@ -411,6 +411,15 @@ def make_histogram_plot(
         breakdown_queries = []
         for label_i in range(len(breakdown_labels)):
             breakdown_queries.append(pl.col("del1g_detailed_signal_category") == label_i)
+    elif breakdown_type == "del1g_detailed_w_rad_corr":
+        breakdown_queries = []
+        for label_i in range(len(del1g_detailed_category_labels)):
+            breakdown_queries.append(pl.col("del1g_detailed_signal_category") == label_i)
+        breakdown_labels = del1g_detailed_category_labels + ["numuCC_rad_corrected"]
+        breakdown_labels_latex = del1g_detailed_category_labels_latex + [r"$\nu_\mu$CC $1\gamma$ Rad. Corr."]
+        breakdown_colors = del1g_detailed_category_colors + ["xkcd:pink"]
+        breakdown_hatches = del1g_detailed_category_hatches + [None]
+        breakdown_queries.append(pl.col("filetype") == "numuCC_rad_corrected")
     elif breakdown_type == "filetype":
         breakdown_labels = filetype_category_labels
         breakdown_labels_latex = filetype_category_labels
