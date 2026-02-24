@@ -3,3 +3,5 @@ intermediate_files_location = "/nevis/riverside/data/leehagaman/ngem/intermediat
 covariance_cache_location = "/nevis/riverside/data/leehagaman/ngem/intermediate_files/systematics_cache"
 
 tmp_dir = "/nevis/houston/home/leehagaman/uboone_ngem/tmp"
+
+other_files_location = "/nevis/riverside/data/leehagaman/ngem/other_files"
