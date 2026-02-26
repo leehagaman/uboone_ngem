@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import matplotlib.gridspec as gridspec
 
-from .signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches
+from .signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches, del1g_detailed_category_queries
 from .signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
 from .systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
 from .systematics import get_significance, get_significance_from_p_value, chi2_decomposition
@@ -408,19 +408,7 @@ def make_histogram_plot(
         breakdown_labels_latex = del1g_detailed_category_labels_latex
         breakdown_colors = del1g_detailed_category_colors
         breakdown_hatches = del1g_detailed_category_hatches
-        breakdown_queries = []
-        for label_i in range(len(breakdown_labels)):
-            breakdown_queries.append(pl.col("del1g_detailed_signal_category") == label_i)
-    elif breakdown_type == "del1g_detailed_w_rad_corr_coh1g":
-        breakdown_queries = []
-        for label_i in range(len(del1g_detailed_category_labels)):
-            breakdown_queries.append(pl.col("del1g_detailed_signal_category") == label_i)
-        breakdown_labels = del1g_detailed_category_labels + ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
-        breakdown_labels_latex = del1g_detailed_category_labels_latex + [r"$\nu_\mu$CC $1\gamma$ Rad. Corr.", r"NC Coherent $1\gamma$"]
-        breakdown_colors = del1g_detailed_category_colors + ["xkcd:pink", "xkcd:purple"]
-        breakdown_hatches = del1g_detailed_category_hatches + [None, None]
-        breakdown_queries.append(pl.col("filetype") == "numuCC_rad_corrected")
-        breakdown_queries.append(pl.col("filetype") == "NC_coherent_1g_reweighted")
+        breakdown_queries = del1g_detailed_category_queries
     elif breakdown_type == "filetype":
         breakdown_labels = filetype_category_labels
         breakdown_labels_latex = filetype_category_labels
@@ -434,7 +422,7 @@ def make_histogram_plot(
     breakdown_counts = []
     unweighted_breakdown_counts = []
     for breakdown_i, breakdown_label in enumerate(breakdown_labels):
-        curr_df = pred_sel_df.filter(breakdown_queries[breakdown_i])
+        curr_df = pred_sel_df.filter(eval(breakdown_queries[breakdown_i], {'pl': pl, '__builtins__': {}}))
         vals = get_vals(curr_df, var)
         breakdown_counts.append(np.histogram(vals, weights=curr_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0])
         unweighted_breakdown_counts.append(np.histogram(vals, bins=bins)[0])

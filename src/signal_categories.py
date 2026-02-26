@@ -100,7 +100,9 @@ del1g_detailed_categories = [
     ("del1g_0p1mu",     "pl.col('del1g_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_0p') & pl.col('wc_truth_1mu')",                                                                                             "xkcd:aqua", "++++"),
     ("del1g_outFV",     "pl.col('del1g_overlay') & ~pl.col('wc_truth_inFV')",                                                                                                                          "xkcd:pink", "++++"),
     ("iso1g",           "pl.col('iso1g_overlay') & pl.col('wc_truth_inFV')",                                                                                                                              "xkcd:turquoise", "++++"),
-    ("iso1g_outFV",     "pl.col('iso1g_overlay') & ~pl.col('wc_truth_inFV')",                                                                                                                          "xkcd:gray", "++++"),
+    ("iso1g_outFV",     "pl.col('iso1g_overlay') & ~pl.col('wc_truth_inFV')",                                                                                                                          "xkcd:gray", "++++"),    
+    ("numuCC_rad_corrected", "pl.col('filetype') == 'numuCC_rad_corrected'", "xkcd:pink", None),
+    ("NC_coherent_1g_reweighted", "pl.col('filetype') == 'NC_coherent_1g_reweighted'", "xkcd:purple", None),
     ("data",         "pl.col('filetype') == 'data'",                                                                                                                                              "xkcd:black", None),
 ]
 del1g_detailed_category_queries = [cat[1] for cat in del1g_detailed_categories]
@@ -160,6 +162,9 @@ del1g_detailed_category_labels_latex = [
     r"del1g $1\gamma$ out FV",
     r"iso1g $1\gamma 0p$",
     r"iso1g $1\gamma$ out FV",
+
+    r"$\nu_\mu$CC $1\gamma$ Rad. Corr.",
+    r"NC Coherent $1\gamma$",
     r"data",
 ]
 del1g_detailed_categories_dic = {del1g_detailed_category_labels[i]: i for i in range(len(del1g_detailed_category_labels))}
@@ -191,6 +196,8 @@ del1g_simple_categories = [
     ("pi0_dalitz_decay",        get_cut_from_del1g('pi0_dalitz_decay'),                                                                                "xkcd:dark mint", None),
     ("NC_no_gamma",             get_cut_from_del1g('NC_no_gamma'),                                                                                      "xkcd:burnt sienna", None),
     ("ext",                     get_cut_from_del1g('ext'),                                                                                              "xkcd:green", None),
+    ("numuCC_rad_corrected",    f"({get_cut_from_del1g('numuCC_rad_corrected')})",                                                                      "xkcd:pink", None),
+    ("NC_coherent_1g_reweighted", f"({get_cut_from_del1g('NC_coherent_1g_reweighted')})",                                                               "xkcd:purple", None),
     ("data",                    get_cut_from_del1g('data'),                                                                                             "xkcd:black", None),
 ]
 del1g_simple_category_queries = [cat[1] for cat in del1g_simple_categories]
@@ -228,7 +235,7 @@ train_category_colors = []
 train_category_hatches = []
 train_category_labels_latex = []
 for i in range(len(del1g_simple_category_labels)):
-    if 'data' not in del1g_simple_category_labels[i]:
+    if 'data' not in del1g_simple_category_labels[i] and 'numuCC_rad_corrected' not in del1g_simple_category_labels[i] and 'NC_coherent_1g_reweighted' not in del1g_simple_category_labels[i]:
         train_category_queries.append(del1g_simple_category_queries[i])
         train_category_labels.append(del1g_simple_category_labels[i])
         train_category_colors.append(del1g_simple_category_colors[i])
