@@ -79,7 +79,7 @@ def get_pred_stat_cov(pred_vals, pred_weights, bins):
 
 
 def create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=None):
-    # Similar to np.cov, but manually setting the number of univirses to divide by
+    # Similar to np.cov, but manually setting the number of universes to divide by
     # In some of the unisims, one of the universes is actually the CV. In these cases, 
     # we need to divide by the number of universes minus one.
     curr_cov = np.zeros((len(unisim_hists), len(unisim_hists)))
