@@ -101,8 +101,8 @@ del1g_detailed_categories = [
     ("del1g_outFV",     "pl.col('del1g_overlay') & ~pl.col('wc_truth_inFV')",                                                                                                                          "xkcd:pink", "++++"),
     ("iso1g",           "pl.col('iso1g_overlay') & pl.col('wc_truth_inFV')",                                                                                                                              "xkcd:turquoise", "++++"),
     ("iso1g_outFV",     "pl.col('iso1g_overlay') & ~pl.col('wc_truth_inFV')",                                                                                                                          "xkcd:gray", "++++"),    
-    ("numuCC_rad_corrected", "pl.col('filetype') == 'numuCC_rad_corrected'", "xkcd:pink", None),
-    ("NC_coherent_1g_reweighted", "pl.col('filetype') == 'NC_coherent_1g_reweighted'", "xkcd:purple", None),
+    ("numuCC_rad_corrected", "(pl.col('filetype') == 'numuCC_rad_corrected') & pl.col('wc_truth_inFV')", "xkcd:pink", None),
+    ("NC_coherent_1g_reweighted", "(pl.col('filetype') == 'NC_coherent_1g_reweighted') & pl.col('wc_truth_inFV')", "xkcd:purple", None),
     ("data",         "pl.col('filetype') == 'data'",                                                                                                                                              "xkcd:black", None),
 ]
 del1g_detailed_category_queries = [cat[1] for cat in del1g_detailed_categories]
