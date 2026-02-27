@@ -69,6 +69,9 @@ if __name__ == "__main__":
         # Binary classification: 0 -> not_nue, 1 -> nue
         signal_category_labels = ["not_nue", "nue"]
         signal_category_var = "del1g_simple_signal_category"
+    elif args.signal_categories == "nc_coh_1g_vs_bkg":
+        signal_category_labels = ["NC_coherent_1g_reweighted", "not_NC_coherent_1g_reweighted"]
+        signal_category_var = "filetype"
     else:
         raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
 
@@ -93,6 +96,43 @@ if __name__ == "__main__":
     # splitting into train and test, then re-making all_df
     no_data_df = all_df.filter(pl.col("filetype") != "data")
     data_df = all_df.filter(pl.col("filetype") == "data")
+
+    if args.signal_categories == "nc_coh_1g_vs_bkg":
+        # add in NC Coherent events for training
+
+        # Weights are pre-computed in coherent_1g_reweighting.ipynb and saved to parquet.
+        # Columns: run, subrun, event, coherent_1g_weight
+        # Only events with coherent_1g_weight > 0 are present in the parquet.
+        coherent_weights = pl.scan_parquet(
+            f"{intermediate_files_location}/coherent_1g_reweighting_weights.parquet"
+        ).collect()
+
+        coherent_1g_df = (
+            no_data_df
+            .filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
+            # inner join: events in empty coherent bins are dropped
+            .join(coherent_weights, on=["run", "subrun", "event"], how="inner")
+            .with_columns([
+                # Scale by 1/frac_test for test events, since coherent_1g_weight replaces
+                # (rather than multiplies) wc_net_weight, losing the 1/frac_test correction
+                # that was applied in cell 3. Null (below-presel) events keep the raw weight.
+                pl.col("coherent_1g_weight").cast(pl.Float32).alias("wc_net_weight"),
+                pl.lit("NC_coherent_1g_reweighted").alias("filetype"),
+                pl.lit(False).alias("normal_overlay"),
+                pl.lit(False).alias("iso1g_overlay"),
+                pl.lit(False).alias("del1g_overlay"),
+            ])
+            .drop("coherent_1g_weight")
+        )
+
+        # Append reweighted events; original iso1g rows remain but are excluded
+        # downstream by the filter on "isotropic_one_gamma_overlay".
+        no_data_df = pl.concat([no_data_df, coherent_1g_df])
+        del coherent_weights, coherent_1g_df
+
+        # don't use Iso1g or Del1g events for training/testing
+        no_data_df = no_data_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay"))
+    
     train_indices, test_indices = train_test_split(np.arange(no_data_df.height), test_size=0.5, random_state=42)
     
     # Create boolean arrays for train/test flags
@@ -139,20 +179,31 @@ if __name__ == "__main__":
     x_train = presel_train_df.select(training_vars).to_numpy()
     x_train = x_train.astype(np.float64)
     x_train[(x_train > 1e10) | (x_train < -1e10)] = np.nan
-
-    y_train = presel_train_df.select(signal_category_var).to_numpy()
-    y_train = y_train.flatten() if y_train.ndim > 1 else y_train
-    w_train = presel_train_df.select("wc_net_weight").to_numpy()
-    w_train = w_train.flatten() if w_train.ndim > 1 else w_train
-
     x_test = presel_test_df.select(training_vars).to_numpy()
     x_test = x_test.astype(np.float64)
     x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
 
-    y_test = presel_test_df.select(signal_category_var).to_numpy()
-    y_test = y_test.flatten() if y_test.ndim > 1 else y_test
+    w_train = presel_train_df.select("wc_net_weight").to_numpy()
+    w_train = w_train.flatten() if w_train.ndim > 1 else w_train
     w_test = presel_test_df.select("wc_net_weight").to_numpy()
     w_test = w_test.flatten() if w_test.ndim > 1 else w_test
+
+    y_train = presel_train_df.select(signal_category_var).to_numpy()
+    y_test = presel_test_df.select(signal_category_var).to_numpy()
+
+    if args.signal_categories == "nc_coh_1g_vs_bkg":
+        w_train = np.ones(w_train.shape)
+        w_test = np.ones(w_test.shape)
+        y_train = presel_train_df.select((pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")).to_numpy()
+        y_test = presel_test_df.select((pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")).to_numpy()
+        
+
+    y_train = y_train.flatten() if y_train.ndim > 1 else y_train
+    y_test = y_test.flatten() if y_test.ndim > 1 else y_test
+
+    print("num training signal:", np.sum(y_train == 1))
+    print("num training background:", np.sum(y_train == 0))
+    print(f"{y_train[:20]=}")
 
     num_training_vars = len(training_vars)
     print(f"{num_training_vars=}")
@@ -311,13 +362,13 @@ if __name__ == "__main__":
         plt.subplot(n_rows, n_cols, i + 1)
         mask = (y_test == i)
         if np.sum(mask) > 0:
-            plt.hist(y_proba[mask, i], bins=bins, histtype='step', label=f'True {train_category_labels[i]}', density=True)
+            plt.hist(y_proba[mask, i], bins=bins, histtype='step', label=f'True {signal_category_labels[i]}', density=True)
             other_mask = (y_test != i)
             if np.sum(other_mask) > 0:
                 plt.hist(y_proba[other_mask, i], bins=bins, histtype='step', label=f'Other categories', density=True)
-        plt.xlabel(f'Probability for {train_category_labels[i]}')
+        plt.xlabel(f'Probability for {signal_category_labels[i]}')
         plt.ylabel('Density')
-        plt.title(f'Probability Distribution: {train_category_labels[i]}')
+        plt.title(f'Probability Distribution: {signal_category_labels[i]}')
         plt.legend()
     plt.tight_layout()
     plt.savefig(output_dir / "probability_histograms.png", dpi=300, bbox_inches='tight')
@@ -353,8 +404,8 @@ if __name__ == "__main__":
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, str(int(cm[i, j])), ha='center', va='center', fontsize=8)
-    plt.xticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)], rotation=45)
-    plt.yticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)])
+    plt.xticks(range(n_categories), [signal_category_labels[i] for i in range(n_categories)], rotation=45)
+    plt.yticks(range(n_categories), [signal_category_labels[i] for i in range(n_categories)])
     plt.subplot(1, 3, 2)
     im2 = plt.imshow(cm_normalized_cols, cmap='Blues', aspect='auto')
     plt.colorbar(im2)
@@ -364,8 +415,8 @@ if __name__ == "__main__":
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, f'{cm_normalized_cols[i, j]:.2f}', ha='center', va='center', fontsize=8)
-    plt.xticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)], rotation=45)
-    plt.yticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)])
+    plt.xticks(range(n_categories), [signal_category_labels[i] for i in range(n_categories)], rotation=45)
+    plt.yticks(range(n_categories), [signal_category_labels[i] for i in range(n_categories)])
     plt.subplot(1, 3, 3)
     im3 = plt.imshow(cm_normalized_rows, cmap='Blues', aspect='auto')
     plt.colorbar(im3)
@@ -375,8 +426,8 @@ if __name__ == "__main__":
     for i in range(n_categories):
         for j in range(n_categories):
             plt.text(j, i, f'{cm_normalized_rows[i, j]:.2f}', ha='center', va='center', fontsize=8)
-    plt.xticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)], rotation=45)
-    plt.yticks(range(n_categories), [train_category_labels[i] for i in range(n_categories)])
+    plt.xticks(range(n_categories), [signal_category_labels[i] for i in range(n_categories)], rotation=45)
+    plt.yticks(range(n_categories), [signal_category_labels[i] for i in range(n_categories)])
     plt.tight_layout()
     plt.savefig(output_dir / "confusion_matrix.png", dpi=300, bbox_inches='tight')
     plt.close()
@@ -399,7 +450,7 @@ if __name__ == "__main__":
     ]
     for i in range(n_categories):
         prediction_cols.append(pl.DataFrame({
-            f'prob_{train_category_labels[i]}': all_probabilities[:, i]
+            f'prob_{signal_category_labels[i]}': all_probabilities[:, i]
         }))
     
     prediction_df = pl.concat(prediction_cols, how="horizontal")
