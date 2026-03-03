@@ -1,4 +1,5 @@
 
+import gc
 import uproot
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lante
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from postprocessing import remove_vector_variables, change_dtypes
+from postprocessing import add_1g1mu_rad_corr_events, add_nc_coh_1g_reweighted_events
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -364,20 +366,13 @@ if __name__ == "__main__":
 
         print("loading polars dataframes from parquet files...")
 
-        pl_dfs = []
-        for file in os.listdir(intermediate_files_location):
-            if file.startswith("curr_df_pl_") and file.endswith(".parquet"):
-                print(f"Reading {file}")
-                curr_df = pl.read_parquet(f"{intermediate_files_location}/{file}")
-                # Validate filetype column after reading from parquet - should never be empty
-                if 'filetype' in curr_df.columns:
-                    empty_count = curr_df.filter(pl.col("filetype") == '').height
-                    if empty_count > 0:
-                        raise ValueError(f"filetype column has {empty_count} empty string values after reading parquet file {file}. This should never happen!")
-                pl_dfs.append(curr_df)
-                print(f"Read {file}, estimated size: {pl_dfs[-1].estimated_size() / 1e9:.2f} GB")
-        all_df = pl.concat(align_columns_for_concat(pl_dfs), how="vertical")
-        del pl_dfs
+        parquet_files = sorted([
+            f"{intermediate_files_location}/{file}"
+            for file in os.listdir(intermediate_files_location)
+            if file.startswith("curr_df_pl_") and file.endswith(".parquet")
+        ])
+        print(f"Found {len(parquet_files)} parquet files")
+        all_df = pl.scan_parquet(parquet_files, missing_columns="insert", extra_columns="ignore").collect()
         print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
         
         # Validate filetype column immediately after concatenation
@@ -409,17 +404,62 @@ if __name__ == "__main__":
         
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
         all_df = add_signal_categories(all_df)
-        all_df = change_dtypes(all_df)
 
-        file_RSEs = []
-        for filetype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
-            file_RSE = f"{filetype}_{run:06d}_{subrun:06d}_{event:06d}"
-            file_RSEs.append(file_RSE)
-        if not len(file_RSEs) == len(set(file_RSEs)):
-            # find the duplicates
-            duplicates = [file_RSE for file_RSE in file_RSEs if file_RSEs.count(file_RSE) > 1]
-            print(f"Found {len(duplicates)} duplicates, first 10: {duplicates[:10]}")
-            raise ValueError("Duplicate filetype/run/subrun/event!")
+        # Inline dtype conversion: keeps only ONE reference to all_df at a time,
+        # so replaced columns are freed immediately after each batch rather than
+        # being held alive by a caller reference for the entire function duration.
+        print("Converting dtypes to reduce memory usage...")
+        memory_before = all_df.estimated_size() / (1024**3)
+        print(f"Estimated memory usage before conversion: {memory_before:.4f} GB")
+
+        float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
+        int64_cols   = [col for col, dtype in all_df.schema.items() if dtype == pl.Int64]
+        print(f"Converting {len(float64_cols)} Float64 columns to Float32")
+        print(f"Converting {len(int64_cols)} Int64 columns to Int32 (clipping to Int32 range)")
+
+        if float64_cols:
+            all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in float64_cols])
+            gc.collect()
+
+        int32_min, int32_max = -2147483648, 2147483647
+        batch_size = 50
+        for i in range(0, len(int64_cols), batch_size):
+            batch = int64_cols[i:i + batch_size]
+            all_df = all_df.with_columns([
+                pl.col(col).clip(int32_min, int32_max).cast(pl.Int32) for col in batch
+            ])
+            gc.collect()
+
+        memory_after = all_df.estimated_size() / (1024**3)
+        print(f"Estimated memory usage after conversion: {memory_after:.4f} GB")
+        print(f"Memory saved: {memory_before - memory_after:.4f} GB ({(memory_before - memory_after) / memory_before * 100:.1f}%)")
+        gc.collect()
+
+        train_test_score_bytes = (
+            all_df.select(["filename", "run", "subrun", "event"])
+            .hash_rows(seed=0)
+            .to_numpy()
+            & np.uint64(0xFF)
+        ).astype(np.uint8)
+        train_test_score = train_test_score_bytes.astype(np.float32) / 256.0
+        train_mask = train_test_score < 0.5
+        all_df = all_df.with_columns(
+            pl.Series("train_test_score", train_test_score),
+            pl.Series("will_use_for_50_50_training", train_mask),
+        )
+
+        print(f"Total number of events in all_df: {all_df.height}")
+        print(f"Number of events in all_df with will_use_for_50_50_training == True: {all_df.select(pl.col('will_use_for_50_50_training').sum()).item()}")
+
+        all_df = add_1g1mu_rad_corr_events(all_df)
+        all_df = add_nc_coh_1g_reweighted_events(all_df)
+
+        dup_mask = pl.struct("filetype", "run", "subrun", "event").is_duplicated()
+        n_dups = all_df.select(dup_mask.sum()).item()
+        if n_dups > 0:
+            dups = all_df.filter(dup_mask).select(["filename", "filetype", "run", "subrun", "event", "wc_truth_nuEnergy"])
+            print(f"Found {n_dups} duplicate rows, first 10:\n{dups.head(10)}")
+            raise ValueError("Duplicate filename/run/subrun/event!")
 
         print(f"saving {intermediate_files_location}/presel_df_train_vars.parquet...", end="", flush=True)
         start_time = time.time()

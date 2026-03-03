@@ -12,7 +12,6 @@ import xgboost as xgb
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from sklearn.metrics import confusion_matrix
-from sklearn.model_selection import train_test_split
 from datetime import datetime
 import os
 import argparse
@@ -70,7 +69,7 @@ if __name__ == "__main__":
         signal_category_labels = ["not_nue", "nue"]
         signal_category_var = "del1g_simple_signal_category"
     elif args.signal_categories == "nc_coh_1g_vs_bkg":
-        signal_category_labels = ["NC_coherent_1g_reweighted", "not_NC_coherent_1g_reweighted"]
+        signal_category_labels = ["not_NC_coherent_1g_reweighted", "NC_coherent_1g_reweighted"]
         signal_category_var = "filetype"
     else:
         raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
@@ -96,54 +95,11 @@ if __name__ == "__main__":
     # splitting into train and test, then re-making all_df
     no_data_df = all_df.filter(pl.col("filetype") != "data")
     data_df = all_df.filter(pl.col("filetype") == "data")
-
-    if args.signal_categories == "nc_coh_1g_vs_bkg":
-        # add in NC Coherent events for training
-
-        # Weights are pre-computed in coherent_1g_reweighting.ipynb and saved to parquet.
-        # Columns: run, subrun, event, coherent_1g_weight
-        # Only events with coherent_1g_weight > 0 are present in the parquet.
-        coherent_weights = pl.scan_parquet(
-            f"{intermediate_files_location}/coherent_1g_reweighting_weights.parquet"
-        ).collect()
-
-        coherent_1g_df = (
-            no_data_df
-            .filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
-            # inner join: events in empty coherent bins are dropped
-            .join(coherent_weights, on=["run", "subrun", "event"], how="inner")
-            .with_columns([
-                # Scale by 1/frac_test for test events, since coherent_1g_weight replaces
-                # (rather than multiplies) wc_net_weight, losing the 1/frac_test correction
-                # that was applied in cell 3. Null (below-presel) events keep the raw weight.
-                pl.col("coherent_1g_weight").cast(pl.Float32).alias("wc_net_weight"),
-                pl.lit("NC_coherent_1g_reweighted").alias("filetype"),
-                pl.lit(False).alias("normal_overlay"),
-                pl.lit(False).alias("iso1g_overlay"),
-                pl.lit(False).alias("del1g_overlay"),
-            ])
-            .drop("coherent_1g_weight")
-        )
-
-        # Append reweighted events; original iso1g rows remain but are excluded
-        # downstream by the filter on "isotropic_one_gamma_overlay".
-        no_data_df = pl.concat([no_data_df, coherent_1g_df])
-        del coherent_weights, coherent_1g_df
-
-        # don't use Iso1g or Del1g events for training/testing
-        no_data_df = no_data_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay"))
     
-    train_indices, test_indices = train_test_split(np.arange(no_data_df.height), test_size=0.5, random_state=42)
-    
-    # Create boolean arrays for train/test flags
-    used_for_training = np.zeros(no_data_df.height, dtype=bool)
-    used_for_testing = np.zeros(no_data_df.height, dtype=bool)
-    used_for_training[train_indices] = True
-    used_for_testing[test_indices] = True
-    
+    train_fraction = 0.5
     no_data_df = no_data_df.with_columns([
-        pl.Series("used_for_training", used_for_training),
-        pl.Series("used_for_testing", used_for_testing)
+        (pl.col("train_test_score") < train_fraction).alias("used_for_training"),
+        (pl.col("train_test_score") >= train_fraction).alias("used_for_testing")
     ])
     
     data_df = data_df.with_columns([
@@ -156,7 +112,16 @@ if __name__ == "__main__":
     # Preselection: WC generic neutrino selection
     # (should already be applied in the presel_df_train_vars.pkl file)
     original_num_events = no_data_df.height
+
     presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+
+    if args.signal_categories == "nc_coh_1g_vs_bkg":
+        # don't use Iso1g or Del1g events for training/testing
+        presel_df = presel_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay"))
+    else:
+        # don't use 1mu1g rad. corr. events or NC Coherent 1g events for training/testing, since these are already included in the Del1g and Iso1g training
+        presel_df = presel_df.filter((pl.col("filetype") != "numuCC_rad_corrected") & (pl.col("filetype") != "NC_coherent_1g_reweighted"))
+
     preselected_num_events = presel_df.height
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
 
@@ -441,6 +406,7 @@ if __name__ == "__main__":
     
     # Build prediction dataframe columns
     prediction_cols = [
+        all_df.select("filename"),
         all_df.select("filetype"),
         all_df.select("run"),
         all_df.select("subrun"),
@@ -454,6 +420,13 @@ if __name__ == "__main__":
         }))
     
     prediction_df = pl.concat(prediction_cols, how="horizontal")
+
+    dup_mask = pl.struct("filename", "filetype", "run", "subrun", "event").is_duplicated()
+    n_dups = prediction_df.select(dup_mask.sum()).item()
+    if n_dups > 0:
+        dups = prediction_df.filter(dup_mask).select(["filename", "filetype", "run", "subrun", "event"])
+        print(f"Found {n_dups} duplicate rows in predictions, first 10:\n{dups.head(10)}")
+        raise ValueError("Duplicate filename/filetype/run/subrun/event in predictions!")
 
     print("Saving predictions...")
     prediction_df.write_parquet(output_dir / "predictions.parquet")

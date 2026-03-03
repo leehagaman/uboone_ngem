@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -12,6 +13,8 @@ from signal_categories import topological_category_queries, topological_category
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
 from signal_categories import filetype_category_queries, filetype_category_labels
+
+from file_locations import intermediate_files_location
 
 def change_dtypes(df):
     """
@@ -33,6 +36,7 @@ def change_dtypes(df):
     # Convert Float64 to Float32
     if float64_cols:
         df = df.with_columns([pl.col(col).cast(pl.Float32) for col in float64_cols])
+        gc.collect()
 
     # Convert Int64 to Int32, clipping values to Int32 range
     # Int32 range: -2,147,483,648 to 2,147,483,647
@@ -40,12 +44,16 @@ def change_dtypes(df):
     int32_max = 2147483647
 
     if int64_cols:
-        # Clip values to Int32 range, then cast to Int32
+        # Clip values to Int32 range, then cast to Int32 in batches to limit peak memory
         print(f"Converting {len(int64_cols)} Int64 columns to Int32")
-        df = df.with_columns([
-            pl.col(col).clip(int32_min, int32_max).cast(pl.Int32) 
-            for col in int64_cols
-        ])
+        batch_size = 50
+        for i in range(0, len(int64_cols), batch_size):
+            batch = int64_cols[i:i + batch_size]
+            df = df.with_columns([
+                pl.col(col).clip(int32_min, int32_max).cast(pl.Int32)
+                for col in batch
+            ])
+            gc.collect()
 
     memory_after = df.estimated_size() / (1024**3)
     memory_saved_gb = memory_before - memory_after
@@ -1151,6 +1159,75 @@ def add_signal_categories(all_df):
     total_events = all_df.height
     if sum(category_counts_unweighted) != total_events:
         print(f"Error: Sum of topological category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
+        condition_match_count = pl.sum_horizontal([condition.cast(pl.Int8) for condition in topological_conditions])
+        num_no_match, num_multi_match = all_df.select([
+            (condition_match_count == 0).sum().alias("num_no_match"),
+            (condition_match_count > 1).sum().alias("num_multi_match"),
+        ]).row(0)
+        print(f"Debug topological category assignment: no_match={num_no_match}, multi_match={num_multi_match}")
+        if num_no_match > 0:
+            no_match_df = all_df.filter(condition_match_count == 0)
+            print("No-match by filetype (top 10):")
+            print(no_match_df.group_by("filetype").len().sort("len", descending=True).head(10))
+            print("No-match overlay flags:")
+            print(no_match_df.select([
+                pl.col("normal_overlay").cast(pl.Int64).sum().alias("normal_overlay"),
+                pl.col("del1g_overlay").cast(pl.Int64).sum().alias("del1g_overlay"),
+                pl.col("iso1g_overlay").cast(pl.Int64).sum().alias("iso1g_overlay"),
+            ]))
+            print("No-match truth signature counts (top 10):")
+            print(no_match_df.group_by([
+                "wc_truth_inFV",
+                "wc_truth_0e",
+                "wc_truth_1e",
+                "wc_truth_0g",
+                "wc_truth_1g",
+                "wc_truth_2g",
+                "wc_truth_3plusg",
+                "wc_truth_0mu",
+                "wc_truth_1mu",
+                "wc_truth_Np",
+                "wc_truth_0p",
+            ]).len().sort("len", descending=True).head(10))
+            for row in no_match_df.select([
+                "filename",
+                "filetype",
+                "run",
+                "subrun",
+                "event",
+                "normal_overlay",
+                "del1g_overlay",
+                "iso1g_overlay",
+                "wc_truth_inFV",
+                "wc_truth_0e",
+                "wc_truth_1e",
+                "wc_truth_0g",
+                "wc_truth_1g",
+                "wc_truth_2g",
+                "wc_truth_3plusg",
+                "wc_truth_0mu",
+                "wc_truth_1mu",
+                "wc_truth_Np",
+                "wc_truth_0p",
+                "wc_truth_nuPdg",
+                "wc_truth_isCC",
+            ]).head(5).iter_rows(named=True):
+                print(f"No-match example: {row}")
+        if num_multi_match > 0:
+            multi_match_df = all_df.filter(condition_match_count > 1).with_columns([
+                condition_match_count.alias("n_topological_matches")
+            ])
+            print("Multi-match by filetype (top 10):")
+            print(multi_match_df.group_by("filetype").len().sort("len", descending=True).head(10))
+            for row in multi_match_df.select([
+                "filename",
+                "filetype",
+                "run",
+                "subrun",
+                "event",
+                "n_topological_matches",
+            ]).head(5).iter_rows(named=True):
+                print(f"Multi-match example: {row}")
         raise AssertionError
     uncategorized_count = all_df.filter(pl.col('topological_signal_category') == -1).height
     if uncategorized_count > 0:
@@ -3316,3 +3393,85 @@ def remove_vector_variables(df):
 
     save_columns = [col for col in df.columns if col not in vector_columns]
     return df[save_columns]
+
+
+def add_1g1mu_rad_corr_events(df):
+
+    print("adding 1g1mu rad correction events to the dataframe")
+    
+    # Weights are pre-computed in rad_corrections_reweighting.ipynb and saved to parquet.
+    # Columns: run, subrun, event, fix_del1g_weight, x_eta_uniform_weight, rad_frac_x_eta,
+    #          wc_muon_gamma_opening_angle
+    # Only events with all weights > 0 are present in the parquet.
+    rad_weights = pl.read_parquet(
+        f"{intermediate_files_location}/del1g_rad_correction_weights.parquet"
+    )
+
+    # wc_muon_gamma_opening_angle is not in all_df.parquet; add it as null for all
+    # events now so the schema matches after concat below.
+    df = df.with_columns(
+        pl.lit(None).cast(pl.Float32).alias("wc_muon_gamma_opening_angle")
+    )
+
+    rad_corrected_df = (
+        df.filter(
+            (pl.col("filetype") == "delete_one_gamma_overlay") &
+            (pl.col("wc_truth_muonMomentum_3") > 0.0)
+        )
+        # inner join: events not in the weights parquet (invalid weights) are dropped
+        .join(rad_weights, on=["run", "subrun", "event"], how="inner", suffix="_rad")
+        .with_columns([
+            (pl.col("wc_net_weight")
+             * pl.col("fix_del1g_weight")
+             * pl.col("x_eta_uniform_weight")
+             * pl.col("rad_frac_x_eta")
+            ).cast(pl.Float32).alias("wc_net_weight"),
+            pl.lit("numuCC_rad_corrected").alias("filetype"),
+            pl.col("wc_muon_gamma_opening_angle_rad").cast(pl.Float32)
+              .alias("wc_muon_gamma_opening_angle"),
+            pl.lit(False).alias("normal_overlay"),
+            pl.lit(False).alias("del1g_overlay"),
+            pl.lit(False).alias("iso1g_overlay"),
+        ])
+        .drop(["fix_del1g_weight", "x_eta_uniform_weight", "rad_frac_x_eta",
+               "wc_muon_gamma_opening_angle_rad"])
+    )
+
+    # Append rad-corrected events; original del1g rows remain but are excluded
+    # downstream by the filter on "delete_one_gamma_overlay".
+    df = pl.concat([df, rad_corrected_df])
+
+    return df
+
+def add_nc_coh_1g_reweighted_events(df):
+
+    print("adding NC Coherent 1g reweighted events to the dataframe")
+
+    # Weights are pre-computed in coherent_1g_reweighting.ipynb and saved to parquet.
+    # Columns: run, subrun, event, coherent_1g_weight
+    # Only events with coherent_1g_weight > 0 are present in the parquet.
+    coherent_weights = pl.read_parquet(
+        f"{intermediate_files_location}/coherent_1g_reweighting_weights.parquet"
+    )
+
+    coherent_1g_df = (
+        df.filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
+        # inner join: events in empty coherent bins are dropped
+        .join(coherent_weights, on=["run", "subrun", "event"], how="inner")
+        .with_columns([
+            (pl.col("coherent_1g_weight"))
+              .cast(pl.Float32).alias("wc_net_weight"),
+            pl.lit("NC_coherent_1g_reweighted").alias("filetype"),
+            pl.lit(False).alias("normal_overlay"),
+            pl.lit(False).alias("del1g_overlay"),
+            pl.lit(False).alias("iso1g_overlay"),
+        ])
+        .drop("coherent_1g_weight")
+    )
+
+    # Append reweighted events; original iso1g rows remain but are excluded
+    # downstream by the filter on "isotropic_one_gamma_overlay".
+    df = pl.concat([df, coherent_1g_df])
+
+    return df
+
