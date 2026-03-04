@@ -3471,6 +3471,8 @@ def add_nc_coh_1g_reweighted_events(df):
 
     # Append reweighted events; original iso1g rows remain but are excluded
     # downstream by the filter on "isotropic_one_gamma_overlay".
+    # coherent_1g_keep only exists on NC_coherent_1g_reweighted rows; fill others with null.
+    df = df.with_columns(pl.lit(None).cast(pl.Boolean).alias("coherent_1g_keep"))
     df = pl.concat([df, coherent_1g_df])
 
     return df

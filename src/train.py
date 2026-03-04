@@ -113,11 +113,18 @@ if __name__ == "__main__":
     # (should already be applied in the presel_df_train_vars.pkl file)
     original_num_events = no_data_df.height
 
-    presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+    presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0) # not necessary, already applied in presel_df_train_vars.parquet
 
     if args.signal_categories == "nc_coh_1g_vs_bkg":
         # don't use Iso1g or Del1g events for training/testing
         presel_df = presel_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay"))
+
+        # only use sampled NC Coherent 1g events, in order to get a coherent 1g shape without event weights
+        presel_df = presel_df.filter(
+            ((pl.col("filetype") == "NC_coherent_1g_reweighted") & (pl.col("coherent_1g_keep") == True))
+            | (pl.col("filetype") != "NC_coherent_1g_reweighted")
+        )
+
     else:
         # don't use 1mu1g rad. corr. events or NC Coherent 1g events for training/testing, since these are already included in the Del1g and Iso1g training
         presel_df = presel_df.filter((pl.col("filetype") != "numuCC_rad_corrected") & (pl.col("filetype") != "NC_coherent_1g_reweighted"))
@@ -161,7 +168,6 @@ if __name__ == "__main__":
         w_test = np.ones(w_test.shape)
         y_train = presel_train_df.select((pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")).to_numpy()
         y_test = presel_test_df.select((pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")).to_numpy()
-        
 
     y_train = y_train.flatten() if y_train.ndim > 1 else y_train
     y_test = y_test.flatten() if y_test.ndim > 1 else y_test
