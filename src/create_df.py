@@ -392,6 +392,25 @@ if __name__ == "__main__":
         
         print(f"all_df.height={all_df.height}")
 
+        # Defrag immediately: scan_parquet over N files produces an N-chunk df and
+        # fragments the heap from many small allocations.  Write/reload once here
+        # so ALL downstream postprocessing (including add_signal_categories) runs on
+        # a fresh single-chunk df with a clean heap (~35 GB baseline instead of ~80 GB).
+        temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
+        print(f"Early defrag: writing {len(parquet_files)}-chunk df to {temp_defrag_path}...", end="", flush=True)
+        _t0 = time.time()
+        all_df.lazy().sink_parquet(temp_defrag_path)
+        del all_df
+        gc.collect()
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+        all_df = pl.read_parquet(temp_defrag_path)
+        os.remove(temp_defrag_path)
+        gc.collect()
+        print(f" done in {time.time() - _t0:.1f}s")
+
         print("doing post-processing that doesn't require vector variables using polars...")
 
         all_df = do_combined_postprocessing(all_df)
@@ -441,27 +460,6 @@ if __name__ == "__main__":
             print(f"Converting {len(new_float64_cols)} new Float64 columns added by postprocessing: {new_float64_cols}")
             all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in new_float64_cols])
             gc.collect()
-
-        # Defrag before add_signal_categories.  The df at this point is multi-chunked
-        # (37 parquet files) and the heap is fragmented from earlier operations, giving
-        # an ~80 GB baseline.  add_signal_categories has large category operations
-        # (esp. "0g" with 3.1M events) that spike ~10 GB each; with only 45 GB
-        # headroom a segfault occurs.  Write/reload reduces baseline to ~35 GB,
-        # giving ~90 GB headroom for the signal-category work.
-        temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
-        print(f"Pre-signal-categories defrag: writing to {temp_defrag_path}...", end="", flush=True)
-        _t0 = time.time()
-        all_df.lazy().sink_parquet(temp_defrag_path)
-        del all_df
-        gc.collect()
-        try:
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
-        except Exception:
-            pass
-        all_df = pl.read_parquet(temp_defrag_path)
-        os.remove(temp_defrag_path)
-        gc.collect()
-        print(f" done in {time.time() - _t0:.1f}s, all_df has {all_df.height} rows")
 
         all_df = add_signal_categories(all_df)
         gc.collect()
