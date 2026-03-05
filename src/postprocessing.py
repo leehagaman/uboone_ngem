@@ -63,7 +63,32 @@ def change_dtypes(df):
     return df
 
 
+def _check_no_empty_normalizing_run_period(df, location):
+    """TEMPORARY RUN PERIOD CHECK - raise if normalizing_run_period contains '' or null."""
+    if "normalizing_run_period" not in df.columns:
+        print(f"TEMPORARY RUN PERIOD CHECK [{location}]: normalizing_run_period column not present yet")
+        return
+    # Use a single aggregation pass instead of two separate filter materializations
+    # to avoid allocating temporary DataFrames on the wide full df.
+    counts = df.select([
+        (pl.col("normalizing_run_period") == "").sum().alias("empty_count"),
+        pl.col("normalizing_run_period").is_null().sum().alias("null_count"),
+    ]).row(0, named=True)
+    empty_count = counts["empty_count"]
+    null_count = counts["null_count"]
+    if empty_count > 0 or null_count > 0:
+        bad_df = df.filter(
+            (pl.col("normalizing_run_period") == "") | pl.col("normalizing_run_period").is_null()
+        ).select(["filetype", "detailed_run_period", "normalizing_run_period"]).head(10)
+        print(f"TEMPORARY RUN PERIOD CHECK [{location}]: {empty_count} empty-string rows, {null_count} null rows")
+        print(bad_df)
+        raise ValueError(f"TEMPORARY RUN PERIOD CHECK [{location}]: found {empty_count} empty and {null_count} null normalizing_run_period values!")
+    print(f"TEMPORARY RUN PERIOD CHECK [{location}]: OK ({df.height} rows, no empty or null normalizing_run_period)")
+
+
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
+
+    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting ENTRY")
 
     print("pot_dic:")
     detailed_run_periods = []
@@ -74,6 +99,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     detailed_run_periods = sorted(set(detailed_run_periods))
     print()
 
+    normalizing_run_periods = ["4a", "4nota5"]
 
     # keep 4a separately normalized, since it's different from the rest of run 4
     # eventually, this will be used to separately normalize run 1, run 2, run 3, etc.
@@ -91,6 +117,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
         .otherwise(pl.lit("error!"))
         .alias("normalizing_run_period")
     ])
+    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting AFTER normalizing_run_period assignment")
 
     normalizing_run_period_pot_dic = defaultdict(float)
     for k, v in pot_dic.items():
@@ -118,10 +145,9 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
         print(f"    {k}: {v}")
     print()
 
-    norm_goal_pot_dic = {
-        "4a": 0,
-        "4nota5": 0,
-    }
+    norm_goal_pot_dic = {}
+    for normalizing_run_period in normalizing_run_periods:
+        norm_goal_pot_dic[normalizing_run_period] = 0
     data_in_files = False
     for k, v in pot_dic.items():
         filetype, detailed_run_period = k
@@ -171,22 +197,23 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
     original_length = df.height
 
+    # these dataframes store the POTs split by norm_run_period, summed over the different filetypes
     summed_POT_nc_1pi0_dic = {}
     summed_POT_nue_cc_dic = {}
     summed_POT_numucc_pi0_dic = {}
-    for detailed_run_period in detailed_run_periods:
-        summed_POT_nc_1pi0_dic[detailed_run_period] = 0
-        summed_POT_nue_cc_dic[detailed_run_period] = 0
-        summed_POT_numucc_pi0_dic[detailed_run_period] = 0
+    for normalizing_run_period in normalizing_run_periods:
+        summed_POT_nc_1pi0_dic[normalizing_run_period] = 0
+        summed_POT_nue_cc_dic[normalizing_run_period] = 0
+        summed_POT_numucc_pi0_dic[normalizing_run_period] = 0
         
-        for k, normalizing_pot in normalizing_run_period_pot_dic.items():
-            filetype, normalizing_run_period = k
-            if filetype == 'nc_pi0_overlay' or filetype == 'nu_overlay':
-                summed_POT_nc_1pi0_dic[detailed_run_period] += normalizing_pot
-            if filetype == 'nue_overlay' or filetype == 'nu_overlay':
-                summed_POT_nue_cc_dic[detailed_run_period] += normalizing_pot
-            if filetype == 'numucc_pi0_overlay' or filetype == 'nu_overlay':
-                summed_POT_numucc_pi0_dic[detailed_run_period] += normalizing_pot
+    for k, normalizing_pot in normalizing_run_period_pot_dic.items():
+        filetype, normalizing_run_period = k
+        if filetype == 'nc_pi0_overlay' or filetype == 'nu_overlay':
+            summed_POT_nc_1pi0_dic[normalizing_run_period] += normalizing_pot
+        if filetype == 'nue_overlay' or filetype == 'nu_overlay':
+            summed_POT_nue_cc_dic[normalizing_run_period] += normalizing_pot
+        if filetype == 'numucc_pi0_overlay' or filetype == 'nu_overlay':
+            summed_POT_numucc_pi0_dic[normalizing_run_period] += normalizing_pot
 
     print("summed_POT_nc_1pi0_dic:")
     for k, v in sorted(summed_POT_nc_1pi0_dic.items(), key=lambda item: item[0]):
@@ -248,12 +275,10 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     )
 
     nu_overlay_other_mask = (
-        (
-            pl.col("filetype") == 'nu_overlay') &
-            ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) &
-            ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1) &
-            ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg") == 14) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1))
-        )
+        (pl.col("filetype") == 'nu_overlay') & # nu_overlay
+        ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) & # not NC 1pi0 inFV
+        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1)) & # not nueCC inFV
+        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg") == 14) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) # not numuCC 1pi0 inFV
     )
 
     dirt_mask = pl.col("filetype") == 'dirt_overlay'
@@ -280,14 +305,14 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     wc_normrunperiod_eventtype_POT_expr = wc_normrunperiod_eventtype_POT_expr.otherwise(pl.lit(None).cast(pl.Float64))
     
     # Override with summed POTs for specific masks (these are checked first)
-    for filetype, normalizing_run_period in normalizing_run_period_pot_dic.keys():
+    for normalizing_run_period in normalizing_run_periods:
         wc_normrunperiod_eventtype_POT_expr = (
-            pl.when((nc_pi0_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[detailed_run_period]))
-            .when((nu_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[detailed_run_period]))
-            .when((numucc_pi0_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[detailed_run_period]))
-            .when((nu_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[detailed_run_period]))
-            .when((nue_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[detailed_run_period]))
-            .when((nu_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[detailed_run_period]))
+            pl.when((nc_pi0_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[normalizing_run_period]))
+            .when((nu_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[normalizing_run_period]))
+            .when((numucc_pi0_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[normalizing_run_period]))
+            .when((nu_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[normalizing_run_period]))
+            .when((nue_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[normalizing_run_period]))
+            .when((nu_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[normalizing_run_period]))
             .otherwise(wc_normrunperiod_eventtype_POT_expr)
         )
     
@@ -327,6 +352,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
 
     print("applying combined mask...")
     df = df.filter(combined_mask)
+    gc.collect()
+    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting AFTER combined_mask filter")
 
     print("adding net weights...")
 
@@ -371,6 +398,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     final_length = df.height
 
     print(f"When combining different file types, went from {original_length} to {final_length} events")
+
+    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting EXIT")
 
     return df
 
@@ -1165,6 +1194,32 @@ def add_signal_categories(all_df):
             (condition_match_count > 1).sum().alias("num_multi_match"),
         ]).row(0)
         print(f"Debug topological category assignment: no_match={num_no_match}, multi_match={num_multi_match}")
+        # Also check for category=-1 directly; events where ALL conditions are null
+        # won't be caught by the no_match check (since null == 0 returns null, not True).
+        cat_neg1_count = all_df.filter(pl.col('topological_signal_category') == -1).height
+        cat_null_count = all_df.filter(pl.col('topological_signal_category').is_null()).height
+        print(f"  topological_signal_category == -1: {cat_neg1_count}, null: {cat_null_count}")
+        if cat_neg1_count > 0:
+            cat_neg1_df = all_df.filter(pl.col('topological_signal_category') == -1)
+            print("Category=-1 by filetype (top 10):")
+            print(cat_neg1_df.group_by("filetype").len().sort("len", descending=True).head(10))
+            print("Category=-1 null truth variable counts:")
+            print(cat_neg1_df.select([
+                pl.col("wc_truth_inFV").is_null().sum().alias("null_inFV"),
+                pl.col("wc_truth_0e").is_null().sum().alias("null_0e"),
+                pl.col("wc_truth_0g").is_null().sum().alias("null_0g"),
+                pl.col("wc_truth_3plusg").is_null().sum().alias("null_3plusg"),
+                pl.col("normal_overlay").is_null().sum().alias("null_normal_overlay"),
+            ]))
+            for row in cat_neg1_df.select([
+                "filename", "filetype", "run", "subrun", "event",
+                "normal_overlay", "del1g_overlay", "iso1g_overlay",
+                "wc_truth_inFV", "wc_truth_0e", "wc_truth_0g",
+                "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
+                "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
+                "wc_truth_nuPdg", "wc_truth_isCC",
+            ]).head(5).iter_rows(named=True):
+                print(f"Category=-1 example: {row}")
         if num_no_match > 0:
             no_match_df = all_df.filter(condition_match_count == 0)
             print("No-match by filetype (top 10):")
@@ -1354,6 +1409,8 @@ def add_signal_categories(all_df):
     if sum(category_counts_unweighted) != total_events:
         print(f"Error: Sum of filetype category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
         raise AssertionError
+
+    print("finished adding signal categories")
 
     return all_df
 
@@ -3396,30 +3453,56 @@ def remove_vector_variables(df):
 
 
 def add_1g1mu_rad_corr_events(df):
+    """Append numuCC_rad_corrected events derived from delete_one_gamma_overlay.
 
+    Accepts either an eager DataFrame or a LazyFrame.
+
+    - Eager DataFrame: returns the full df with rad-corrected rows appended.
+    - LazyFrame: uses predicate pushdown to collect *only* the new rad-corrected
+      rows (small, cheap) and returns them as an eager DataFrame.  The caller is
+      responsible for concatenating these rows with the full df after calling
+      pl.read_parquet separately.
+    """
     print("adding 1g1mu rad correction events to the dataframe")
-    
+
+    is_lazy = isinstance(df, pl.LazyFrame)
+    if not is_lazy:
+        _check_no_empty_normalizing_run_period(df, "add_1g1mu_rad_corr_events ENTRY")
+
     # Weights are pre-computed in rad_corrections_reweighting.ipynb and saved to parquet.
     # Columns: run, subrun, event, fix_del1g_weight, x_eta_uniform_weight, rad_frac_x_eta,
     #          wc_muon_gamma_opening_angle
     # Only events with all weights > 0 are present in the parquet.
-    rad_weights = pl.read_parquet(
+    # Use scan_parquet so the weights are read lazily as part of the same query plan.
+    rad_weights_lf = pl.scan_parquet(
         f"{intermediate_files_location}/del1g_rad_correction_weights.parquet"
     )
+    print("  rad_weights parquet queued for lazy scan")
 
-    # wc_muon_gamma_opening_angle is not in all_df.parquet; add it as null for all
-    # events now so the schema matches after concat below.
-    df = df.with_columns(
-        pl.lit(None).cast(pl.Float32).alias("wc_muon_gamma_opening_angle")
-    )
+    lf = df if is_lazy else df.lazy()
 
-    rad_corrected_df = (
-        df.filter(
+    # Drop any stale weight columns that may already exist on the main df (e.g.
+    # from a previous run whose temp parquet was not cleaned up) to avoid column
+    # naming collisions when the join suffix is applied.
+    # Note: wc_muon_gamma_opening_angle comes from the weights parquet and should
+    # NOT be in the main df before this step (we no longer add it as a null column
+    # to the full df since that caused a ~44 GB memory spike).
+    stale = [c for c in ["fix_del1g_weight", "x_eta_uniform_weight",
+                          "rad_frac_x_eta", "wc_muon_gamma_opening_angle"]
+             if c in lf.collect_schema().names()]
+    if stale:
+        print(f"  WARNING: dropping stale weight columns before join: {stale}")
+        lf = lf.drop(stale)
+
+    rad_corrected_lf = (
+        lf.filter(
             (pl.col("filetype") == "delete_one_gamma_overlay") &
             (pl.col("wc_truth_muonMomentum_3") > 0.0)
         )
-        # inner join: events not in the weights parquet (invalid weights) are dropped
-        .join(rad_weights, on=["run", "subrun", "event"], how="inner", suffix="_rad")
+        # inner join: events not in the weights parquet (invalid weights) are dropped.
+        # No suffix needed: wc_muon_gamma_opening_angle only exists in the weights parquet
+        # (we dropped it from the main df above if it was stale).
+        .join(rad_weights_lf, on=["run", "subrun", "event"], how="inner")
         .with_columns([
             (pl.col("wc_net_weight")
              * pl.col("fix_del1g_weight")
@@ -3427,37 +3510,64 @@ def add_1g1mu_rad_corr_events(df):
              * pl.col("rad_frac_x_eta")
             ).cast(pl.Float32).alias("wc_net_weight"),
             pl.lit("numuCC_rad_corrected").alias("filetype"),
-            pl.col("wc_muon_gamma_opening_angle_rad").cast(pl.Float32)
-              .alias("wc_muon_gamma_opening_angle"),
+            pl.col("wc_muon_gamma_opening_angle").cast(pl.Float32),
             pl.lit(False).alias("normal_overlay"),
             pl.lit(False).alias("del1g_overlay"),
             pl.lit(False).alias("iso1g_overlay"),
         ])
-        .drop(["fix_del1g_weight", "x_eta_uniform_weight", "rad_frac_x_eta",
-               "wc_muon_gamma_opening_angle_rad"])
+        .drop(["fix_del1g_weight", "x_eta_uniform_weight", "rad_frac_x_eta"])
     )
 
-    # Append rad-corrected events; original del1g rows remain but are excluded
-    # downstream by the filter on "delete_one_gamma_overlay".
-    df = pl.concat([df, rad_corrected_df])
+    if is_lazy:
+        # Collect only the small filtered sub-df (predicate pushdown reads only
+        # delete_one_gamma_overlay rows from the parquet scan).  Caller concats
+        # these new rows with the full df after reading it separately.
+        print("  collecting rad_corrected rows (lazy mode)...")
+        rad_corrected_df = rad_corrected_lf.collect()
+        print(f"  collected {rad_corrected_df.height} rad-corrected rows")
+        return rad_corrected_df
 
+    # Eager path: concat immediately and return full df.
+    print("  starting concat...")
+    rad_corrected_df = rad_corrected_lf.collect()
+    df = pl.concat([df, rad_corrected_df], how="diagonal_relaxed")
+    del rad_corrected_df
+    gc.collect()
+    _check_no_empty_normalizing_run_period(df, "add_1g1mu_rad_corr_events EXIT (after concat)")
     return df
 
 def add_nc_coh_1g_reweighted_events(df):
+    """Append NC_coherent_1g_reweighted events derived from isotropic_one_gamma_overlay.
 
+    Accepts either an eager DataFrame or a LazyFrame.
+
+    - Eager DataFrame: returns the full df with coherent rows appended.
+    - LazyFrame: uses predicate pushdown to collect *only* the new coherent rows
+      (small, cheap) and returns them as an eager DataFrame.  The caller is
+      responsible for concatenating these rows with the full df after calling
+      pl.read_parquet separately.
+    """
     print("adding NC Coherent 1g reweighted events to the dataframe")
 
+    is_lazy = isinstance(df, pl.LazyFrame)
+    if not is_lazy:
+        _check_no_empty_normalizing_run_period(df, "add_nc_coh_1g_reweighted_events ENTRY")
+
     # Weights are pre-computed in coherent_1g_reweighting.ipynb and saved to parquet.
-    # Columns: run, subrun, event, coherent_1g_weight
+    # Columns: run, subrun, event, coherent_1g_weight, coherent_1g_keep
     # Only events with coherent_1g_weight > 0 are present in the parquet.
-    coherent_weights = pl.read_parquet(
+    # Use scan_parquet so the weights are read lazily as part of the same query plan.
+    coherent_weights_lf = pl.scan_parquet(
         f"{intermediate_files_location}/coherent_1g_reweighting_weights.parquet"
     )
+    print("  coherent_weights parquet queued for lazy scan")
 
-    coherent_1g_df = (
-        df.filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
+    lf = df if is_lazy else df.lazy()
+
+    coherent_1g_lf = (
+        lf.filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
         # inner join: events in empty coherent bins are dropped
-        .join(coherent_weights, on=["run", "subrun", "event"], how="inner")
+        .join(coherent_weights_lf, on=["run", "subrun", "event"], how="inner")
         .with_columns([
             (pl.col("coherent_1g_weight"))
               .cast(pl.Float32).alias("wc_net_weight"),
@@ -3469,11 +3579,28 @@ def add_nc_coh_1g_reweighted_events(df):
         .drop("coherent_1g_weight")
     )
 
+    if is_lazy:
+        # Collect only the small filtered sub-df (predicate pushdown reads only
+        # isotropic_one_gamma_overlay rows from the parquet scan).  Caller concats
+        # these new rows with the full df after reading it separately.
+        # coherent_1g_keep is preserved from the weights parquet via the join above.
+        print("  collecting coherent_1g rows (lazy mode)...")
+        coherent_1g_df = coherent_1g_lf.collect()
+        print(f"  collected {coherent_1g_df.height} coherent-1g rows")
+        return coherent_1g_df
+
+    # Eager path: concat immediately and return full df.
     # Append reweighted events; original iso1g rows remain but are excluded
     # downstream by the filter on "isotropic_one_gamma_overlay".
-    # coherent_1g_keep only exists on NC_coherent_1g_reweighted rows; fill others with null.
-    df = df.with_columns(pl.lit(None).cast(pl.Boolean).alias("coherent_1g_keep"))
-    df = pl.concat([df, coherent_1g_df])
-
+    # coherent_1g_keep comes from the weights parquet via the join above.
+    # Use diagonal_relaxed so that the coherent_1g_keep column (only present in
+    # coherent_1g_df) is filled with null for all original df rows, avoiding a
+    # full df copy to add that column upfront.
+    print("  starting concat...")
+    coherent_1g_df = coherent_1g_lf.collect()
+    df = pl.concat([df, coherent_1g_df], how="diagonal_relaxed")
+    del coherent_1g_df
+    gc.collect()
+    _check_no_empty_normalizing_run_period(df, "add_nc_coh_1g_reweighted_events EXIT (after concat)")
     return df
 

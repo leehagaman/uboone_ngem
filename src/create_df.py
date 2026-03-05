@@ -1,5 +1,6 @@
 
 import gc
+import ctypes
 import uproot
 import numpy as np
 import pandas as pd
@@ -244,7 +245,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.memory_logger:
-        start_memory_logger(10)
+        start_memory_logger(1)
 
     if args.create_file_dfs:
         print("Creating file-level dataframes for each file...")
@@ -395,20 +396,10 @@ if __name__ == "__main__":
 
         all_df = do_combined_postprocessing(all_df)
 
-        normalizing_POT = 0
-        for key, value in pot_dic.items():
-            if key[0] == "data":
-                normalizing_POT += value
-        if normalizing_POT == 0:
-            normalizing_POT = 1.11e21 # if we don't use a data file, assume we want full runs 1-5 data
-        
-        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
-        all_df = add_signal_categories(all_df)
-
-        # Inline dtype conversion: keeps only ONE reference to all_df at a time,
-        # so replaced columns are freed immediately after each batch rather than
-        # being held alive by a caller reference for the entire function duration.
-        print("Converting dtypes to reduce memory usage...")
+        # Convert dtypes early so all subsequent postprocessing works on smaller arrays.
+        # Float64→Float32 and Int64→Int32 are done in batches to avoid holding two full
+        # copies of the dataframe at once.
+        print("Converting dtypes to reduce memory usage (before heavy postprocessing)...")
         memory_before = all_df.estimated_size() / (1024**3)
         print(f"Estimated memory usage before conversion: {memory_before:.4f} GB")
 
@@ -435,6 +426,51 @@ if __name__ == "__main__":
         print(f"Memory saved: {memory_before - memory_after:.4f} GB ({(memory_before - memory_after) / memory_before * 100:.1f}%)")
         gc.collect()
 
+        normalizing_POT = 0
+        for key, value in pot_dic.items():
+            if key[0] == "data":
+                normalizing_POT += value
+        if normalizing_POT == 0:
+            normalizing_POT = 1.11e21 # if we don't use a data file, assume we want full runs 1-5 data
+
+        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
+
+        # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
+        new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
+        if new_float64_cols:
+            print(f"Converting {len(new_float64_cols)} new Float64 columns added by postprocessing: {new_float64_cols}")
+            all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in new_float64_cols])
+            gc.collect()
+
+        # Defrag before add_signal_categories.  The df at this point is multi-chunked
+        # (37 parquet files) and the heap is fragmented from earlier operations, giving
+        # an ~80 GB baseline.  add_signal_categories has large category operations
+        # (esp. "0g" with 3.1M events) that spike ~10 GB each; with only 45 GB
+        # headroom a segfault occurs.  Write/reload reduces baseline to ~35 GB,
+        # giving ~90 GB headroom for the signal-category work.
+        temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
+        print(f"Pre-signal-categories defrag: writing to {temp_defrag_path}...", end="", flush=True)
+        _t0 = time.time()
+        all_df.lazy().sink_parquet(temp_defrag_path)
+        del all_df
+        gc.collect()
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+        all_df = pl.read_parquet(temp_defrag_path)
+        os.remove(temp_defrag_path)
+        gc.collect()
+        print(f" done in {time.time() - _t0:.1f}s, all_df has {all_df.height} rows")
+
+        all_df = add_signal_categories(all_df)
+        gc.collect()
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+            print("malloc_trim successful")
+        except Exception:
+            print("malloc_trim failed")
+
         train_test_score_bytes = (
             all_df.select(["filename", "run", "subrun", "event"])
             .hash_rows(seed=0)
@@ -451,8 +487,47 @@ if __name__ == "__main__":
         print(f"Total number of events in all_df: {all_df.height}")
         print(f"Number of events in all_df with will_use_for_50_50_training == True: {all_df.select(pl.col('will_use_for_50_50_training').sum()).item()}")
 
-        all_df = add_1g1mu_rad_corr_events(all_df)
-        all_df = add_nc_coh_1g_reweighted_events(all_df)
+        # Write all_df (with signal categories + train_test_score) to a temp parquet
+        # so that add_1g1mu_rad_corr_events and add_nc_coh_1g_reweighted_events can
+        # use scan_parquet with predicate pushdown to collect only the small filtered
+        # sub-dfs cheaply, then read the full df fresh from disk.
+        temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
+        print(f"Writing temp parquet to {temp_defrag_path}...", end="", flush=True)
+        start_time = time.time()
+        all_df.lazy().sink_parquet(temp_defrag_path)
+        del all_df
+        gc.collect()
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+            print("malloc_trim successful")
+        except Exception:
+            print("malloc_trim failed")
+            pass
+        # Use scan_parquet (lazy) to compute the two small filtered sub-dfs with
+        # predicate pushdown (reads only the relevant rows, not the full 35 GB).
+        # Both add_* functions, when given a LazyFrame, collect and return only
+        # the *new* rows to append as a small eager DataFrame.
+        # After both small dfs are collected we read the full df once and concat.
+        # Temp file is kept until after read_parquet then removed.
+        print(f" done in {time.time() - start_time:.1f}s")
+        all_lf = pl.scan_parquet(temp_defrag_path)
+
+        rad_corrected_df = add_1g1mu_rad_corr_events(all_lf)
+        coherent_1g_df = add_nc_coh_1g_reweighted_events(all_lf)
+        del all_lf
+
+        print("Reading full df from parquet...")
+        start_read = time.time()
+        all_df = pl.read_parquet(temp_defrag_path)
+        os.remove(temp_defrag_path)
+        gc.collect()
+        print(f"  read done in {time.time() - start_read:.1f}s, all_df has {all_df.height} rows")
+
+        print("Concatenating full df with new rows...")
+        all_df = pl.concat([all_df, rad_corrected_df, coherent_1g_df], how="diagonal_relaxed")
+        del rad_corrected_df, coherent_1g_df
+        gc.collect()
+        print(f"  all_df has {all_df.height} rows after adding rad_corr and coherent events")
 
         dup_mask = pl.struct("filetype", "run", "subrun", "event").is_duplicated()
         n_dups = all_df.select(dup_mask.sum()).item()
@@ -461,10 +536,13 @@ if __name__ == "__main__":
             print(f"Found {n_dups} duplicate rows, first 10:\n{dups.head(10)}")
             raise ValueError("Duplicate filename/run/subrun/event!")
 
+        # Use sink_parquet via lazy API to stream the filtered data directly to disk
+        # without materializing a second full copy of all_df in memory.
         print(f"saving {intermediate_files_location}/presel_df_train_vars.parquet...", end="", flush=True)
         start_time = time.time()
-        presel_df = all_df.filter(pl.col("wc_kine_reco_Enu") > 0)
-        presel_df.write_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
+        all_df.lazy().filter(pl.col("wc_kine_reco_Enu") > 0).sink_parquet(
+            f"{intermediate_files_location}/presel_df_train_vars.parquet"
+        )
         end_time = time.time()
         file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.parquet") / 1024**3
         print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
