@@ -58,8 +58,10 @@ nohup python -u src/train.py --name all_vars > train_nohup.out 2>&1 &
 
 nohup python -u src/train.py --name nc_coh_1g_vs_bkg --signal_categories nc_coh_1g_vs_bkg > nc_coh_1g_vs_bkg_train_nohup.out 2>&1 &
 
-
 python src/train.py --name all_vars_small
+
+# hyperparameter tuning
+nohup python -u src/hyperparameter_tuning.py --study_name first_test_xgb_hp --n_trials 10 > hyperparameter_tuning_nohup.out 2>&1 &
 ```
 
 ## Creating Many Plots
