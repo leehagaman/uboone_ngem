@@ -344,7 +344,7 @@ def make_histogram_plot(
         dont_load_rw_from_systematic_cache=False, dont_load_detvar_from_systematic_cache=False,
         use_rw_systematics=False, weights_df=None,
         use_detvar_systematics=False, detvar_df=None,
-        use_detvar_bootstrapping=True,
+        use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=5000, num_bootstrap_samples_detvar=5000,
         return_p_value_info=False,
 
         # optional detector variation histogram plot
@@ -517,7 +517,7 @@ def make_histogram_plot(
                 raise ValueError("detvar_df must be provided if use_detvar_systematics is True")
 
             detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
-                detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, use_detvar_bootstrapping=use_detvar_bootstrapping
+                detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, use_detvar_bootstrapping=use_detvar_bootstrapping, num_bootstrap_rounds_detvar=num_bootstrap_rounds_detvar, num_bootstrap_samples_detvar=num_bootstrap_samples_detvar
             )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
