@@ -213,6 +213,44 @@ if __name__ == "__main__":
     
     print(f"presel_weights_df.height={presel_weights_df.height}")
 
+    # Extend presel_weights_df with derived event types that have no GENIE systematics.
+    # numuCC_rad_corrected comes from delete_one_gamma_overlay files, and
+    # NC_coherent_1g_reweighted comes from isotropic_one_gamma_overlay files.
+    # Neither source file has GENIE weight trees, so we assign unit CV weights and
+    # unit systematic weights (all-ones lists matching the shape of existing columns).
+    print("Adding derived event types (rad_corrected, coherent_1g) with unit systematic weights...")
+    presel_df_path = f"{intermediate_files_location}/presel_df_train_vars.parquet"
+    if os.path.exists(presel_df_path):
+        derived_events = pl.scan_parquet(presel_df_path).filter(
+            pl.col("filetype").is_in(["numuCC_rad_corrected", "NC_coherent_1g_reweighted"])
+        ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu"]).collect()
+
+        print(f"  found {derived_events.height} derived events in presel_df_train_vars.parquet")
+
+        if derived_events.height > 0:
+            # Build unit CV weights
+            derived_events = derived_events.with_columns([
+                pl.lit(1.0).cast(pl.Float32).alias("weightSpline"),
+                pl.lit(1.0).cast(pl.Float32).alias("weightTune"),
+                pl.lit(1.0).cast(pl.Float32).alias("weightSplineTimesTune"),
+            ])
+
+            # Build unit systematic list columns matching shape of existing presel_weights_df
+            sys_list_cols = [c for c, t in presel_weights_df.schema.items() if isinstance(t, pl.List)]
+            n = derived_events.height
+            for col in sys_list_cols:
+                list_len = len(presel_weights_df[col][0])
+                derived_events = derived_events.with_columns(
+                    pl.Series(col, [[1.0] * list_len] * n, dtype=pl.List(pl.Float32))
+                )
+
+            presel_weights_df = pl.concat([presel_weights_df, derived_events], how="diagonal_relaxed")
+            print(f"  presel_weights_df now has {presel_weights_df.height} rows after adding derived events")
+        else:
+            print("  WARNING: no derived events found; skipping extension")
+    else:
+        print(f"  WARNING: {presel_df_path} not found; skipping derived event extension")
+
     print(f"saving {intermediate_files_location}/presel_weights_df.parquet...", end="", flush=True)
     start_time = time.time()
     presel_weights_df.write_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")

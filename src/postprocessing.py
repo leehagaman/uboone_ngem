@@ -63,32 +63,8 @@ def change_dtypes(df):
     return df
 
 
-def _check_no_empty_normalizing_run_period(df, location):
-    """TEMPORARY RUN PERIOD CHECK - raise if normalizing_run_period contains '' or null."""
-    if "normalizing_run_period" not in df.columns:
-        print(f"TEMPORARY RUN PERIOD CHECK [{location}]: normalizing_run_period column not present yet")
-        return
-    # Use a single aggregation pass instead of two separate filter materializations
-    # to avoid allocating temporary DataFrames on the wide full df.
-    counts = df.select([
-        (pl.col("normalizing_run_period") == "").sum().alias("empty_count"),
-        pl.col("normalizing_run_period").is_null().sum().alias("null_count"),
-    ]).row(0, named=True)
-    empty_count = counts["empty_count"]
-    null_count = counts["null_count"]
-    if empty_count > 0 or null_count > 0:
-        bad_df = df.filter(
-            (pl.col("normalizing_run_period") == "") | pl.col("normalizing_run_period").is_null()
-        ).select(["filetype", "detailed_run_period", "normalizing_run_period"]).head(10)
-        print(f"TEMPORARY RUN PERIOD CHECK [{location}]: {empty_count} empty-string rows, {null_count} null rows")
-        print(bad_df)
-        raise ValueError(f"TEMPORARY RUN PERIOD CHECK [{location}]: found {empty_count} empty and {null_count} null normalizing_run_period values!")
-    print(f"TEMPORARY RUN PERIOD CHECK [{location}]: OK ({df.height} rows, no empty or null normalizing_run_period)")
-
 
 def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
-
-    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting ENTRY")
 
     print("pot_dic:")
     detailed_run_periods = []
@@ -117,7 +93,6 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
         .otherwise(pl.lit("error!"))
         .alias("normalizing_run_period")
     ])
-    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting AFTER normalizing_run_period assignment")
 
     normalizing_run_period_pot_dic = defaultdict(float)
     for k, v in pot_dic.items():
@@ -353,7 +328,6 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     print("applying combined mask...")
     df = df.filter(combined_mask)
     gc.collect()
-    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting AFTER combined_mask filter")
 
     print("adding net weights...")
 
@@ -398,8 +372,6 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     final_length = df.height
 
     print(f"When combining different file types, went from {original_length} to {final_length} events")
-
-    _check_no_empty_normalizing_run_period(df, "do_orthogonalization_and_POT_weighting EXIT")
 
     return df
 
@@ -3466,8 +3438,6 @@ def add_1g1mu_rad_corr_events(df):
     print("adding 1g1mu rad correction events to the dataframe")
 
     is_lazy = isinstance(df, pl.LazyFrame)
-    if not is_lazy:
-        _check_no_empty_normalizing_run_period(df, "add_1g1mu_rad_corr_events ENTRY")
 
     # Weights are pre-computed in rad_corrections_reweighting.ipynb and saved to parquet.
     # Columns: run, subrun, event, fix_del1g_weight, x_eta_uniform_weight, rad_frac_x_eta,
@@ -3533,7 +3503,6 @@ def add_1g1mu_rad_corr_events(df):
     df = pl.concat([df, rad_corrected_df], how="diagonal_relaxed")
     del rad_corrected_df
     gc.collect()
-    _check_no_empty_normalizing_run_period(df, "add_1g1mu_rad_corr_events EXIT (after concat)")
     return df
 
 def add_nc_coh_1g_reweighted_events(df):
@@ -3550,8 +3519,6 @@ def add_nc_coh_1g_reweighted_events(df):
     print("adding NC Coherent 1g reweighted events to the dataframe")
 
     is_lazy = isinstance(df, pl.LazyFrame)
-    if not is_lazy:
-        _check_no_empty_normalizing_run_period(df, "add_nc_coh_1g_reweighted_events ENTRY")
 
     # Weights are pre-computed in coherent_1g_reweighting.ipynb and saved to parquet.
     # Columns: run, subrun, event, coherent_1g_weight, coherent_1g_keep
@@ -3601,6 +3568,5 @@ def add_nc_coh_1g_reweighted_events(df):
     df = pl.concat([df, coherent_1g_df], how="diagonal_relaxed")
     del coherent_1g_df
     gc.collect()
-    _check_no_empty_normalizing_run_period(df, "add_nc_coh_1g_reweighted_events EXIT (after concat)")
     return df
 

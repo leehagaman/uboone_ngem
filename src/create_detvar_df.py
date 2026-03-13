@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import os
+import gc
 import time
 import argparse
 
@@ -13,7 +14,7 @@ from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
-from postprocessing import remove_vector_variables
+from postprocessing import remove_vector_variables, add_1g1mu_rad_corr_events, add_nc_coh_1g_reweighted_events
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -341,6 +342,26 @@ if __name__ == "__main__":
     
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
     all_df = add_signal_categories(all_df)
+
+    temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_detvar_df.parquet"
+    print(f"Writing temp parquet to {temp_defrag_path}...", end="", flush=True)
+    all_df.lazy().sink_parquet(temp_defrag_path)
+    print("done")
+    gc.collect()
+
+    all_lf = pl.scan_parquet(temp_defrag_path)
+    rad_corrected_df = add_1g1mu_rad_corr_events(all_lf)
+    coherent_1g_df = add_nc_coh_1g_reweighted_events(all_lf)
+    del all_lf
+
+    all_df = pl.read_parquet(temp_defrag_path)
+    os.remove(temp_defrag_path)
+    gc.collect()
+
+    all_df = pl.concat([all_df, rad_corrected_df, coherent_1g_df], how="diagonal_relaxed")
+    del rad_corrected_df, coherent_1g_df
+    gc.collect()
+    print(f"  all_df has {all_df.height} rows after adding rad_corr and coherent events")
 
     file_RSEs = []
     for filetype, vartype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["vartype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
