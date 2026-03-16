@@ -10,10 +10,6 @@ blip_vars = [
     "blip_true_g4id",
     "blip_true_pdg",
     "blip_true_energy",
-]
-
-# more technical blip variables
-extra_blip_vars = [
     "blip_charge",
     "blip_nplanes",
     "blip_proxtrkdist",

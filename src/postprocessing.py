@@ -13,6 +13,7 @@ from signal_categories import topological_category_queries, topological_category
 from signal_categories import del1g_detailed_category_queries, del1g_detailed_category_labels
 from signal_categories import del1g_simple_category_queries, del1g_simple_category_labels
 from signal_categories import filetype_category_queries, filetype_category_labels
+from signal_categories import erin_category_queries, erin_category_labels
 
 from file_locations import intermediate_files_location
 
@@ -541,6 +542,10 @@ def do_wc_postprocessing(df):
         max_true_prim_proton_costhetas = []
         max_true_prim_proton_phis = []
         sum_true_prim_proton_energies = []
+        max_true_prim_neutron_energies = []
+        max_true_prim_neutron_costhetas = []
+        max_true_prim_neutron_phis = []
+        sum_true_prim_neutron_energies = []
         true_leading_shower_energies = []
         true_leading_shower_costhetas = []
         true_leading_shower_phis = []
@@ -554,6 +559,8 @@ def do_wc_postprocessing(df):
         true_outgoing_lepton_energies = []
         true_nums_prim_protons = []
         true_nums_prim_protons_35 = []
+        true_nums_prim_neutrons = []
+        true_nums_prim_neutrons_35 = []
         truth_ids = df["wc_truth_id"].to_numpy()
         truth_pdgs = df["wc_truth_pdg"].to_numpy()
         truth_mothers = df["wc_truth_mother"].to_numpy()
@@ -563,6 +570,10 @@ def do_wc_postprocessing(df):
             max_true_prim_proton_costheta = -2.
             max_true_prim_proton_phi = -999.
             sum_true_prim_proton_energy = 0.
+            max_true_prim_neutron_energy = -1.
+            max_true_prim_neutron_costheta = -2.
+            max_true_prim_neutron_phi = -999.
+            sum_true_prim_neutron_energy = 0.
             max_shower_energy = -1.
             max_shower_costheta = -2.
             max_shower_phi = -999.
@@ -575,6 +586,8 @@ def do_wc_postprocessing(df):
             max_pi0_opening_angle = -1.
             true_num_prim_protons = 0
             true_num_prim_protons_35 = 0
+            true_num_prim_neutrons = 0
+            true_num_prim_neutrons_35 = 0
             true_outgoing_lepton_energy = -1.
             truth_id_list = truth_ids[i]
             truth_pdg_list = truth_pdgs[i]
@@ -656,6 +669,16 @@ def do_wc_postprocessing(df):
                         max_true_prim_proton_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
                     sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
 
+                if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2112: # primary neutron
+                    true_num_prim_neutrons += 1
+                    if truth_startMomentum_list[j][3] * 1000. - 939.565422 > 35.:
+                        true_num_prim_neutrons_35 += 1
+                    if truth_startMomentum_list[j][3] * 1000. - 939.565422 > max_true_prim_neutron_energy:
+                        max_true_prim_neutron_energy = truth_startMomentum_list[j][3] * 1000. - 939.565422
+                        max_true_prim_neutron_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        max_true_prim_neutron_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
+                    sum_true_prim_neutron_energy += truth_startMomentum_list[j][3] * 1000. - 939.565422
+
                 if truth_mother_list[j] == 0 and 11 <= abs(truth_pdg_list[j]) <= 16: # lepton
                     true_outgoing_lepton_energy = truth_startMomentum_list[j][3] * 1000.
 
@@ -663,9 +686,15 @@ def do_wc_postprocessing(df):
             max_true_prim_proton_costhetas.append(max_true_prim_proton_costheta)
             max_true_prim_proton_phis.append(max_true_prim_proton_phi)
             sum_true_prim_proton_energies.append(sum_true_prim_proton_energy)
+            max_true_prim_neutron_energies.append(max_true_prim_neutron_energy)
+            max_true_prim_neutron_costhetas.append(max_true_prim_neutron_costheta)
+            max_true_prim_neutron_phis.append(max_true_prim_neutron_phi)
+            sum_true_prim_neutron_energies.append(sum_true_prim_neutron_energy)
             true_outgoing_lepton_energies.append(true_outgoing_lepton_energy)
             true_nums_prim_protons.append(true_num_prim_protons)
             true_nums_prim_protons_35.append(true_num_prim_protons_35)
+            true_nums_prim_neutrons.append(true_num_prim_neutrons)
+            true_nums_prim_neutrons_35.append(true_num_prim_neutrons_35)
             true_leading_shower_energies.append(max_shower_energy)
             true_leading_shower_costhetas.append(max_shower_costheta)
             true_leading_shower_phis.append(max_shower_phi)
@@ -683,9 +712,15 @@ def do_wc_postprocessing(df):
         df["wc_true_max_prim_proton_costheta"] = max_true_prim_proton_costhetas
         df["wc_true_max_prim_proton_phi"] = max_true_prim_proton_phis
         df["wc_true_sum_prim_proton_energy"] = sum_true_prim_proton_energies
-        df["wc_true_outgoing_lepton_energy"] = true_outgoing_lepton_energies
         df["wc_true_num_prim_protons"] = true_nums_prim_protons
         df["wc_true_num_prim_protons_35"] = true_nums_prim_protons_35
+        df["wc_true_max_prim_neutron_energy"] = max_true_prim_neutron_energies
+        df["wc_true_max_prim_neutron_costheta"] = max_true_prim_neutron_costhetas
+        df["wc_true_max_prim_neutron_phi"] = max_true_prim_neutron_phis
+        df["wc_true_sum_prim_neutron_energy"] = sum_true_prim_neutron_energies
+        df["wc_true_num_prim_neutrons"] = true_nums_prim_neutrons
+        df["wc_true_num_prim_neutrons_35"] = true_nums_prim_neutrons_35
+        df["wc_true_outgoing_lepton_energy"] = true_outgoing_lepton_energies
         df["wc_true_leading_shower_energy"] = true_leading_shower_energies
         df["wc_true_leading_shower_costheta"] = true_leading_shower_costhetas
         df["wc_true_leading_shower_phi"] = true_leading_shower_phis
@@ -1133,6 +1168,18 @@ def add_signal_categories(all_df):
         (pl.col("wc_truth_nueCC") & pl.col("wc_truth_NCDelta").cast(pl.Boolean)).alias("wc_truth_nueCCDeltaRad"),
     ])
 
+    all_df = all_df.with_columns([
+        (
+            (pl.col("wc_truth_single_photon") == 1) &
+            (
+                (pl.col("wc_truth_isCC") == 0) |
+                ((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 14) & ((pl.col("wc_truth_muonMomentum_3") - 0.105658).abs() < 0.1))
+            )
+        ).cast(pl.Int32).alias("erin_inclusive_1g_true_sig")
+    ])
+
+    # TODO: add blip-enhanced Np/0p and Nn/0n categories
+
     topological_conditions = []
     print("Adding topological signal categories...")
     for query_text in topological_category_queries:
@@ -1382,176 +1429,53 @@ def add_signal_categories(all_df):
         print(f"Error: Sum of filetype category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
         raise AssertionError
 
+    print("Adding erin signal categories...")
+    erin_conditions = []
+    for query_text in erin_category_queries:
+        erin_conditions.append(eval(query_text, {'pl': pl, '__builtins__': {}}))
+    # assign integers to categories
+    erin_category_expr = None
+    for i, condition in enumerate(erin_conditions):
+        if erin_category_expr is None:
+            erin_category_expr = pl.when(condition).then(pl.lit(i))
+        else:
+            erin_category_expr = erin_category_expr.when(condition).then(pl.lit(i))
+    erin_category_expr = erin_category_expr.otherwise(pl.lit(-1))
+    all_df = all_df.with_columns([
+        erin_category_expr.alias("erin_signal_category")
+    ])
+    print("\nerin signal categories:")
+    category_counts_unweighted = []
+    category_counts_weighted = []
+    for erin_signal_category_i, erin_signal_category in enumerate(erin_category_labels):
+        curr_df = all_df.filter(pl.col('erin_signal_category') == erin_signal_category_i)
+        unweighted_num = curr_df.height
+        weighted_num = curr_df['wc_net_weight'].sum()
+        category_counts_unweighted.append(unweighted_num)
+        category_counts_weighted.append(weighted_num)
+        print(f"    {erin_signal_category}: {weighted_num:.2f} ({unweighted_num})")
+    total_events = all_df.height
+    uncategorized_count = all_df.filter(pl.col('erin_signal_category') == -1).height
+    if uncategorized_count > 0:
+        print(f"\nUncategorized erin signal categories ({uncategorized_count} events)!")
+        uncategorized_df = all_df.filter(pl.col('erin_signal_category') == -1)
+        # Print unique filetypes in uncategorized events
+        unique_filetypes = uncategorized_df['filetype'].unique().to_list()
+        print(f"Unique filetypes in uncategorized events: {unique_filetypes}")
+        # Print counts per filetype
+        for filetype in unique_filetypes:
+            count = uncategorized_df.filter(pl.col('filetype') == filetype).height
+            print(f"  {filetype}: {count} events")
+        row = uncategorized_df.row(0, named=True)
+        print(f"Example uncategorized event: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
+        raise AssertionError
+    if sum(category_counts_unweighted) != total_events:
+        print(f"Error: Sum of erin category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
+        raise AssertionError
+
     print("finished adding signal categories")
 
     return all_df
-
-
-
-def do_blip_postprocessing(df):
-
-    # TODO: replace this blip analyzing code with a more detailed method or BDT according to Karan's studies
-
-    all_blip_x = df["blip_x"].to_numpy()
-    all_blip_y = df["blip_y"].to_numpy()
-    all_blip_z = df["blip_z"].to_numpy()
-    all_blip_energy = df["blip_energy"].to_numpy()
-    all_blip_dx = df["blip_dx"].to_numpy()
-    all_blip_dw = df["blip_dw"].to_numpy()
-    all_wc_reco_shower_momentum = df["wc_reco_showerMomentum"].to_numpy()
-    all_wc_reco_shower_vtx_x = df["wc_reco_showervtxX"].to_numpy()
-    all_wc_reco_shower_vtx_y = df["wc_reco_showervtxY"].to_numpy()
-    all_wc_reco_shower_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
-
-    closest_upstream_blip_distance = []
-    closest_upstream_blip_angle = []
-    closest_upstream_blip_impact_parameter = []
-    closest_upstream_blip_energy = []
-    closest_upstream_blip_dx = []
-    closest_upstream_blip_dw = []
-    for event_index in tqdm(range(len(df)), desc="Finding closest upstream blip", mininterval=10):
-
-        curr_closest_upstream_blip_distance = np.inf
-        curr_closest_upstream_blip_angle = np.nan
-        curr_closest_upstream_blip_impact_parameter = np.nan
-        curr_closest_upstream_blip_energy = np.nan
-        curr_closest_upstream_blip_dx = np.nan
-        curr_closest_upstream_blip_dw = np.nan
-
-        blip_xs = all_blip_x[event_index]
-        blip_ys = all_blip_y[event_index]
-        blip_zs = all_blip_z[event_index]
-        blip_energies = all_blip_energy[event_index]
-        blip_dxs = all_blip_dx[event_index]
-        blip_dws = all_blip_dw[event_index]
-
-        # Check if wc_reco_shower_momentum is a float/NaN (not subscriptable)
-        if isinstance(all_wc_reco_shower_momentum[event_index], float) or not hasattr(all_wc_reco_shower_momentum[event_index], '__getitem__'):
-            closest_upstream_blip_distance.append(curr_closest_upstream_blip_distance)
-            closest_upstream_blip_angle.append(curr_closest_upstream_blip_angle)
-            closest_upstream_blip_impact_parameter.append(curr_closest_upstream_blip_impact_parameter)
-            closest_upstream_blip_energy.append(curr_closest_upstream_blip_energy)
-            closest_upstream_blip_dx.append(curr_closest_upstream_blip_dx)
-            closest_upstream_blip_dw.append(curr_closest_upstream_blip_dw)
-            continue
-
-        wc_reco_shower_momentum = np.array([all_wc_reco_shower_momentum[event_index][0], 
-                                            all_wc_reco_shower_momentum[event_index][1], 
-                                            all_wc_reco_shower_momentum[event_index][2]])
-        wc_reco_shower_momentum_unit = wc_reco_shower_momentum / np.linalg.norm(wc_reco_shower_momentum)
-        wc_reco_shower_vtx_x = all_wc_reco_shower_vtx_x[event_index]
-        wc_reco_shower_vtx_y = all_wc_reco_shower_vtx_y[event_index]
-        wc_reco_shower_vtx_z = all_wc_reco_shower_vtx_z[event_index]
-
-        for blip_index in range(len(blip_xs)):
-            dist_to_WC_shower_vtx = np.sqrt((blip_xs[blip_index] - wc_reco_shower_vtx_x)**2
-                                          + (blip_ys[blip_index] - wc_reco_shower_vtx_y)**2
-                                          + (blip_zs[blip_index] - wc_reco_shower_vtx_z)**2)
-            threshold_dist = 2 # cm, must be at least 2 cm away to be considered upstream
-            shower_vtx_to_blip_vector = np.array([blip_xs[blip_index] - wc_reco_shower_vtx_x,
-                                        blip_ys[blip_index] - wc_reco_shower_vtx_y,
-                                        blip_zs[blip_index] - wc_reco_shower_vtx_z])
-            shower_vtx_to_blip_vector_unit = shower_vtx_to_blip_vector / np.linalg.norm(shower_vtx_to_blip_vector)
-            dot_product = np.dot(shower_vtx_to_blip_vector_unit, -wc_reco_shower_momentum_unit)
-            dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
-            blip_angle = np.arccos(dot_product) * 180 / np.pi # angle between vtx to blip vector and backwards shower momentum vector
-            if threshold_dist < dist_to_WC_shower_vtx < curr_closest_upstream_blip_distance and blip_angle < 90:
-                curr_closest_upstream_blip_distance = dist_to_WC_shower_vtx
-                curr_closest_upstream_blip_angle = blip_angle
-                curr_projected_vec = np.dot(shower_vtx_to_blip_vector, wc_reco_shower_momentum_unit) * wc_reco_shower_momentum_unit # vtx to blip vector projected along shower axis
-                curr_closest_upstream_blip_impact_parameter = np.linalg.norm(shower_vtx_to_blip_vector - curr_projected_vec)
-                curr_closest_upstream_blip_energy = blip_energies[blip_index]
-                curr_closest_upstream_blip_dx = blip_dxs[blip_index]
-                curr_closest_upstream_blip_dw = blip_dws[blip_index]
-        closest_upstream_blip_distance.append(curr_closest_upstream_blip_distance)
-        closest_upstream_blip_angle.append(curr_closest_upstream_blip_angle)
-        closest_upstream_blip_impact_parameter.append(curr_closest_upstream_blip_impact_parameter)
-        closest_upstream_blip_energy.append(curr_closest_upstream_blip_energy)
-        closest_upstream_blip_dx.append(curr_closest_upstream_blip_dx)
-        closest_upstream_blip_dw.append(curr_closest_upstream_blip_dw)
-
-    df["blip_closest_upstream_distance"] = closest_upstream_blip_distance
-    df["blip_closest_upstream_angle"] = closest_upstream_blip_angle
-    df["blip_closest_upstream_impact_parameter"] = closest_upstream_blip_impact_parameter
-    df["blip_closest_upstream_energy"] = closest_upstream_blip_energy
-    df["blip_closest_upstream_dx"] = closest_upstream_blip_dx
-    df["blip_closest_upstream_dw"] = closest_upstream_blip_dw
-
-    
-    # -----------------------------------------
-    # Part B: vertex → blips (multiple vertices, multiple radii)
-    # -----------------------------------------
-    radii_cm = [5, 10, 30, 50, 75, 100]
-
-    vertices = {
-        "wc": ("wc_reco_nuvtxX", "wc_reco_nuvtxY", "wc_reco_nuvtxZ"),
-        "pandora_pelee": ("pandora_reco_nu_vtx_sce_x", "pandora_reco_nu_vtx_sce_y", "pandora_reco_nu_vtx_sce_z"),
-        "pandora_glee": ("glee_reco_vertex_x", "glee_reco_vertex_y", "glee_reco_vertex_z"),
-        "lantern": ("lantern_vtxX", "lantern_vtxY", "lantern_vtxZ"),
-    }
-
-    # pull vertex arrays once
-    vtx_arrays = {}
-    for key, (cx, cy, cz) in vertices.items():
-        vtx_arrays[key] = (df[cx].to_numpy(), df[cy].to_numpy(), df[cz].to_numpy())
-
-    # outputs: per vertex
-    out_minDist = {k: [] for k in vertices}
-    out_minE = {k: [] for k in vertices}
-    out_nWithin = {k: {R: [] for R in radii_cm} for k in vertices}
-
-    for event_index in tqdm(range(len(df)), desc="Vertex → blips (WC/Pandora/LANTERN)", mininterval=10):
-
-        blip_xs = all_blip_x[event_index]
-        blip_ys = all_blip_y[event_index]
-        blip_zs = all_blip_z[event_index]
-        blip_energies = all_blip_energy[event_index]
-
-        has_blips = (blip_xs is not None) and (len(blip_xs) > 0)
-
-        # If no blips, fill defaults for all vertices
-        if not has_blips:
-            for key in vertices:
-                out_minDist[key].append(np.inf)
-                out_minE[key].append(np.nan)
-                for R in radii_cm:
-                    out_nWithin[key][R].append(0)
-            continue
-
-        bx = np.asarray(blip_xs, dtype=float)
-        by = np.asarray(blip_ys, dtype=float)
-        bz = np.asarray(blip_zs, dtype=float)
-        be = np.asarray(blip_energies, dtype=float)
-
-        for key in vertices:
-            vx_arr, vy_arr, vz_arr = vtx_arrays[key]
-            vx, vy, vz = vx_arr[event_index], vy_arr[event_index], vz_arr[event_index]
-
-            # bad vertex
-            if not (np.isfinite(vx) and np.isfinite(vy) and np.isfinite(vz)):
-                out_minDist[key].append(np.inf)
-                out_minE[key].append(np.nan)
-                for R in radii_cm:
-                    out_nWithin[key][R].append(0)
-                continue
-
-            d = np.sqrt((bx - vx)**2 + (by - vy)**2 + (bz - vz)**2)
-
-            jmin = int(np.argmin(d))
-            out_minDist[key].append(float(d[jmin]))
-            out_minE[key].append(float(be[jmin]))
-
-            for R in radii_cm:
-                out_nWithin[key][R].append(int(np.sum(d < R)))
-
-    # attach columns
-    for key in vertices:
-        df[f"{key}_blip_minDist"] = out_minDist[key]
-        df[f"{key}_blip_minDist_energy"] = out_minE[key]
-        for R in radii_cm:
-            df[f"{key}_blip_nWithin_{R}cm"] = out_nWithin[key][R]
-
-    return df
 
 
 def do_pandora_postprocessing(df):

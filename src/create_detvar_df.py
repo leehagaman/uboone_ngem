@@ -13,7 +13,8 @@ from ntuple_variables.variables import wc_T_BDT_including_training_vars, wc_T_KI
 from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
-from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_blip_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
+from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
+from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables, add_1g1mu_rad_corr_events, add_nc_coh_1g_reweighted_events
 
 from file_locations import data_files_location, intermediate_files_location

@@ -6,6 +6,7 @@ import matplotlib.gridspec as gridspec
 
 from .signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches, del1g_detailed_category_queries
 from .signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
+from .signal_categories import erin_category_labels, erin_category_labels_latex, erin_category_colors, erin_category_hatches, erin_category_queries
 from .systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
 from .systematics import get_significance, get_significance_from_p_value, chi2_decomposition
 from .df_helpers import get_vals
@@ -334,10 +335,14 @@ def make_histogram_plot(
         var=None, display_var=None, breakdown_type="del1g_detailed", 
         title=None, savename=None,
         iso1g_norm_factor=None, del1g_norm_factor=None, 
-        include_data=True, additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
+        include_data=True, additional_scaling_factor=1.0, data_type="4a+4b open data",
         include_legend=True, show=True,
         page_num=None,
         include_ratio=True, include_decomposition=False,
+        legend_fontsize=6,
+        legend_ncol=2,
+        ylim=None,
+        yticks=None,
 
         # information for optional systematics
         selname=None,
@@ -417,6 +422,12 @@ def make_histogram_plot(
         breakdown_queries = []
         for label_i in range(len(breakdown_labels)):
             breakdown_queries.append(pl.col("filetype_signal_category") == label_i)
+    elif breakdown_type == "erin_categories":
+        breakdown_labels = erin_category_labels
+        breakdown_labels_latex = erin_category_labels_latex
+        breakdown_colors = erin_category_colors
+        breakdown_hatches = erin_category_hatches
+        breakdown_queries = erin_category_queries
     else:
         raise ValueError(f"Invalid breakdown type: {breakdown_type}")
     breakdown_counts = []
@@ -463,8 +474,20 @@ def make_histogram_plot(
         data_counts = np.histogram(get_vals(data_sel_df, var), bins=bins)[0]
         max_y = max(max_y, np.max(data_counts))
 
+        if data_type == "4a+4b open data":
+            data_pot = 2.098e19+4.038e19
+            data_label = f"{data_pot:.2e} POT Run 4a+4b Open Data ({np.sum(data_counts)})"
+        elif data_type == "4a open data":
+            data_pot = 2.098e19
+            data_label = f"{data_pot:.2e} POT Run 4a Open Data ({np.sum(data_counts)})"
+        elif data_type == "4b open data":
+            data_pot = 4.038e19
+            data_label = f"{data_pot:.2e} POT Run 4b Open Data ({np.sum(data_counts)})"
+        else:
+            raise ValueError(f"Invalid data type: {data_type}")
+
         ax1.errorbar(display_bin_centers, data_counts, yerr=np.sqrt(data_counts), fmt="o", color="k", lw=0.5, 
-                    capsize=2, capthick=1, markersize=2, label=f"{2.098e19+4.038e19:.2e} POT Run 4a+4b Open Data ({np.sum(data_counts)})")
+                    capsize=2, capthick=1, markersize=2, label=data_label)
 
         diff = data_counts - pred_counts
 
@@ -616,9 +639,9 @@ def make_histogram_plot(
         display_var = var
     
     if additional_scaling_factor != 1.0:
-        ax1.set_ylabel(f"Counts (weighted\nto {additional_scaling_factor*(2.098e19+4.038e19):.2e} POT)")
+        ax1.set_ylabel(f"Counts (weighted\nto {additional_scaling_factor*data_pot:.2e} POT)")
     else:
-        ax1.set_ylabel(f"Counts (weighted\nto {2.098e19+4.038e19:.2e} POT)")
+        ax1.set_ylabel(f"Counts (weighted\nto {data_pot:.2e} POT)")
     ax1.set_title(title)
     ax1.set_xlim(display_bins[0], display_bins[-1])
     if log_x:
@@ -628,8 +651,13 @@ def make_histogram_plot(
         ax1.set_ylim(0.01, max_y * 10)
     else:
         ax1.set_ylim(0, max_y * 1.2)
+
+    if ylim is not None:
+        ax1.set_ylim(ylim)
+    if yticks is not None:
+        ax1.set_yticks(yticks)
     if include_legend:
-        ax1.legend(ncol=2, loc='upper right', fontsize=6)
+        ax1.legend(ncol=legend_ncol, loc='upper right', fontsize=legend_fontsize)
     
     if include_ratio:
         ax1.set_xticklabels([])

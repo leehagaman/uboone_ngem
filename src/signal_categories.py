@@ -304,6 +304,65 @@ filetype_category_colors = [cat[2] for cat in filetype_categories]
 filetype_category_hatches = [cat[3] for cat in filetype_categories]
 filetype_category_labels_latex = [cat[0] for cat in filetype_categories]
 
-# TODO: add categories that separate out events with vertex blips and neutron blips
-# Maybe use some variable for "true effective vertex blip energy", as a sum of all charged particle energies produced at the vertex after accounting for quenching?
-# Add category for photonuclear absorption
+erin_categories = [
+    ("ext",                      "(pl.col('filetype') == 'ext')",                                                                                                                                "xkcd:tan", "////"),
+    ("dirt_other_outFV_no1gsig", "((pl.col('filetype') == 'dirt_overlay') | (pl.col('normal_overlay') & ~pl.col('wc_truth_inFV'))) & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",              "xkcd:orange", "xxxx"),
+    ("NC1pi0_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",        "xkcd:periwinkle", None),
+    ("numuCC1pi0_inFV_no1gsig",  "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal", None),
+    ("nueCC_inFV_no1gsig",       "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
+    ("other_inFV_no1gsig",       "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan", None),
+    ("1gsig",                    "(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                                                                  "xkcd:fuchsia", None),
+    ("del1g_overlay",            "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow", "++++"),
+    ("iso1g_overlay",            "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise", "++++"),
+    ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
+]
+
+erin_category_queries = [cat[1] for cat in erin_categories]
+erin_category_labels = [cat[0] for cat in erin_categories]
+erin_category_colors = [cat[2] for cat in erin_categories]
+erin_category_hatches = [cat[3] for cat in erin_categories]
+erin_category_labels_latex = [
+    "ext",
+    "dirt/out FV",
+    r"NC $1\pi^0$",
+    r"$\nu_\mu$ CC $1\pi^0$",
+    r"$\nu_e$ CC",
+    "other in FV",
+    "1g signal",
+    "del1g overlay",
+    "iso1g overlay",
+    "data",
+]
+
+erin_Np0p_categories = [
+    ("ext",                     "(pl.col('filetype') == 'ext')",                                                                                                                                "xkcd:green", None),
+    ("dirt_no1gsig",            "(pl.col('filetype') == 'dirt_overlay') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                        "xkcd:brown", None),
+    ("other_outFV_no1gsig",     "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                           "xkcd:bright purple", None),    
+    ("NC1pi0_inFV_no1gsig",     "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",        "xkcd:lavender", None),
+    ("numuCC1pi0_inFV_no1gsig", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal", None),
+    ("nueCC_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
+    ("other_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan", None),
+    ("1gsig_Np",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np')",                                                                                          "xkcd:red", None),
+    ("1gsig_0p",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p')",                                                                                          "xkcd:pink", None),
+    ("del1g_overlay",           "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow", "++++"),
+    ("iso1g_overlay",           "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise", "++++"),
+    ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
+]
+erin_Np0p_category_queries = [cat[1] for cat in erin_Np0p_categories]
+erin_Np0p_category_labels = [cat[0] for cat in erin_Np0p_categories]
+erin_Np0p_category_colors = [cat[2] for cat in erin_Np0p_categories]
+erin_Np0p_category_hatches = [cat[3] for cat in erin_Np0p_categories]
+erin_Np0p_category_labels_latex = [
+    "ext",
+    "dirt",
+    "other out FV",
+    r"NC $1\pi^0$ $Np$",
+    r"$\nu_\mu$ CC $1\pi^0$",
+    r"$\nu_e$ CC",
+    "other in FV",
+    "1g signal Np",
+    "1g signal 0p",
+    "del1g overlay",
+    "iso1g overlay",
+    "data",
+]    
