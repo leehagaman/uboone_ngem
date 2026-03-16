@@ -7,6 +7,9 @@ import matplotlib.gridspec as gridspec
 from .signal_categories import del1g_detailed_category_labels, del1g_detailed_category_labels_latex, del1g_detailed_category_colors, del1g_detailed_category_hatches, del1g_detailed_category_queries
 from .signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
 from .signal_categories import erin_category_labels, erin_category_labels_latex, erin_category_colors, erin_category_hatches, erin_category_queries
+from .signal_categories import erin_Np0p_category_labels, erin_Np0p_category_labels_latex, erin_Np0p_category_colors, erin_Np0p_category_hatches, erin_Np0p_category_queries
+from .signal_categories import erin_Np0pNn0n_category_labels, erin_Np0pNn0n_category_labels_latex, erin_Np0pNn0n_category_colors, erin_Np0pNn0n_category_hatches, erin_Np0pNn0n_category_queries
+from .signal_categories import erin_Np0pNn0n_pi0_category_labels, erin_Np0pNn0n_pi0_category_labels_latex, erin_Np0pNn0n_pi0_category_colors, erin_Np0pNn0n_pi0_category_hatches, erin_Np0pNn0n_pi0_category_queries
 from .systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
 from .systematics import get_significance, get_significance_from_p_value, chi2_decomposition
 from .df_helpers import get_vals
@@ -428,6 +431,24 @@ def make_histogram_plot(
         breakdown_colors = erin_category_colors
         breakdown_hatches = erin_category_hatches
         breakdown_queries = erin_category_queries
+    elif breakdown_type == "erin_Np0p_categories":
+        breakdown_labels = erin_Np0p_category_labels
+        breakdown_labels_latex = erin_Np0p_category_labels_latex
+        breakdown_colors = erin_Np0p_category_colors
+        breakdown_hatches = erin_Np0p_category_hatches
+        breakdown_queries = erin_Np0p_category_queries
+    elif breakdown_type == "erin_Np0pNn0n_categories":
+        breakdown_labels = erin_Np0pNn0n_category_labels
+        breakdown_labels_latex = erin_Np0pNn0n_category_labels_latex
+        breakdown_colors = erin_Np0pNn0n_category_colors
+        breakdown_hatches = erin_Np0pNn0n_category_hatches
+        breakdown_queries = erin_Np0pNn0n_category_queries
+    elif breakdown_type == "erin_Np0pNn0n_pi0_categories":
+        breakdown_labels = erin_Np0pNn0n_pi0_category_labels
+        breakdown_labels_latex = erin_Np0pNn0n_pi0_category_labels_latex
+        breakdown_colors = erin_Np0pNn0n_pi0_category_colors
+        breakdown_hatches = erin_Np0pNn0n_pi0_category_hatches
+        breakdown_queries = erin_Np0pNn0n_pi0_category_queries
     else:
         raise ValueError(f"Invalid breakdown type: {breakdown_type}")
     breakdown_counts = []

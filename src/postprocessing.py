@@ -840,9 +840,14 @@ def do_wc_postprocessing(df):
     max_prim_other_track_energies = []
     max_prim_other_track_costhetas = []
     max_prim_other_track_phis = []
+    num_protons_35_MeV_75cm_from_reco_shower_vtx_list = []
     reco_pdg = df["wc_reco_pdg"].to_numpy()
     reco_mother = df["wc_reco_mother"].to_numpy()
     reco_startMomentum = df["wc_reco_startMomentum"].to_numpy()
+    reco_startXYZT = df["wc_reco_startXYZT"].to_numpy()
+    showervtx_x = df["wc_reco_showervtxX"].to_numpy()
+    showervtx_y = df["wc_reco_showervtxY"].to_numpy()
+    showervtx_z = df["wc_reco_showervtxZ"].to_numpy()
     for i in tqdm(range(df.shape[0]), desc="Adding WC reco prim proton and other track variables", mininterval=10):
         if isinstance(reco_pdg[i], float) and np.isnan(reco_pdg[i]):
             max_prim_proton_energies.append(np.nan)
@@ -851,6 +856,7 @@ def do_wc_postprocessing(df):
             max_prim_other_track_energies.append(np.nan)
             max_prim_other_track_costhetas.append(np.nan)
             max_prim_other_track_phis.append(np.nan)
+            num_protons_35_MeV_75cm_from_reco_shower_vtx_list.append(np.nan)
             continue
 
         num_particles = len(reco_pdg[i])
@@ -860,7 +866,16 @@ def do_wc_postprocessing(df):
         max_prim_other_track_energy = -1.
         max_prim_other_track_costheta = -2.
         max_prim_other_track_phi = -999.
+        num_protons_35_MeV_75cm_from_reco_shower_vtx = 0
+        shower_vtx_valid = not (isinstance(showervtx_x[i], float) and np.isnan(showervtx_x[i]))
         for j in range(num_particles):
+            if reco_pdg[i][j] == 2212: # proton (any, not just primary)
+                if shower_vtx_valid and reco_startMomentum[i][j][3] > 35:
+                    dist = np.sqrt((reco_startXYZT[i][j][0] - showervtx_x[i])**2 +
+                                   (reco_startXYZT[i][j][1] - showervtx_y[i])**2 +
+                                   (reco_startXYZT[i][j][2] - showervtx_z[i])**2)
+                    if dist < 75:
+                        num_protons_35_MeV_75cm_from_reco_shower_vtx += 1
             if reco_mother[i][j] == 0: # primary
                 if reco_pdg[i][j] == 2212: # proton
                     if reco_startMomentum[i][j][3] > max_prim_proton_energy:
@@ -879,6 +894,7 @@ def do_wc_postprocessing(df):
         max_prim_other_track_energies.append(max_prim_other_track_energy)
         max_prim_other_track_costhetas.append(max_prim_other_track_costheta)
         max_prim_other_track_phis.append(max_prim_other_track_phi)
+        num_protons_35_MeV_75cm_from_reco_shower_vtx_list.append(num_protons_35_MeV_75cm_from_reco_shower_vtx)
 
     df["wc_reco_max_prim_proton_energy"] = max_prim_proton_energies
     df["wc_reco_max_prim_proton_costheta"] = max_prim_proton_costhetas
@@ -886,6 +902,7 @@ def do_wc_postprocessing(df):
     df["wc_reco_max_prim_other_track_energy"] = max_prim_other_track_energies
     df["wc_reco_max_prim_other_track_costheta"] = max_prim_other_track_costhetas
     df["wc_reco_max_prim_other_track_phi"] = max_prim_other_track_phis
+    df["wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx"] = num_protons_35_MeV_75cm_from_reco_shower_vtx_list
 
     return df
 
@@ -1137,6 +1154,10 @@ def add_signal_categories(all_df):
         # Proton energy
         (pl.col("wc_true_max_prim_proton_energy") >= 35).alias("wc_truth_Np"),
         (pl.col("wc_true_max_prim_proton_energy") < 35).alias("wc_truth_0p"),
+
+        # neutron energy
+        (pl.col("wc_true_max_prim_neutron_energy") >= 35).alias("wc_truth_Nn"),
+        (pl.col("wc_true_max_prim_neutron_energy") < 35).alias("wc_truth_0n"),
         
         # CC/NC types
         (pl.col("wc_truth_isCC").cast(pl.Boolean) & (pl.col("wc_truth_nuPdg").abs() == 14)).alias("wc_truth_numuCC"),
@@ -1178,7 +1199,12 @@ def add_signal_categories(all_df):
         ).cast(pl.Int32).alias("erin_inclusive_1g_true_sig")
     ])
 
-    # TODO: add blip-enhanced Np/0p and Nn/0n categories
+    all_df = all_df.with_columns([
+        (
+            pl.col("blip_backtrack_cones_n")
+            + pl.col("wc_reco_num_protons_35_MeV")
+        ).alias("wc_reco_num_protons_35_MeV_plus_backtrack_blips")
+    ])
 
     topological_conditions = []
     print("Adding topological signal categories...")
@@ -3493,4 +3519,3 @@ def add_nc_coh_1g_reweighted_events(df):
     del coherent_1g_df
     gc.collect()
     return df
-
