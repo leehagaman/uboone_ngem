@@ -1,5 +1,7 @@
 # MicroBooNE Next-Gen Electromagnetic Shower Search (NGEM)
 
+Some overview slides are available on the MicroBooNE DocDB [here](https://microboone-docdb.fnal.gov/cgi-bin/sso/ShowDocument?docid=46041).
+
 
 ## Downloading Input Files
 ```
