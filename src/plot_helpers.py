@@ -811,7 +811,9 @@ def make_histogram_plot(
     if show: plt.show()
 
     if plot_det_variations:
-        make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, include_overflow, include_underflow, log_x, log_y, additional_scaling_factor, normalizing_POT, page_num, savename, show, detvar_df)
+        make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x, log_y, 
+        additional_scaling_factor, data_pot, 
+        page_num, savename, show, detvar_df)
 
 
     if plot_sys_breakdown:
@@ -820,7 +822,10 @@ def make_histogram_plot(
         
         make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov, 
             mc_pred_counts, pred_counts, display_var, display_bins, log_x, savename, show, 
-            include_total, include_pred_stat, include_data_stat, include_rw, just_genie_breakdown, include_detvar, just_detvar_breakdown, print_sys_breakdown)
+            include_total, include_pred_stat, include_data_stat, 
+            include_rw, just_genie_breakdown, 
+            include_detvar, just_detvar_breakdown, detvar_df, 
+            print_sys_breakdown)
 
     if return_p_value_info:
         return p_value_info_dic
