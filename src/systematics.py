@@ -95,13 +95,15 @@ def create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=None):
     return curr_cov / uni_count
 
 
-def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, description="", quiet=False):
+def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, description="", quiet=False,
+                               chunk_size=50):
+    # sys_weight_arrs is an object array from .to_numpy() on a Polars List column:
+    # shape (n_events,), each element a 1D float array of length n_universes.
+    # We process universes in chunks of chunk_size to avoid a single large allocation
+    # (e.g. flux_all: 1000 universes × 1.87M events × 4 bytes = 7.5 GB if stacked at once).
 
     num_bins = len(bins) - 1
-
-    sys_weight_arrs = np.stack(sys_weight_arrs)
-
-    num_unis = sys_weight_arrs.shape[1]
+    num_unis = len(sys_weight_arrs[0])
 
     # finding the bin indices once, rather than a thousand times for each weight
     bin_indices = np.searchsorted(bins, vals, side='right') - 1
@@ -109,18 +111,20 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
     # removing events outside of the bins
     valid = (bin_indices >= 0) & (bin_indices < len(bins) - 1)
     bin_indices = bin_indices[valid]
-    sys_weight_arrs = sys_weight_arrs[valid, :]
+    sys_weight_arrs = sys_weight_arrs[valid]
     other_weights = other_weights[valid]
 
-    # replacing nan, inf, negative, or large weights with 1, the same way as we did for the CV in postprocessing.py
-    sys_weight_arrs = np.nan_to_num(sys_weight_arrs, nan=1, posinf=1, neginf=1)
-    sys_weight_arrs[sys_weight_arrs > 30] = 1
-    sys_weight_arrs[sys_weight_arrs < 0] = 1
-
-    # creating the histogram for each universe (with pre-computed bin indices)
     hists = np.zeros((num_bins, num_unis))
-    for uni_i, uni_weights in tqdm(enumerate(sys_weight_arrs.T), total=num_unis, desc=f"Creating {description} universe histograms", disable=quiet, mininterval=10):
-        hists[:, uni_i] = np.bincount(bin_indices, weights=uni_weights*other_weights, minlength=num_bins)
+
+    for chunk_start in tqdm(range(0, num_unis, chunk_size), desc=f"Creating {description} universe histograms", disable=quiet, mininterval=10):
+        chunk_end = min(chunk_start + chunk_size, num_unis)
+        chunk = np.array([arr[chunk_start:chunk_end] for arr in sys_weight_arrs], dtype=np.float32)
+        # replacing nan, inf, negative, or large weights with 1, the same way as we did for the CV in postprocessing.py
+        chunk = np.nan_to_num(chunk, nan=1, posinf=1, neginf=1)
+        chunk[chunk > 30] = 1
+        chunk[chunk < 0] = 1
+        for i, uni_weights in enumerate(chunk.T):
+            hists[:, chunk_start + i] = np.bincount(bin_indices, weights=uni_weights.astype(np.float64) * other_weights, minlength=num_bins)
 
     return hists
 
@@ -226,7 +230,7 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
 
     detvar_sys_frac_cov_dic = {}
 
-    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "Recomb2", "SCE"]:
+    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
         curr_filetype_rse_df = curr_df.select(["filetype", "run", "subrun", "event"])

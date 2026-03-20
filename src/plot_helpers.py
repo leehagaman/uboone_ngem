@@ -360,10 +360,13 @@ def make_histogram_plot(
 
         # optional systematics breakdown plot
         plot_sys_breakdown=False,
-        include_total=True, include_pred_stat=True, include_data_stat=False, 
+        include_total=True, include_pred_stat=True, include_data_stat=False,
         include_rw=True, just_genie_breakdown=False,
         include_detvar=True, just_detvar_breakdown=False,
         print_sys_breakdown=False,
+
+        # optional detvar-only fractional uncertainty breakdown plot
+        plot_detvar_breakdown=False,
         
         ):
 
@@ -819,13 +822,24 @@ def make_histogram_plot(
     if plot_sys_breakdown:
         if not use_rw_systematics or not use_detvar_systematics:
             raise ValueError("plot_sys_breakdown requires use_rw_systematics and use_detvar_systematics to be True")
-        
-        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov, 
-            mc_pred_counts, pred_counts, display_var, display_bins, log_x, savename, show, 
-            include_total, include_pred_stat, include_data_stat, 
-            include_rw, just_genie_breakdown, 
-            include_detvar, just_detvar_breakdown, detvar_df, 
+
+        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov,
+            mc_pred_counts, pred_counts, display_var, display_bins, log_x, savename, show,
+            include_total, include_pred_stat, include_data_stat,
+            include_rw, just_genie_breakdown,
+            include_detvar, just_detvar_breakdown, detvar_df,
             print_sys_breakdown)
+
+    if plot_detvar_breakdown:
+        if not use_detvar_systematics:
+            raise ValueError("plot_detvar_breakdown requires use_detvar_systematics to be True")
+
+        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov,
+            mc_pred_counts, pred_counts, display_var, display_bins, log_x, savename, show,
+            include_total=False, include_pred_stat=False, include_data_stat=False,
+            include_rw=False, just_genie_breakdown=False,
+            include_detvar=True, just_detvar_breakdown=True, detvar_df=detvar_df,
+            print_sys_breakdown=print_sys_breakdown)
 
     if return_p_value_info:
         return p_value_info_dic
