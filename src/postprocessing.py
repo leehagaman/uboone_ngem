@@ -1206,6 +1206,13 @@ def add_signal_categories(all_df):
         ).alias("wc_reco_num_protons_35_MeV_plus_backtrack_blips")
     ])
 
+    all_df = all_df.with_columns([
+        (
+            pl.col("blip_backtrack_cones_n")
+            + pl.col("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx")
+        ).alias("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx_plus_backtrack_blips")
+    ])
+
     topological_conditions = []
     print("Adding topological signal categories...")
     for query_text in topological_category_queries:

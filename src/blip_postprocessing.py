@@ -42,6 +42,20 @@ def is_within_sphere_outside_conic(sh_vtx, sh_mom_unit, blip_xyz,
     return cos_angle < cos_cone
 
 
+def is_in_cone(apex, direction_unit, blip_xyz,
+               half_angle_deg=FORWARD_CONE_HALF_ANGLE_DEG):
+    """
+    Returns True if blip_xyz is within the cone defined by apex, direction_unit,
+    and half_angle_deg.
+    """
+    vtx_to_blip = blip_xyz - apex
+    dist = np.linalg.norm(vtx_to_blip)
+    if dist < 1e-10:
+        return True
+    cos_angle = np.dot(vtx_to_blip / dist, direction_unit)
+    return cos_angle >= np.cos(np.radians(half_angle_deg))
+
+
 def is_backtracked_blip(dist2vtx, cos_angle_sh):
     """
     Returns True if the blip is in the backtrack cone (Region B).
@@ -450,5 +464,205 @@ def do_blip_postprocessing(df):
     df["blip_no_shower_cone_no_backtrack_cones_nonproton_sumE"] = no_shower_cone_no_backtrack_cones_nonproton_sumE
     df["blip_backtrack_cones_nonproton_n"]                   = backtrack_cones_nonproton_n
     df["blip_backtrack_cones_nonproton_sumE"]                = backtrack_cones_nonproton_sumE
+
+    # -----------------------------------------
+    # Part D: Two-shower event variables
+    #
+    # Identifies the two highest-energy reco showers (wc_reco_pdg == 11) per event.
+    # Exclusion cones: apex at WC nu vertex, direction = (shower_start - nu_vtx) normalized
+    #   (falls back to shower momentum direction if that distance is ~zero), 45-deg half-angle.
+    # Same blip quality cuts as Part C.
+    #
+    # Outputs (default -1 if < 2 showers found):
+    #   blip_2shwr_no_shower_cones_{n,sumE}            — in 75cm sphere around nu vtx, outside both cones
+    #   blip_2shwr_no_shower_cones_{proton,nonproton}_{n,sumE}
+    #   blip_2shwr_nuvtx_{nWithin,sumE}_{1,3,10}cm    — small spheres, no cone exclusion
+    #   blip_2shwr_nuvtx_{proton,nonproton}_{nWithin,sumE}_{1,3,10}cm
+    #   blip_2shwr_min_nuvtx_to_shower_vtx_dist
+    # -----------------------------------------
+    all_wc_reco_pdg           = df["wc_reco_pdg"].to_numpy()
+    all_wc_reco_startMomentum = df["wc_reco_startMomentum"].to_numpy()
+    all_wc_reco_startXYZT     = df["wc_reco_startXYZT"].to_numpy()
+    wc_nuvtx_x = df["wc_reco_nuvtxX"].to_numpy()
+    wc_nuvtx_y = df["wc_reco_nuvtxY"].to_numpy()
+    wc_nuvtx_z = df["wc_reco_nuvtxZ"].to_numpy()
+
+    proton_radii_2shwr = [1, 3, 10]
+
+    two_shwr_no_shower_cones_n          = []
+    two_shwr_no_shower_cones_sumE       = []
+    two_shwr_no_shower_cones_proton_n          = []
+    two_shwr_no_shower_cones_proton_sumE       = []
+    two_shwr_no_shower_cones_nonproton_n       = []
+    two_shwr_no_shower_cones_nonproton_sumE    = []
+
+    two_shwr_nuvtx_nWithin    = {R: [] for R in proton_radii_2shwr}
+    two_shwr_nuvtx_sumE       = {R: [] for R in proton_radii_2shwr}
+    two_shwr_nuvtx_proton_nWithin    = {R: [] for R in proton_radii_2shwr}
+    two_shwr_nuvtx_proton_sumE       = {R: [] for R in proton_radii_2shwr}
+    two_shwr_nuvtx_nonproton_nWithin = {R: [] for R in proton_radii_2shwr}
+    two_shwr_nuvtx_nonproton_sumE    = {R: [] for R in proton_radii_2shwr}
+
+    two_shwr_min_nuvtx_to_shower_vtx_dist = []
+
+    for event_index in tqdm(range(len(df)), desc="Two-shower blip variables", mininterval=10):
+
+        def _append_2shwr_defaults():
+            two_shwr_no_shower_cones_n.append(-1);        two_shwr_no_shower_cones_sumE.append(-1)
+            two_shwr_no_shower_cones_proton_n.append(-1); two_shwr_no_shower_cones_proton_sumE.append(-1)
+            two_shwr_no_shower_cones_nonproton_n.append(-1); two_shwr_no_shower_cones_nonproton_sumE.append(-1)
+            for R in proton_radii_2shwr:
+                two_shwr_nuvtx_nWithin[R].append(-1);           two_shwr_nuvtx_sumE[R].append(-1)
+                two_shwr_nuvtx_proton_nWithin[R].append(-1);    two_shwr_nuvtx_proton_sumE[R].append(-1)
+                two_shwr_nuvtx_nonproton_nWithin[R].append(-1); two_shwr_nuvtx_nonproton_sumE[R].append(-1)
+            two_shwr_min_nuvtx_to_shower_vtx_dist.append(-1)
+
+        # Validate nu vertex and pdg array
+        nu_vx = wc_nuvtx_x[event_index]
+        nu_vy = wc_nuvtx_y[event_index]
+        nu_vz = wc_nuvtx_z[event_index]
+        pdg_arr = all_wc_reco_pdg[event_index]
+
+        if (not (np.isfinite(nu_vx) and np.isfinite(nu_vy) and np.isfinite(nu_vz)) or
+                isinstance(pdg_arr, float) or not hasattr(pdg_arr, '__getitem__')):
+            _append_2shwr_defaults()
+            continue
+
+        nu_vtx = np.array([nu_vx, nu_vy, nu_vz])
+        mom_arr  = all_wc_reco_startMomentum[event_index]
+        xyzt_arr = all_wc_reco_startXYZT[event_index]
+
+        # Find the two highest-energy showers (pdg == 11)
+        shower_indices = [j for j in range(len(pdg_arr)) if pdg_arr[j] == 11]
+        if len(shower_indices) < 2:
+            _append_2shwr_defaults()
+            continue
+
+        shower_indices.sort(key=lambda j: mom_arr[j][3], reverse=True)
+        top2 = shower_indices[:2]
+
+        # Compute cone direction for each shower
+        cone_dirs = []
+        shower_start_xyzs = []
+        for j in top2:
+            sh_start = np.array([xyzt_arr[j][0], xyzt_arr[j][1], xyzt_arr[j][2]])
+            shower_start_xyzs.append(sh_start)
+            nu_to_sh = sh_start - nu_vtx
+            dist_nu_to_sh = np.linalg.norm(nu_to_sh)
+            if dist_nu_to_sh > 1e-10:
+                cone_dirs.append(nu_to_sh / dist_nu_to_sh)
+            else:
+                # fall back to shower momentum direction
+                sh_mom = np.array([mom_arr[j][0], mom_arr[j][1], mom_arr[j][2]])
+                sh_mom_mag = np.linalg.norm(sh_mom)
+                if sh_mom_mag > 1e-10:
+                    cone_dirs.append(sh_mom / sh_mom_mag)
+                else:
+                    cone_dirs.append(np.array([0.0, 0.0, 1.0]))  # degenerate fallback
+
+        min_dist = min(np.linalg.norm(shower_start_xyzs[0] - nu_vtx),
+                       np.linalg.norm(shower_start_xyzs[1] - nu_vtx))
+
+        # Load blip arrays for this event
+        blip_xs           = all_blip_x[event_index]
+        blip_ys           = all_blip_y[event_index]
+        blip_zs           = all_blip_z[event_index]
+        blip_energies     = all_blip_energy[event_index]
+        blip_dxs_ev       = all_blip_dx[event_index]
+        blip_dws_ev       = all_blip_dw[event_index]
+        blip_nplanes_ev        = all_blip_nplanes[event_index]
+        blip_touchtrk_ev       = all_blip_touchtrk[event_index]
+        blip_pl2_bydeadwire_ev = all_blip_pl2_bydeadwire[event_index]
+        blip_proxtrkdist_ev    = all_blip_proxtrkdist[event_index]
+        ev_filetype = filetype[event_index]
+
+        ev_no_shower_cones_n          = 0; ev_no_shower_cones_sumE       = 0.0
+        ev_no_shower_cones_proton_n   = 0; ev_no_shower_cones_proton_sumE = 0.0
+        ev_no_shower_cones_nonproton_n = 0; ev_no_shower_cones_nonproton_sumE = 0.0
+        ev_nuvtx_nWithin    = {R: 0 for R in proton_radii_2shwr}
+        ev_nuvtx_sumE       = {R: 0.0 for R in proton_radii_2shwr}
+        ev_nuvtx_proton_nWithin    = {R: 0 for R in proton_radii_2shwr}
+        ev_nuvtx_proton_sumE       = {R: 0.0 for R in proton_radii_2shwr}
+        ev_nuvtx_nonproton_nWithin = {R: 0 for R in proton_radii_2shwr}
+        ev_nuvtx_nonproton_sumE    = {R: 0.0 for R in proton_radii_2shwr}
+
+        if blip_xs is not None and len(blip_xs) > 0:
+            for blip_index in range(len(blip_xs)):
+                # Quality cuts
+                if blip_nplanes_ev[blip_index] <= 1:
+                    continue
+                if blip_touchtrk_ev[blip_index] != 0:
+                    continue
+                if blip_pl2_bydeadwire_ev[blip_index] != 0:
+                    continue
+                if blip_proxtrkdist_ev[blip_index] <= 15.0:
+                    continue
+                bx = blip_xs[blip_index]
+                by = blip_ys[blip_index]
+                bz = blip_zs[blip_index]
+                if not is_blip_in_tpc(bx, by, bz):
+                    continue
+
+                energy = blip_energies[blip_index]
+                blip_xyz = np.array([bx, by, bz])
+                dist_to_nu = np.linalg.norm(blip_xyz - nu_vtx)
+                is_proton = reco_proton_blip(energy, blip_dxs_ev[blip_index], blip_dws_ev[blip_index], ev_filetype)
+
+                # Small spheres around nu vertex (no cone exclusion)
+                for R in proton_radii_2shwr:
+                    if dist_to_nu < R:
+                        ev_nuvtx_nWithin[R] += 1
+                        ev_nuvtx_sumE[R] += energy
+                        if is_proton:
+                            ev_nuvtx_proton_nWithin[R] += 1
+                            ev_nuvtx_proton_sumE[R] += energy
+                        else:
+                            ev_nuvtx_nonproton_nWithin[R] += 1
+                            ev_nuvtx_nonproton_sumE[R] += energy
+
+                # 75cm sphere + outside both shower cones
+                if dist_to_nu >= SPHERE_RADIUS_CM:
+                    continue
+                if is_in_cone(nu_vtx, cone_dirs[0], blip_xyz) or is_in_cone(nu_vtx, cone_dirs[1], blip_xyz):
+                    continue
+
+                ev_no_shower_cones_n    += 1
+                ev_no_shower_cones_sumE += energy
+                if is_proton:
+                    ev_no_shower_cones_proton_n    += 1
+                    ev_no_shower_cones_proton_sumE += energy
+                else:
+                    ev_no_shower_cones_nonproton_n    += 1
+                    ev_no_shower_cones_nonproton_sumE += energy
+
+        two_shwr_no_shower_cones_n.append(ev_no_shower_cones_n)
+        two_shwr_no_shower_cones_sumE.append(ev_no_shower_cones_sumE)
+        two_shwr_no_shower_cones_proton_n.append(ev_no_shower_cones_proton_n)
+        two_shwr_no_shower_cones_proton_sumE.append(ev_no_shower_cones_proton_sumE)
+        two_shwr_no_shower_cones_nonproton_n.append(ev_no_shower_cones_nonproton_n)
+        two_shwr_no_shower_cones_nonproton_sumE.append(ev_no_shower_cones_nonproton_sumE)
+        for R in proton_radii_2shwr:
+            two_shwr_nuvtx_nWithin[R].append(ev_nuvtx_nWithin[R])
+            two_shwr_nuvtx_sumE[R].append(ev_nuvtx_sumE[R])
+            two_shwr_nuvtx_proton_nWithin[R].append(ev_nuvtx_proton_nWithin[R])
+            two_shwr_nuvtx_proton_sumE[R].append(ev_nuvtx_proton_sumE[R])
+            two_shwr_nuvtx_nonproton_nWithin[R].append(ev_nuvtx_nonproton_nWithin[R])
+            two_shwr_nuvtx_nonproton_sumE[R].append(ev_nuvtx_nonproton_sumE[R])
+        two_shwr_min_nuvtx_to_shower_vtx_dist.append(min_dist)
+
+    df["blip_2shwr_no_shower_cones_n"]             = two_shwr_no_shower_cones_n
+    df["blip_2shwr_no_shower_cones_sumE"]           = two_shwr_no_shower_cones_sumE
+    df["blip_2shwr_no_shower_cones_proton_n"]       = two_shwr_no_shower_cones_proton_n
+    df["blip_2shwr_no_shower_cones_proton_sumE"]    = two_shwr_no_shower_cones_proton_sumE
+    df["blip_2shwr_no_shower_cones_nonproton_n"]    = two_shwr_no_shower_cones_nonproton_n
+    df["blip_2shwr_no_shower_cones_nonproton_sumE"] = two_shwr_no_shower_cones_nonproton_sumE
+    for R in proton_radii_2shwr:
+        df[f"blip_2shwr_nuvtx_nWithin_{R}cm"]           = two_shwr_nuvtx_nWithin[R]
+        df[f"blip_2shwr_nuvtx_sumE_{R}cm"]              = two_shwr_nuvtx_sumE[R]
+        df[f"blip_2shwr_nuvtx_proton_nWithin_{R}cm"]    = two_shwr_nuvtx_proton_nWithin[R]
+        df[f"blip_2shwr_nuvtx_proton_sumE_{R}cm"]       = two_shwr_nuvtx_proton_sumE[R]
+        df[f"blip_2shwr_nuvtx_nonproton_nWithin_{R}cm"] = two_shwr_nuvtx_nonproton_nWithin[R]
+        df[f"blip_2shwr_nuvtx_nonproton_sumE_{R}cm"]    = two_shwr_nuvtx_nonproton_sumE[R]
+    df["blip_2shwr_min_nuvtx_to_shower_vtx_dist"] = two_shwr_min_nuvtx_to_shower_vtx_dist
 
     return df
