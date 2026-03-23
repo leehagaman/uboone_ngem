@@ -18,7 +18,8 @@ def get_rw_sys_weights_dic(
     file_path: str,
     tree_path: str = "nuselection/NeutrinoSelectionFilter",
     branch_name: str = "weights",
-    max_entries: int = -1):
+    max_entries: int = -1,
+    start_entry: int = 0):
     """
     Gets systematic weights from Pandora Tree using PyROOT.
     Returns a list of dictionaries, one per event.
@@ -67,15 +68,14 @@ def get_rw_sys_weights_dic(
 
     tree.SetBranchAddress(branch_name, weight_map)
     
-    # Determine number of entries to process
+    # Determine range of entries to process
     nentries = tree.GetEntries()
-    if max_entries >= 0 and max_entries < nentries:
-        nentries = max_entries
-    
+    end_entry = nentries if max_entries < 0 else min(start_entry + max_entries, nentries)
+
     rows = []
-    
+
     # Process each event
-    for i in tqdm(range(nentries), total=nentries, desc="Loading systematic weights", mininterval=10):
+    for i in tqdm(range(start_entry, end_entry), total=end_entry - start_entry, desc="Loading systematic weights", mininterval=10):
         entry = tree.GetEntry(i)
         if entry <= 0:
             rows.append({})

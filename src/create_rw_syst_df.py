@@ -20,9 +20,13 @@ from src.memory_monitoring import start_memory_logger
 
 from src.pyroot_loading import get_rw_sys_weights_dic
 
-def process_rw_sys_root_file(filename, frac_events = 1):
+def _get_file_metadata(filename, frac_events=1):
+    """Collect per-file metadata without reading any weight data.
 
-    if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower(): # EXT file
+    Returns a dict with keys:
+        filetype, detailed_run_period, n_events, root_file_size_gb
+    """
+    if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
         filetype = "ext"
     elif "nu_overlay" in filename.lower():
         filetype = "nu_overlay"
@@ -45,51 +49,19 @@ def process_rw_sys_root_file(filename, frac_events = 1):
 
     if filetype == "data" or filetype == "ext" or filetype == "isotropic_one_gamma_overlay" or filetype == "delete_one_gamma_overlay":
         raise ValueError("Data, EXT, and 1g overlay files don't have systematics variables!")
-    
+
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
-    start_time = time.time()
-
-    print(f"loading {filename}...")
-
-    f = uproot.open(f"{data_files_location}/{filename}")
-
-    # determine how many events to read based on requested fraction
     if not (0.0 < frac_events <= 1.0):
         raise ValueError("--frac_events/-f must be in the interval (0, 1].")
+
+    f = uproot.open(f"{data_files_location}/{filename}")
     total_entries = f["wcpselection"]["T_eval"].num_entries
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
+    f.close()
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
-    print("loading run, subrun, event, and CV weights using uproot...")
-    slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
-    dic = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["run", "sub", "evt", "weightSpline", "weightTune", "weightSplineTimesTune"], library="np", **slice_kwargs)
-    curr_weights_df = pl.DataFrame({col: dic[col].tolist() for col in dic})
-    curr_weights_df = curr_weights_df.rename({"sub": "subrun", "evt": "event"})
-
-    print("loading wc_kine_reco_Enu for preselection using uproot...")
-    dic = f["wcpselection"]["T_KINEvars"].arrays(["kine_reco_Enu"], library="np", **slice_kwargs)
-    curr_weights_df = curr_weights_df.with_columns(pl.Series(name="wc_kine_reco_Enu", values=dic["kine_reco_Enu"].tolist()))
-    del f
-    del dic
-
-    print("loading systematic weights using PyROOT...")
-    all_event_weights = get_rw_sys_weights_dic(
-        f"{data_files_location}/{filename}",
-        max_entries=n_events,
-    )
-    print("adding systematic weights to dataframe...")
-
-    systematic_keys = list(all_event_weights[0].keys())
-    for k in systematic_keys:
-        weight_lists = [event_dict[k] for event_dict in all_event_weights]
-        curr_weights_df = curr_weights_df.with_columns(pl.Series(name=k, values=weight_lists, dtype=pl.List(pl.Float32)))
-
-    previous_num_events = curr_weights_df.height
-    curr_weights_df = curr_weights_df.filter(pl.col("wc_kine_reco_Enu") > 0)
-    print(f"kept {curr_weights_df.height}/{previous_num_events} events with after preselection using wc_kine_reco_Enu > 0")
-    
     detailed_run_period = "?"
     if "4a.root" in filename:
         detailed_run_period = "4a"
@@ -103,7 +75,6 @@ def process_rw_sys_root_file(filename, frac_events = 1):
         detailed_run_period = "4bcd"
     elif "5.root" in filename:
         detailed_run_period = "5"
-    
     elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
         detailed_run_period = "4a"
     elif "run4b" in filename.lower():
@@ -119,18 +90,81 @@ def process_rw_sys_root_file(filename, frac_events = 1):
     else:
         raise ValueError("Invalid detailed run period!", filename)
 
-    curr_weights_df = curr_weights_df.with_columns(pl.Series(name="detailed_run_period", values=[detailed_run_period] * curr_weights_df.shape[0]))
-    curr_weights_df = curr_weights_df.with_columns(pl.Series(name="filename", values=[filename] * curr_weights_df.shape[0]))
-    curr_weights_df = curr_weights_df.with_columns(pl.Series(name="filetype", values=[filetype] * curr_weights_df.shape[0]))
+    return {
+        "filetype": filetype,
+        "detailed_run_period": detailed_run_period,
+        "n_events": n_events,
+        "root_file_size_gb": root_file_size_gb,
+    }
 
+
+def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop, **_):
+    """Load events [entry_start, entry_stop) and return a polars DataFrame.
+
+    **_ absorbs unused metadata keys (n_events, root_file_size_gb) so callers can
+    pass the full _get_file_metadata dict via **meta.
+    """
+    chunk_size = entry_stop - entry_start
+    slice_kwargs = {"entry_start": entry_start, "entry_stop": entry_stop}
+
+    f = uproot.open(f"{data_files_location}/{filename}")
+
+    print("  loading run, subrun, event, and CV weights using uproot...")
+    dic = f["nuselection"]["NeutrinoSelectionFilter"].arrays(
+        ["run", "sub", "evt", "weightSpline", "weightTune", "weightSplineTimesTune"],
+        library="np", **slice_kwargs)
+    curr_weights_df = pl.DataFrame({col: dic[col] for col in dic})
+    curr_weights_df = curr_weights_df.rename({"sub": "subrun", "evt": "event"})
+
+    print("  loading wc_kine_reco_Enu for preselection using uproot...")
+    dic = f["wcpselection"]["T_KINEvars"].arrays(["kine_reco_Enu"], library="np", **slice_kwargs)
+    curr_weights_df = curr_weights_df.with_columns(pl.Series(name="wc_kine_reco_Enu", values=dic["kine_reco_Enu"]))
+    del f
+    del dic
+
+    print("  loading systematic weights using PyROOT...")
+    all_event_weights = get_rw_sys_weights_dic(
+        f"{data_files_location}/{filename}",
+        max_entries=chunk_size,
+        start_entry=entry_start,
+    )
+    print("  adding systematic weights to dataframe...")
+
+    if all_event_weights and all_event_weights[0]:
+        systematic_keys = list(all_event_weights[0].keys())
+        for k in systematic_keys:
+            weight_lists = [event_dict[k] for event_dict in all_event_weights]
+            curr_weights_df = curr_weights_df.with_columns(pl.Series(name=k, values=weight_lists, dtype=pl.List(pl.Float32)))
+
+    previous_num_events = curr_weights_df.height
+    curr_weights_df = curr_weights_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+    print(f"  kept {curr_weights_df.height}/{previous_num_events} events after preselection wc_kine_reco_Enu > 0")
+
+    curr_weights_df = curr_weights_df.with_columns([
+        pl.lit(detailed_run_period).alias("detailed_run_period"),
+        pl.lit(filename).alias("filename"),
+        pl.lit(filetype).alias("filetype"),
+    ])
+
+    return curr_weights_df
+
+
+def process_rw_sys_root_file(filename, frac_events=1):
+    """Load an entire ROOT file as a single DataFrame. Thin wrapper around _get_file_metadata + _load_chunk."""
+    start_time = time.time()
+    print(f"loading {filename}...")
+    meta = _get_file_metadata(filename, frac_events)
+    curr_weights_df = _load_chunk(filename, entry_start=0, entry_stop=meta["n_events"], **meta)
     end_time = time.time()
-
-    progress_str = f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} {curr_weights_df.shape[0]:>10,d} wc_generic_sel events {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    progress_str = (
+        f"\nloaded {meta['filetype']:<30}   Run {meta['detailed_run_period']:<4} "
+        f"{curr_weights_df.shape[0]:>10,d} wc_generic_sel events "
+        f"{meta['root_file_size_gb']:>6.2f} GB {end_time - start_time:>6.2f} s"
+    )
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
-
-    return filetype, curr_weights_df
+    return meta["filetype"], curr_weights_df
 
 
 if __name__ == "__main__":
@@ -145,6 +179,8 @@ if __name__ == "__main__":
                         help="Comma-separated list of weight types to load. Default: genie,flux,reint")
     parser.add_argument("--just_one_file", action="store_true", default=False,
                         help="Only process one file for debugging purposes")
+    parser.add_argument("--chunk_size", type=int, default=100_000,
+                        help="Number of events per chunk when reading ROOT files. Default: 100000")
     args = parser.parse_args()
 
     if args.memory_logger:
@@ -154,16 +190,16 @@ if __name__ == "__main__":
         print(f"Loading {args.frac_events} fraction of events from each file")
 
     for file in os.listdir(intermediate_files_location):
-        if file.startswith("presel_weights_df") and file.endswith(".parquet"):
+        if (file.startswith("presel_weights_df") and file.endswith(".parquet")) or \
+           (file.startswith("chunk_weights_") and file.endswith(".parquet")):
             os.remove(f"{intermediate_files_location}/{file}")
     print("Deleted intermediate presel_weights_df*.parquet files")
 
-    print("Starting loop over root files...")
-    weights_dfs_pl = pl.DataFrame()
+    print(f"Starting loop over root files (chunk_size={args.chunk_size:,})...")
 
     filenames = os.listdir(data_files_location)
     filenames.sort()
-    
+
     for file_num, filename in enumerate(filenames):
 
         if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
@@ -184,12 +220,54 @@ if __name__ == "__main__":
         if "detvar" in filename.lower():
             continue
 
-        filetype, curr_presel_weights_df = process_rw_sys_root_file(filename, frac_events=args.frac_events)
+        print(f"loading {filename}...")
+        file_start_time = time.time()
 
-        print(f"curr_presel_weights_df size: {curr_presel_weights_df.estimated_size() / 1e9:.2f} GB")
-        curr_presel_weights_df.write_parquet(f"{intermediate_files_location}/presel_weights_df_{file_num}.parquet")
-        print("saved to parquet file")
-        del curr_presel_weights_df
+        meta = _get_file_metadata(filename, frac_events=args.frac_events)
+        filetype = meta["filetype"]
+        detailed_run_period = meta["detailed_run_period"]
+        n_events = meta["n_events"]
+
+        n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
+        chunk_parquet_paths = []
+
+        for chunk_idx, chunk_start in enumerate(range(0, n_events, args.chunk_size)):
+            chunk_stop = min(chunk_start + args.chunk_size, n_events)
+            print(f"  chunk {chunk_idx + 1}/{n_chunks}: events {chunk_start}-{chunk_stop}...")
+
+            curr_chunk_df = _load_chunk(filename, entry_start=chunk_start, entry_stop=chunk_stop, **meta)
+
+            chunk_path = f"{intermediate_files_location}/chunk_weights_{file_num}_{chunk_idx}.parquet"
+            curr_chunk_df.write_parquet(chunk_path)
+            chunk_parquet_paths.append(chunk_path)
+            del curr_chunk_df
+
+        # combine chunks into the per-file parquet
+        parquet_path = f"{intermediate_files_location}/presel_weights_df_{file_num}.parquet"
+        if len(chunk_parquet_paths) == 1:
+            os.rename(chunk_parquet_paths[0], parquet_path)
+            print("single chunk, renamed to final parquet")
+        else:
+            print(f"  combining {len(chunk_parquet_paths)} chunks into {parquet_path}...")
+            ref_schema = pl.read_parquet_schema(chunk_parquet_paths[0])
+            (
+                pl.scan_parquet(chunk_parquet_paths, missing_columns="insert", extra_columns="ignore")
+                .cast({col: dtype for col, dtype in ref_schema.items()})
+                .sink_parquet(parquet_path)
+            )
+            for p in chunk_parquet_paths:
+                os.remove(p)
+
+        file_end_time = time.time()
+        print(f"  saved {os.path.getsize(parquet_path) / 1e9:.2f} GB (on disk)")
+        progress_str = (
+            f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} "
+            f"{n_events:>10,d} events "
+            f"{meta['root_file_size_gb']:>6.2f} GB {file_end_time - file_start_time:>6.2f} s"
+        )
+        if args.frac_events < 1.0:
+            progress_str += f" (f={args.frac_events})"
+        print(progress_str)
 
         if args.just_one_file:
             break
