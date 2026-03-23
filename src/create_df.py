@@ -86,7 +86,8 @@ def process_root_file(filename, frac_events = 1):
         dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
         dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
-    wc_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
+    all_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("wc_")
+    del dic
 
     # data and EXT POT and trigger numbers from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4
     # also from Karan's processing, https://docs.google.com/document/d/1SWZtfo9MIGpODVopGwWTM2LNEN-d7GmkWhYOmChK4kk/edit?tab=t.0
@@ -129,43 +130,41 @@ def process_root_file(filename, frac_events = 1):
             raise ValueError("Invalid data file!")
     
     file_POT = file_POT_total * frac_events
-    wc_df["wc_file_POT"] = file_POT
-    
-    # loading blip variables
+    all_df["wc_file_POT"] = file_POT
+
+    # loading blip variables (blip variables already have the "blip_" prefix)
     dic = {}
     dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np", **slice_kwargs))
     blip_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
+    del dic
+    all_df = pd.concat([all_df, blip_df], axis=1)
+    del blip_df
 
     # loading pandora variables
     dic = {}
     dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pandora_vars, library="np", **slice_kwargs))
-    pandora_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
+    pandora_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("pandora_")
+    del dic
+    all_df = pd.concat([all_df, pandora_df], axis=1)
+    del pandora_df
 
     # loading gLEE variables
     dic = {}
     dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
-    glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
+    glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("glee_")
+    del dic
+    all_df = pd.concat([all_df, glee_df], axis=1)
+    del glee_df
 
     # loading LANTERN variables
     dic = {}
     dic.update(f["lantern"]["EventTree"].arrays(lantern_vars, library="np", **slice_kwargs))
-    lantern_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
+    lantern_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("lantern_")
+    del dic
+    all_df = pd.concat([all_df, lantern_df], axis=1)
+    del lantern_df
 
     del f
-    del dic
-
-    wc_df = wc_df.add_prefix("wc_")
-    # blip_df = blip_df.add_prefix("blip_") # blip variables already have the "blip_" prefix
-    pandora_df = pandora_df.add_prefix("pandora_")
-    glee_df = glee_df.add_prefix("glee_")
-    lantern_df = lantern_df.add_prefix("lantern_")
-
-    all_df = pd.concat([wc_df, blip_df, pandora_df, glee_df, lantern_df], axis=1)
-    del wc_df
-    del blip_df
-    del pandora_df
-    del glee_df
-    del lantern_df
 
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
