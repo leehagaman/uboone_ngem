@@ -24,8 +24,13 @@ from file_locations import data_files_location, intermediate_files_location
 from df_helpers import align_columns_for_concat
 from memory_monitoring import start_memory_logger
 
-def process_root_file(filename, frac_events = 1):
+def _get_file_metadata(filename, frac_events=1):
+    """Open a ROOT file briefly to collect per-file metadata without reading branch data.
 
+    Returns a dict with keys:
+        filetype, detailed_run_period, file_POT, n_events,
+        root_file_size_gb, curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars
+    """
     if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower(): # EXT file
         filetype = "ext"
     elif "nu_overlay" in filename.lower():
@@ -46,48 +51,27 @@ def process_root_file(filename, frac_events = 1):
         filetype = "data"
     else:
         raise ValueError("Unknown filetype!", filename)
-    
+
+    if not filetype or filetype == '':
+        raise ValueError(f"filetype is empty or None for filename: {filename}")
+
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
-    start_time = time.time()
-
-    print(f"loading {filename}...")
-
-    f = uproot.open(f"{data_files_location}/{filename}")
-
-    # determine how many events to read based on requested fraction
     if not (0.0 < frac_events <= 1.0):
         raise ValueError("--frac_events/-f must be in the interval (0, 1].")
+
+    f = uproot.open(f"{data_files_location}/{filename}")
     total_entries = f["wcpselection"]["T_eval"].num_entries
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
-    slice_kwargs = {} if n_events >= total_entries else {"entry_stop": n_events}
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
-
     curr_wc_T_pf_vars = wc_T_pf_vars
-
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     if (("v10_04_07_09" in filename) or (filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root")
                  or (filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root")):
         print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
         curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
-    
-
-    # loading Wire-Cell variables
-    dic = {}
-    dic.update(f["wcpselection"]["T_BDTvars"].arrays(curr_wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
-    dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
-    dic.update(f["wcpselection"]["T_spacepoints"].arrays(wc_T_spacepoints_vars, library="np", **slice_kwargs))
-    if filetype == "ext" or filetype == "data":
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
-    else:
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
-    file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
-    all_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("wc_")
-    del dic
 
     # data and EXT POT and trigger numbers from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4
     # also from Karan's processing, https://docs.google.com/document/d/1SWZtfo9MIGpODVopGwWTM2LNEN-d7GmkWhYOmChK4kk/edit?tab=t.0
@@ -102,8 +86,10 @@ def process_root_file(filename, frac_events = 1):
     run4b_open_data_num_triggers = 9218529
     run4b_pot_per_trigger = run4b_open_data_POT / run4b_open_data_num_triggers
 
+    file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
+    f.close()
+
     if filetype == "ext":
-        
         if filename == "checkout_MCC9.10_Run4a_BNB_beam_off_data_surprise_reco2_hist.root": # run 4a
             run4a_ext_num_triggers = 27940007
             file_POT_total = run4a_ext_num_triggers * run4a_pot_per_trigger
@@ -128,8 +114,72 @@ def process_root_file(filename, frac_events = 1):
             file_POT_total = run4b_open_data_POT
         else:
             raise ValueError("Invalid data file!")
-    
+
     file_POT = file_POT_total * frac_events
+
+    detailed_run_period = "?"
+    if "4a.root" in filename:
+        detailed_run_period = "4a"
+    elif "4b.root" in filename:
+        detailed_run_period = "4b"
+    elif "4c.root" in filename:
+        detailed_run_period = "4c"
+    elif "4d.root" in filename:
+        detailed_run_period = "4d"
+    elif "4bcd.root" in filename:
+        detailed_run_period = "4bcd"
+    elif "5.root" in filename:
+        detailed_run_period = "5"
+    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+        detailed_run_period = "4a"
+    elif "run4b" in filename.lower():
+        detailed_run_period = "4b"
+    elif "run4c" in filename.lower():
+        detailed_run_period = "4c"
+    elif "run4d" in filename.lower():
+        detailed_run_period = "4d"
+    elif "run4bcd" in filename.lower():
+        detailed_run_period = "4bcd"
+    elif "run5" in filename.lower():
+        detailed_run_period = "5"
+    else:
+        raise ValueError("Invalid detailed run period!", filename)
+
+    return {
+        "filetype": filetype,
+        "detailed_run_period": detailed_run_period,
+        "file_POT": file_POT,
+        "n_events": n_events,
+        "root_file_size_gb": root_file_size_gb,
+        "curr_wc_T_BDT_including_training_vars": curr_wc_T_BDT_including_training_vars,
+        "curr_wc_T_pf_vars": curr_wc_T_pf_vars,
+    }
+
+
+def _load_chunk(filename, filetype, detailed_run_period, file_POT,
+                curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars,
+                entry_start, entry_stop, **_):
+    """Load events [entry_start, entry_stop) from a ROOT file and return a DataFrame.
+
+    **_ absorbs unused metadata keys (n_events, root_file_size_gb) so callers can
+    pass the full _get_file_metadata dict via **meta.
+    """
+    f = uproot.open(f"{data_files_location}/{filename}")
+    slice_kwargs = {"entry_start": entry_start, "entry_stop": entry_stop}
+
+    # loading Wire-Cell variables
+    dic = {}
+    dic.update(f["wcpselection"]["T_BDTvars"].arrays(curr_wc_T_BDT_including_training_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_spacepoints"].arrays(wc_T_spacepoints_vars, library="np", **slice_kwargs))
+    if filetype == "ext" or filetype == "data":
+        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
+        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
+    else:
+        dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
+        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
+    all_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("wc_")
+    del dic
     all_df["wc_file_POT"] = file_POT
 
     # loading blip variables (blip variables already have the "blip_" prefix)
@@ -169,53 +219,31 @@ def process_root_file(filename, frac_events = 1):
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
 
-    detailed_run_period = "?"
-    if "4a.root" in filename:
-        detailed_run_period = "4a"
-    elif "4b.root" in filename:
-        detailed_run_period = "4b"
-    elif "4c.root" in filename:
-        detailed_run_period = "4c"
-    elif "4d.root" in filename:
-        detailed_run_period = "4d"
-    elif "4bcd.root" in filename:
-        detailed_run_period = "4bcd"
-    elif "5.root" in filename:
-        detailed_run_period = "5"
-    
-    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
-        detailed_run_period = "4a"
-    elif "run4b" in filename.lower():
-        detailed_run_period = "4b"
-    elif "run4c" in filename.lower():
-        detailed_run_period = "4c"
-    elif "run4d" in filename.lower():
-        detailed_run_period = "4d"
-    elif "run4bcd" in filename.lower():
-        detailed_run_period = "4bcd"
-    elif "run5" in filename.lower():
-        detailed_run_period = "5"
-    else:
-        raise ValueError("Invalid detailed run period!", filename)
-
     all_df["detailed_run_period"] = detailed_run_period
     all_df["filename"] = filename
     all_df["filetype"] = filetype
-    
-    # Validate that filetype was set correctly
-    if not filetype or filetype == '':
-        raise ValueError(f"filetype is empty or None for filename: {filename}")
 
+    return all_df
+
+
+def process_root_file(filename, frac_events=1):
+    """Load an entire ROOT file as a single DataFrame. Thin wrapper around _get_file_metadata + _load_chunk."""
+    start_time = time.time()
+    print(f"loading {filename}...")
+    meta = _get_file_metadata(filename, frac_events)
+    all_df = _load_chunk(filename, entry_start=0, entry_stop=meta["n_events"], **meta)
     end_time = time.time()
-
-    events_per_POT = all_df.shape[0] / (file_POT / 1e19)
-
-    progress_str = f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} {all_df.shape[0]:>10,d} events {file_POT:>10.2e} POT {events_per_POT:>6.2f} events / 1e19 POT {root_file_size_gb:>6.2f} GB {end_time - start_time:>6.2f} s"
+    events_per_POT = all_df.shape[0] / (meta["file_POT"] / 1e19)
+    progress_str = (
+        f"\nloaded {meta['filetype']:<30}   Run {meta['detailed_run_period']:<4} "
+        f"{all_df.shape[0]:>10,d} events {meta['file_POT']:>10.2e} POT "
+        f"{events_per_POT:>6.2f} events / 1e19 POT "
+        f"{meta['root_file_size_gb']:>6.2f} GB {end_time - start_time:>6.2f} s"
+    )
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
-
-    return filetype, detailed_run_period, all_df, file_POT
+    return meta["filetype"], meta["detailed_run_period"], all_df, meta["file_POT"]
 
 
 if __name__ == "__main__":
@@ -232,6 +260,8 @@ if __name__ == "__main__":
                         help="Create file-level dataframes for each file")
     parser.add_argument("--merge_file_dfs", action="store_true", default=False,
                         help="Merge file-level dataframes into a single dataframe")
+    parser.add_argument("--chunk_size", type=int, default=100_000,
+                        help="Number of events per chunk when reading ROOT files. Default: 100000")
     args = parser.parse_args()
 
     if args.memory_logger:
@@ -244,12 +274,12 @@ if __name__ == "__main__":
             print(f"Loading {args.frac_events} fraction of events from each file")
 
         for file in os.listdir(intermediate_files_location):
-            if (file.startswith("curr_df_pl_") and file.endswith(".parquet")):
+            if (file.startswith("curr_df_pl_") and file.endswith(".parquet")) or \
+               (file.startswith("chunk_") and file.endswith(".parquet")):
                 os.remove(f"{intermediate_files_location}/{file}")
         print("Deleted intermediate df parquet files")
 
-        print("Starting loop over root files...")
-        all_df_pl = pl.DataFrame()
+        print(f"Starting loop over root files (chunk_size={args.chunk_size:,})...")
 
         filenames_with_unused = os.listdir(data_files_location)
         filenames_with_unused.sort()
@@ -277,41 +307,74 @@ if __name__ == "__main__":
         for file_num, filename in enumerate(filenames):
 
             print(f"Processing file {file_num} / {len(filenames)}")
+            print(f"loading {filename}...")
+            file_start_time = time.time()
 
-            filetype, detailed_run_period, curr_df, curr_POT = process_root_file(filename, frac_events=args.frac_events)
+            meta = _get_file_metadata(filename, frac_events=args.frac_events)
+            filetype = meta["filetype"]
+            detailed_run_period = meta["detailed_run_period"]
+            file_POT = meta["file_POT"]
+            n_events = meta["n_events"]
 
-            pot_dic[(filetype, detailed_run_period)] = curr_POT
+            pot_dic[(filetype, detailed_run_period)] = file_POT
 
-            print("doing post-processing that requires vector variables...")
+            n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
+            chunk_parquet_paths = []
 
-            curr_df = do_wc_postprocessing(curr_df)
-            curr_df = add_extra_true_photon_variables(curr_df)
-            curr_df = do_spacepoint_postprocessing(curr_df)
-            curr_df = do_pandora_postprocessing(curr_df)
-            curr_df = do_blip_postprocessing(curr_df)
-            curr_df = do_lantern_postprocessing(curr_df)
-            curr_df = do_glee_postprocessing(curr_df)
+            for chunk_idx, chunk_start in enumerate(range(0, n_events, args.chunk_size)):
+                chunk_stop = min(chunk_start + args.chunk_size, n_events)
+                print(f"  chunk {chunk_idx + 1}/{n_chunks}: events {chunk_start}-{chunk_stop}...")
 
-            curr_df = remove_vector_variables(curr_df)
-            
-            # converting to polars
-            curr_df_pl = pl.from_pandas(curr_df)
-            del curr_df
-            
-            # Validate filetype column after conversion to polars
-            filetype_values = curr_df_pl["filetype"].unique().to_list()
-            if '' in filetype_values or None in filetype_values:
-                empty_count = curr_df_pl.filter(pl.col("filetype") == '').height
-                null_count = curr_df_pl.filter(pl.col("filetype").is_null()).height
-                if empty_count > 0 or null_count > 0:
-                    raise ValueError(f"filetype column has empty/null values after polars conversion for {filename}: {empty_count} empty, {null_count} null")
-            
-            curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Float64).cast(pl.Float32)])
-            curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Int32).cast(pl.Int64)])
+                curr_df = _load_chunk(filename, entry_start=chunk_start, entry_stop=chunk_stop, **meta)
 
+                print("  doing post-processing that requires vector variables...")
+
+                curr_df = do_wc_postprocessing(curr_df)
+                curr_df = add_extra_true_photon_variables(curr_df)
+                curr_df = do_spacepoint_postprocessing(curr_df)
+                curr_df = do_pandora_postprocessing(curr_df)
+                curr_df = do_blip_postprocessing(curr_df)
+                curr_df = do_lantern_postprocessing(curr_df)
+                curr_df = do_glee_postprocessing(curr_df)
+
+                curr_df = remove_vector_variables(curr_df)
+
+                # converting to polars
+                curr_df_pl = pl.from_pandas(curr_df)
+                del curr_df
+
+                # Validate filetype column after conversion to polars
+                filetype_values = curr_df_pl["filetype"].unique().to_list()
+                if '' in filetype_values or None in filetype_values:
+                    empty_count = curr_df_pl.filter(pl.col("filetype") == '').height
+                    null_count = curr_df_pl.filter(pl.col("filetype").is_null()).height
+                    if empty_count > 0 or null_count > 0:
+                        raise ValueError(f"filetype column has empty/null values after polars conversion for {filename} chunk {chunk_idx}: {empty_count} empty, {null_count} null")
+
+                curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Float64).cast(pl.Float32)])
+                curr_df_pl = curr_df_pl.with_columns([pl.col(pl.Int32).cast(pl.Int64)])
+
+                chunk_path = f"{intermediate_files_location}/chunk_{file_num}_{chunk_idx}.parquet"
+                curr_df_pl.write_parquet(chunk_path)
+                chunk_parquet_paths.append(chunk_path)
+                del curr_df_pl
+
+            # combine chunks into the per-file parquet
             parquet_path = f"{intermediate_files_location}/curr_df_pl_{file_num}.parquet"
-            print(f"curr_df_pl size: {curr_df_pl.estimated_size() / 1e9:.2f} GB")
-            curr_df_pl.write_parquet(parquet_path)
+            if len(chunk_parquet_paths) == 1:
+                os.rename(chunk_parquet_paths[0], parquet_path)
+                print("single chunk, renamed to final parquet")
+            else:
+                print(f"combining {len(chunk_parquet_paths)} chunks into {parquet_path}...")
+                ref_schema = pl.read_parquet_schema(chunk_parquet_paths[0])
+                (
+                    pl.scan_parquet(chunk_parquet_paths, missing_columns="insert", extra_columns="ignore")
+                    .cast({col: dtype for col, dtype in ref_schema.items()})
+                    .sink_parquet(parquet_path)
+                )
+                for p in chunk_parquet_paths:
+                    os.remove(p)
+            print(f"curr_df_pl size: {os.path.getsize(parquet_path) / 1e9:.2f} GB (on disk)")
             print("saved to parquet file")
 
             print(f"Reloading {parquet_path} to ensure on-disk integrity...")
@@ -326,7 +389,18 @@ if __name__ == "__main__":
                     f"{empty_count} empty strings, {null_count} nulls"
                 )
             del reloaded_df
-            del curr_df_pl
+
+            file_end_time = time.time()
+            events_per_POT = n_events / (file_POT / 1e19)
+            progress_str = (
+                f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} "
+                f"{n_events:>10,d} events {file_POT:>10.2e} POT "
+                f"{events_per_POT:>6.2f} events / 1e19 POT "
+                f"{meta['root_file_size_gb']:>6.2f} GB {file_end_time - file_start_time:>6.2f} s"
+            )
+            if args.frac_events < 1.0:
+                progress_str += f" (f={args.frac_events})"
+            print(progress_str)
 
                 # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
 
