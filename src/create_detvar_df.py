@@ -94,9 +94,7 @@ def process_root_file(filename, frac_events = 1):
     dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
     dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    wc_df = pd.DataFrame(dic)
+    wc_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
     
     file_POT = file_POT_total * frac_events
     wc_df["wc_file_POT"] = file_POT
@@ -104,30 +102,22 @@ def process_root_file(filename, frac_events = 1):
     # loading blip variables
     dic = {}
     dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np", **slice_kwargs))
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    blip_df = pd.DataFrame(dic)
+    blip_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
 
     # loading pandora variables
     dic = {}
     dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pandora_vars, library="np", **slice_kwargs))
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    pandora_df = pd.DataFrame(dic)
+    pandora_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
 
     # loading gLEE variables
     dic = {}
     dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    glee_df = pd.DataFrame(dic)
+    glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
 
     # loading LANTERN variables
     dic = {}
     dic.update(f["lantern"]["EventTree"].arrays(lantern_vars, library="np", **slice_kwargs))
-    for col in dic:
-        dic[col] = dic[col].tolist()
-    lantern_df = pd.DataFrame(dic)
+    lantern_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
 
     del f
     del dic
