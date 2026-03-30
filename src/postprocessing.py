@@ -1199,18 +1199,46 @@ def add_signal_categories(all_df):
         ).cast(pl.Int32).alias("erin_inclusive_1g_true_sig")
     ])
 
-    all_df = all_df.with_columns([
+
+    """
+    df = df.with_columns([
         (
-            pl.col("blip_backtrack_cones_n")
-            + pl.col("wc_reco_num_protons_35_MeV")
-        ).alias("wc_reco_num_protons_35_MeV_plus_backtrack_blips")
+            ((pl.col("wc_reco_nuvtxX") - pl.col("pandora_reco_nu_vtx_x"))**2 +
+             (pl.col("wc_reco_nuvtxY") - pl.col("pandora_reco_nu_vtx_y"))**2 +
+             (pl.col("wc_reco_nuvtxZ") - pl.col("pandora_reco_nu_vtx_z"))**2)
+            .sqrt()
+            .alias("wc_pandora_dist")
+        ),
+        (
+            ((pl.col("wc_reco_nuvtxX") - pl.col("lantern_vtxX"))**2 +
+             (pl.col("wc_reco_nuvtxY") - pl.col("lantern_vtxY"))**2 +
+             (pl.col("wc_reco_nuvtxZ") - pl.col("lantern_vtxZ"))**2)
+            .sqrt()
+            .alias("wc_lantern_dist")
+        ),
+        (
+            ((pl.col("lantern_vtxX") - pl.col("pandora_reco_nu_vtx_x"))**2 +
+             (pl.col("lantern_vtxY") - pl.col("pandora_reco_nu_vtx_y"))**2 +
+             (pl.col("lantern_vtxZ") - pl.col("pandora_reco_nu_vtx_z"))**2)
+            .sqrt()
+            .alias("lantern_pandora_dist")
+        ),
     ])
+    """
 
     all_df = all_df.with_columns([
         (
             pl.col("blip_backtrack_cones_n")
+            + pl.col("wc_reco_num_protons_35_MeV")
+        ).alias("wc_reco_num_protons_35_MeV_plus_backtrack_blips"),
+        (
+            pl.col("blip_backtrack_cones_n")
             + pl.col("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx")
-        ).alias("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx_plus_backtrack_blips")
+        ).alias("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx_plus_backtrack_blips"),
+        (
+            pl.col("blip_2shwr_nuvtx_nWithin_3cm")
+            + pl.col("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx")
+        ).alias("wc_reco_num_protons_35_MeV_plus_3cm_vertex_blips"),
     ])
 
     topological_conditions = []

@@ -47,7 +47,12 @@ def align_columns_for_concat(dfs):
             for c in missing:
                 defaults.append(pl.lit(None).cast(dtype_map[c]).alias(c))
             df = df.with_columns(defaults)
-        
+
+        # Cast any existing columns whose dtype differs from the reference
+        mismatched = [c for c in df.columns if df.schema[c] != dtype_map[c]]
+        if mismatched:
+            df = df.with_columns([pl.col(c).cast(dtype_map[c]) for c in mismatched])
+
         # Ensure consistent column order
         df = df.select(sorted(all_cols))
         

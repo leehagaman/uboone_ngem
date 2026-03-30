@@ -334,12 +334,10 @@ if __name__ == "__main__":
             print("single chunk, renamed to final parquet")
         else:
             print(f"combining {len(chunk_parquet_paths)} chunks into {parquet_path}...")
-            ref_schema = pl.read_parquet_schema(chunk_parquet_paths[0])
-            (
-                pl.scan_parquet(chunk_parquet_paths, missing_columns="insert", extra_columns="ignore")
-                .cast({col: dtype for col, dtype in ref_schema.items()})
-                .sink_parquet(parquet_path)
-            )
+            pl.concat(
+                [pl.read_parquet(p) for p in chunk_parquet_paths],
+                how="diagonal_relaxed",
+            ).write_parquet(parquet_path)
             for p in chunk_parquet_paths:
                 os.remove(p)
         print(f"curr_detvar_df_pl size: {os.path.getsize(parquet_path) / 1e9:.2f} GB (on disk)")

@@ -601,7 +601,7 @@ def make_histogram_plot(
         if include_data:
             empty_indices = np.where(data_counts <= 1)[0] # removing bins with low data counts for the chi2 calculation
             if len(empty_indices) > 0:
-                print("removing bins with 0 or 1 data counts at indices:", empty_indices)
+                #print("removing bins with 0 or 1 data counts at indices:", empty_indices)
                 diff = np.delete(diff, empty_indices)
                 nodetvar_sys_cov = np.delete(nodetvar_sys_cov, empty_indices, axis=0)
                 nodetvar_sys_cov = np.delete(nodetvar_sys_cov, empty_indices, axis=1)

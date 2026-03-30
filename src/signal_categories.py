@@ -356,7 +356,7 @@ erin_Np0p_category_labels_latex = [
     "ext",
     "dirt",
     "other out FV",
-    r"NC $1\pi^0$ $Np$",
+    r"NC $1\pi^0$",
     r"$\nu_\mu$ CC $1\pi^0$",
     r"$\nu_e$ CC",
     "other in FV",
