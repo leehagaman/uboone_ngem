@@ -840,7 +840,6 @@ def do_wc_postprocessing(df):
     max_prim_other_track_energies = []
     max_prim_other_track_costhetas = []
     max_prim_other_track_phis = []
-    num_protons_35_MeV_75cm_from_reco_shower_vtx_list = []
     reco_pdg = df["wc_reco_pdg"].to_numpy()
     reco_mother = df["wc_reco_mother"].to_numpy()
     reco_startMomentum = df["wc_reco_startMomentum"].to_numpy()
@@ -848,6 +847,87 @@ def do_wc_postprocessing(df):
     showervtx_x = df["wc_reco_showervtxX"].to_numpy()
     showervtx_y = df["wc_reco_showervtxY"].to_numpy()
     showervtx_z = df["wc_reco_showervtxZ"].to_numpy()
+    nuvtx_x = df["wc_reco_nuvtxX"].to_numpy()
+    nuvtx_y = df["wc_reco_nuvtxY"].to_numpy()
+    nuvtx_z = df["wc_reco_nuvtxZ"].to_numpy()
+
+    # -----------------------------------------
+    # WC two-shower vertex: midpoint of closest approach between the two primary shower axes
+    #
+    # For each event with >= 2 showers (wc_reco_pdg == 11), identifies the two highest-energy
+    # showers and computes the closest point of approach between their momentum-direction lines,
+    # each anchored at the shower start position.  The vertex is the midpoint of the shortest
+    # connecting segment (i.e. the average of the two closest points on the respective lines).
+    # If lines are nearly parallel (denominator < 1e-10) or < 2 showers exist, fills NaN.
+    # -----------------------------------------
+    wc_2shw_vtx_xs = []
+    wc_2shw_vtx_ys = []
+    wc_2shw_vtx_zs = []
+    wc_2shw_vtx_doca = []  # distance of closest approach between the two shower lines
+
+    for i in tqdm(range(df.shape[0]), desc="Computing WC two-shower vertex", mininterval=10):
+        pdg_arr = reco_pdg[i]
+        if isinstance(pdg_arr, float) or not hasattr(pdg_arr, '__getitem__'):
+            wc_2shw_vtx_xs.append(np.nan); wc_2shw_vtx_ys.append(np.nan); wc_2shw_vtx_zs.append(np.nan); wc_2shw_vtx_doca.append(np.nan)
+            continue
+
+        shower_indices = [j for j in range(len(pdg_arr)) if pdg_arr[j] == 11]
+        if len(shower_indices) < 2:
+            wc_2shw_vtx_xs.append(np.nan); wc_2shw_vtx_ys.append(np.nan); wc_2shw_vtx_zs.append(np.nan); wc_2shw_vtx_doca.append(np.nan)
+            continue
+
+        shower_indices.sort(key=lambda j: reco_startMomentum[i][j][3], reverse=True)
+        j0, j1 = shower_indices[0], shower_indices[1]
+
+        p1 = np.array([reco_startXYZT[i][j0][0], reco_startXYZT[i][j0][1], reco_startXYZT[i][j0][2]])
+        p2 = np.array([reco_startXYZT[i][j1][0], reco_startXYZT[i][j1][1], reco_startXYZT[i][j1][2]])
+        m1 = np.array([reco_startMomentum[i][j0][0], reco_startMomentum[i][j0][1], reco_startMomentum[i][j0][2]])
+        m2 = np.array([reco_startMomentum[i][j1][0], reco_startMomentum[i][j1][1], reco_startMomentum[i][j1][2]])
+
+        mag1 = np.linalg.norm(m1); mag2 = np.linalg.norm(m2)
+        if mag1 < 1e-10 or mag2 < 1e-10:
+            wc_2shw_vtx_xs.append(np.nan); wc_2shw_vtx_ys.append(np.nan); wc_2shw_vtx_zs.append(np.nan); wc_2shw_vtx_doca.append(np.nan)
+            continue
+        d1 = m1 / mag1; d2 = m2 / mag2
+
+        # Closest approach between line (p1, d1) and line (p2, d2)
+        w0 = p1 - p2
+        b = np.dot(d1, d2)
+        d = np.dot(d1, w0)
+        e = np.dot(d2, w0)
+        denom = 1.0 - b * b   # = sin²θ, zero when lines are parallel
+
+        if abs(denom) < 1e-10: # parallel lines, no intersection
+            wc_2shw_vtx_xs.append(np.nan); wc_2shw_vtx_ys.append(np.nan); wc_2shw_vtx_zs.append(np.nan); wc_2shw_vtx_doca.append(np.nan)
+            continue
+
+        t = (b * e - d) / denom
+        s = (e - b * d) / denom
+
+        closest1 = p1 + t * d1
+        closest2 = p2 + s * d2
+        midpoint = 0.5 * (closest1 + closest2)
+
+        wc_2shw_vtx_xs.append(float(midpoint[0]))
+        wc_2shw_vtx_ys.append(float(midpoint[1]))
+        wc_2shw_vtx_zs.append(float(midpoint[2]))
+        wc_2shw_vtx_doca.append(float(np.linalg.norm(closest2 - closest1)))
+
+    df["wc_2shw_vtx_x"]    = wc_2shw_vtx_xs
+    df["wc_2shw_vtx_y"]    = wc_2shw_vtx_ys
+    df["wc_2shw_vtx_z"]    = wc_2shw_vtx_zs
+    df["wc_2shw_vtx_doca"] = wc_2shw_vtx_doca
+
+    proton_vtx_defs = {
+        "wcvtx":     (nuvtx_x,     nuvtx_y,     nuvtx_z),
+        "wcshwrvtx":   (showervtx_x, showervtx_y, showervtx_z),
+        "wc2shwvtx":   (df["wc_2shw_vtx_x"].to_numpy(), df["wc_2shw_vtx_y"].to_numpy(), df["wc_2shw_vtx_z"].to_numpy()),
+        "lanternvtx":  (df["lantern_vtxX"].to_numpy(), df["lantern_vtxY"].to_numpy(), df["lantern_vtxZ"].to_numpy()),
+        "gleevtx":     (df["glee_reco_vertex_x"].to_numpy(), df["glee_reco_vertex_y"].to_numpy(), df["glee_reco_vertex_z"].to_numpy()),
+        "pandoravtx":  (df["pandora_reco_nu_vtx_sce_x"].to_numpy(), df["pandora_reco_nu_vtx_sce_y"].to_numpy(), df["pandora_reco_nu_vtx_sce_z"].to_numpy()),
+    }
+    num_protons_35_MeV_75cm_lists = {k: [] for k in proton_vtx_defs}
+
     for i in tqdm(range(df.shape[0]), desc="Adding WC reco prim proton and other track variables", mininterval=10):
         if isinstance(reco_pdg[i], float) and np.isnan(reco_pdg[i]):
             max_prim_proton_energies.append(np.nan)
@@ -856,7 +936,8 @@ def do_wc_postprocessing(df):
             max_prim_other_track_energies.append(np.nan)
             max_prim_other_track_costhetas.append(np.nan)
             max_prim_other_track_phis.append(np.nan)
-            num_protons_35_MeV_75cm_from_reco_shower_vtx_list.append(np.nan)
+            for k in proton_vtx_defs:
+                num_protons_35_MeV_75cm_lists[k].append(np.nan)
             continue
 
         num_particles = len(reco_pdg[i])
@@ -866,16 +947,18 @@ def do_wc_postprocessing(df):
         max_prim_other_track_energy = -1.
         max_prim_other_track_costheta = -2.
         max_prim_other_track_phi = -999.
-        num_protons_35_MeV_75cm_from_reco_shower_vtx = 0
-        shower_vtx_valid = not (isinstance(showervtx_x[i], float) and np.isnan(showervtx_x[i]))
+        num_protons_35_MeV_75cm = {k: 0 for k in proton_vtx_defs}
+        vtx_valid = {k: not (isinstance(vx[i], float) and np.isnan(vx[i]))
+                     for k, (vx, vy, vz) in proton_vtx_defs.items()}
         for j in range(num_particles):
-            if reco_pdg[i][j] == 2212: # proton (any, not just primary)
-                if shower_vtx_valid and reco_startMomentum[i][j][3] > 35:
-                    dist = np.sqrt((reco_startXYZT[i][j][0] - showervtx_x[i])**2 +
-                                   (reco_startXYZT[i][j][1] - showervtx_y[i])**2 +
-                                   (reco_startXYZT[i][j][2] - showervtx_z[i])**2)
-                    if dist < 75:
-                        num_protons_35_MeV_75cm_from_reco_shower_vtx += 1
+            if reco_pdg[i][j] == 2212 and reco_startMomentum[i][j][3] > 35: # proton (any, not just primary)
+                for k, (vx, vy, vz) in proton_vtx_defs.items():
+                    if vtx_valid[k]:
+                        dist = np.sqrt((reco_startXYZT[i][j][0] - vx[i])**2 +
+                                       (reco_startXYZT[i][j][1] - vy[i])**2 +
+                                       (reco_startXYZT[i][j][2] - vz[i])**2)
+                        if dist < 75:
+                            num_protons_35_MeV_75cm[k] += 1
             if reco_mother[i][j] == 0: # primary
                 if reco_pdg[i][j] == 2212: # proton
                     if reco_startMomentum[i][j][3] > max_prim_proton_energy:
@@ -894,7 +977,8 @@ def do_wc_postprocessing(df):
         max_prim_other_track_energies.append(max_prim_other_track_energy)
         max_prim_other_track_costhetas.append(max_prim_other_track_costheta)
         max_prim_other_track_phis.append(max_prim_other_track_phi)
-        num_protons_35_MeV_75cm_from_reco_shower_vtx_list.append(num_protons_35_MeV_75cm_from_reco_shower_vtx)
+        for k in proton_vtx_defs:
+            num_protons_35_MeV_75cm_lists[k].append(num_protons_35_MeV_75cm[k])
 
     df["wc_reco_max_prim_proton_energy"] = max_prim_proton_energies
     df["wc_reco_max_prim_proton_costheta"] = max_prim_proton_costhetas
@@ -902,7 +986,8 @@ def do_wc_postprocessing(df):
     df["wc_reco_max_prim_other_track_energy"] = max_prim_other_track_energies
     df["wc_reco_max_prim_other_track_costheta"] = max_prim_other_track_costhetas
     df["wc_reco_max_prim_other_track_phi"] = max_prim_other_track_phis
-    df["wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx"] = num_protons_35_MeV_75cm_from_reco_shower_vtx_list
+    for k in proton_vtx_defs:
+        df[f"wc_reco_num_protons_35_MeV_75cm_from_{k}"] = num_protons_35_MeV_75cm_lists[k]
 
     return df
 
@@ -1226,20 +1311,29 @@ def add_signal_categories(all_df):
     ])
     """
 
-    all_df = all_df.with_columns([
-        (
-            pl.col("blip_backtrack_cones_n")
-            + pl.col("wc_reco_num_protons_35_MeV")
-        ).alias("wc_reco_num_protons_35_MeV_plus_backtrack_blips"),
-        (
-            pl.col("blip_backtrack_cones_n")
-            + pl.col("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx")
-        ).alias("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx_plus_backtrack_blips"),
-        (
-            pl.col("blip_2shwr_nuvtx_nWithin_3cm")
-            + pl.col("wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx")
-        ).alias("wc_reco_num_protons_35_MeV_plus_3cm_vertex_blips"),
-    ])
+    # For each vertex type and radius, build combined proton + blip counts.
+    # Two proton cut variants: with 75cm distance cut (vtx-specific), and without.
+    _vtx_keys = ["wcvtx", "wcshwrvtx", "wc2shwvtx", "lanternvtx", "gleevtx", "pandoravtx"]
+    _blip_2shwr_radii = [1, 3, 10]
+    _combined_exprs = [
+        (pl.col("blip_backtrack_cones_n") + pl.col("wc_reco_num_protons_35_MeV"))
+        .alias("wc_reco_num_protons_35_MeV_plus_backtrack_blips"),
+    ]
+    for _vtx in _vtx_keys:
+        _combined_exprs.append(
+            (pl.col("blip_backtrack_cones_n") + pl.col(f"wc_reco_num_protons_35_MeV_75cm_from_{_vtx}"))
+            .alias(f"wc_reco_num_protons_35_MeV_75cm_from_{_vtx}_plus_backtrack_blips")
+        )
+        for _R in _blip_2shwr_radii:
+            _combined_exprs.append(
+                (pl.col(f"blip_2shwr_{_vtx}_nWithin_{_R}cm") + pl.col("wc_reco_num_protons_35_MeV"))
+                .alias(f"wc_reco_num_protons_35_MeV_plus_{_vtx}_{_R}cm_vertex_blips")
+            )
+            _combined_exprs.append(
+                (pl.col(f"blip_2shwr_{_vtx}_nWithin_{_R}cm") + pl.col(f"wc_reco_num_protons_35_MeV_75cm_from_{_vtx}"))
+                .alias(f"wc_reco_num_protons_35_MeV_75cm_from_{_vtx}_plus_{_vtx}_{_R}cm_vertex_blips")
+            )
+    all_df = all_df.with_columns(_combined_exprs)
 
     topological_conditions = []
     print("Adding topological signal categories...")

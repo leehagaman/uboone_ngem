@@ -470,7 +470,7 @@ wc_reco_particle_multiplicity_vars = [
     "wc_reco_num_other_tracks_30_MeV",
     "wc_reco_num_other_tracks_35_MeV",
     "wc_reco_num_other_tracks_40_MeV",
-    "wc_reco_num_protons_35_MeV_75cm_from_reco_shower_vtx",
+    "wc_reco_num_protons_35_MeV_75cm_from_wcshwrvtx",
 ]
 
 # The WC nueCC BDT was trained with all_nue_scalars + nue_bdt_score_variables
