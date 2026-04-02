@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+import pandas as pd
 
 
 # MicroBooNE TPC active volume boundaries [cm]
@@ -672,20 +673,22 @@ def do_blip_postprocessing(df):
                 two_shwr_nonproton_sumE[k][R].append(ev_nonproton_sumE[R])
             two_shwr_min_vtx_to_shower_vtx_dist[k].append(min_dist)
 
+    new_cols = {}
     for k in vtx_defs_2shwr:
-        df[f"blip_2shwr_{k}_no_shower_cones_n"]             = two_shwr_no_shower_cones_n[k]
-        df[f"blip_2shwr_{k}_no_shower_cones_sumE"]           = two_shwr_no_shower_cones_sumE[k]
-        df[f"blip_2shwr_{k}_no_shower_cones_proton_n"]       = two_shwr_no_shower_cones_proton_n[k]
-        df[f"blip_2shwr_{k}_no_shower_cones_proton_sumE"]    = two_shwr_no_shower_cones_proton_sumE[k]
-        df[f"blip_2shwr_{k}_no_shower_cones_nonproton_n"]    = two_shwr_no_shower_cones_nonproton_n[k]
-        df[f"blip_2shwr_{k}_no_shower_cones_nonproton_sumE"] = two_shwr_no_shower_cones_nonproton_sumE[k]
+        new_cols[f"blip_2shwr_{k}_no_shower_cones_n"]             = two_shwr_no_shower_cones_n[k]
+        new_cols[f"blip_2shwr_{k}_no_shower_cones_sumE"]           = two_shwr_no_shower_cones_sumE[k]
+        new_cols[f"blip_2shwr_{k}_no_shower_cones_proton_n"]       = two_shwr_no_shower_cones_proton_n[k]
+        new_cols[f"blip_2shwr_{k}_no_shower_cones_proton_sumE"]    = two_shwr_no_shower_cones_proton_sumE[k]
+        new_cols[f"blip_2shwr_{k}_no_shower_cones_nonproton_n"]    = two_shwr_no_shower_cones_nonproton_n[k]
+        new_cols[f"blip_2shwr_{k}_no_shower_cones_nonproton_sumE"] = two_shwr_no_shower_cones_nonproton_sumE[k]
         for R in proton_radii_2shwr:
-            df[f"blip_2shwr_{k}_nWithin_{R}cm"]           = two_shwr_nWithin[k][R]
-            df[f"blip_2shwr_{k}_sumE_{R}cm"]              = two_shwr_sumE[k][R]
-            df[f"blip_2shwr_{k}_proton_nWithin_{R}cm"]    = two_shwr_proton_nWithin[k][R]
-            df[f"blip_2shwr_{k}_proton_sumE_{R}cm"]       = two_shwr_proton_sumE[k][R]
-            df[f"blip_2shwr_{k}_nonproton_nWithin_{R}cm"] = two_shwr_nonproton_nWithin[k][R]
-            df[f"blip_2shwr_{k}_nonproton_sumE_{R}cm"]    = two_shwr_nonproton_sumE[k][R]
-        df[f"blip_2shwr_min_{k}_to_shower_vtx_dist"] = two_shwr_min_vtx_to_shower_vtx_dist[k]
+            new_cols[f"blip_2shwr_{k}_nWithin_{R}cm"]           = two_shwr_nWithin[k][R]
+            new_cols[f"blip_2shwr_{k}_sumE_{R}cm"]              = two_shwr_sumE[k][R]
+            new_cols[f"blip_2shwr_{k}_proton_nWithin_{R}cm"]    = two_shwr_proton_nWithin[k][R]
+            new_cols[f"blip_2shwr_{k}_proton_sumE_{R}cm"]       = two_shwr_proton_sumE[k][R]
+            new_cols[f"blip_2shwr_{k}_nonproton_nWithin_{R}cm"] = two_shwr_nonproton_nWithin[k][R]
+            new_cols[f"blip_2shwr_{k}_nonproton_sumE_{R}cm"]    = two_shwr_nonproton_sumE[k][R]
+        new_cols[f"blip_2shwr_min_{k}_to_shower_vtx_dist"] = two_shwr_min_vtx_to_shower_vtx_dist[k]
+    df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     return df
