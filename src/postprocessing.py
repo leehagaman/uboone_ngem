@@ -1284,33 +1284,6 @@ def add_signal_categories(all_df):
         ).cast(pl.Int32).alias("erin_inclusive_1g_true_sig")
     ])
 
-
-    """
-    df = df.with_columns([
-        (
-            ((pl.col("wc_reco_nuvtxX") - pl.col("pandora_reco_nu_vtx_x"))**2 +
-             (pl.col("wc_reco_nuvtxY") - pl.col("pandora_reco_nu_vtx_y"))**2 +
-             (pl.col("wc_reco_nuvtxZ") - pl.col("pandora_reco_nu_vtx_z"))**2)
-            .sqrt()
-            .alias("wc_pandora_dist")
-        ),
-        (
-            ((pl.col("wc_reco_nuvtxX") - pl.col("lantern_vtxX"))**2 +
-             (pl.col("wc_reco_nuvtxY") - pl.col("lantern_vtxY"))**2 +
-             (pl.col("wc_reco_nuvtxZ") - pl.col("lantern_vtxZ"))**2)
-            .sqrt()
-            .alias("wc_lantern_dist")
-        ),
-        (
-            ((pl.col("lantern_vtxX") - pl.col("pandora_reco_nu_vtx_x"))**2 +
-             (pl.col("lantern_vtxY") - pl.col("pandora_reco_nu_vtx_y"))**2 +
-             (pl.col("lantern_vtxZ") - pl.col("pandora_reco_nu_vtx_z"))**2)
-            .sqrt()
-            .alias("lantern_pandora_dist")
-        ),
-    ])
-    """
-
     # For each vertex type and radius, build combined proton + blip counts.
     # Two proton cut variants: with 75cm distance cut (vtx-specific), and without.
     _vtx_keys = ["wcvtx", "wcshwrvtx", "wc2shwvtx", "lanternvtx", "gleevtx", "pandoravtx"]
@@ -3460,6 +3433,34 @@ def do_combined_postprocessing(df):
             .sqrt()
             .alias("lantern_pandora_dist")
         ),
+        (
+            ((pl.col("wc_reco_nuvtxX") - pl.col("wc_truth_vtxX"))**2 +
+             (pl.col("wc_reco_nuvtxY") - pl.col("wc_truth_vtxY"))**2 +
+             (pl.col("wc_reco_nuvtxZ") - pl.col("wc_truth_vtxZ"))**2)
+            .sqrt()
+            .alias("wc_truth_dist")
+        ),
+        (
+            ((pl.col("pandora_reco_nu_vtx_x") - pl.col("wc_truth_vtxX"))**2 +
+             (pl.col("pandora_reco_nu_vtx_y") - pl.col("wc_truth_vtxY"))**2 +
+             (pl.col("pandora_reco_nu_vtx_z") - pl.col("wc_truth_vtxZ"))**2)
+            .sqrt()
+            .alias("pandora_truth_dist")
+        ),
+        (
+            ((pl.col("lantern_vtxX") - pl.col("wc_truth_vtxX"))**2 +
+             (pl.col("lantern_vtxY") - pl.col("wc_truth_vtxY"))**2 +
+             (pl.col("lantern_vtxZ") - pl.col("wc_truth_vtxZ"))**2)
+            .sqrt()
+            .alias("lantern_truth_dist")
+        ),
+        (
+            ((pl.col("glee_reco_vertex_x") - pl.col("wc_truth_vtxX"))**2 +
+             (pl.col("glee_reco_vertex_y") - pl.col("wc_truth_vtxY"))**2 +
+             (pl.col("glee_reco_vertex_z") - pl.col("wc_truth_vtxZ"))**2)
+            .sqrt()
+            .alias("glee_truth_dist")
+        ),
     ])
 
     # changing to nan when lantern vtx is the default (-999, -999, -999)
@@ -3468,6 +3469,7 @@ def do_combined_postprocessing(df):
     df = df.with_columns([
         pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("wc_lantern_dist")).alias("wc_lantern_dist"),
         pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("lantern_pandora_dist")).alias("lantern_pandora_dist"),
+        pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("lantern_truth_dist")).alias("lantern_truth_dist"),
     ])
 
     return df
