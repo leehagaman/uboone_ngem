@@ -476,8 +476,12 @@ def do_blip_postprocessing(df):
     # Same blip quality cuts as Part C.
     #
     # Outputs (default -1 if < 2 showers found or vertex is invalid):
-    #   blip_2shwr_{vtx}_no_shower_cones_{n,sumE}           — 75cm sphere around vtx, outside both cones
+    #   blip_2shwr_{vtx}_no_shower_cones_{n,sumE}           — 75cm sphere around vtx, outside both cones (apex at vtx)
+    #   blip_2shwr_{vtx}_no_shower_cones_{n,sumE}_notwithin_{1,3,10}cm — same, excluding blips within R cm of vtx
     #   blip_2shwr_{vtx}_no_shower_cones_{proton,nonproton}_{n,sumE}
+    #   blip_2shwr_{vtx}_no_gapped_shower_cones_{n,sumE}   — 75cm sphere, outside both cones (apex at each shower start)
+    #   blip_2shwr_{vtx}_no_gapped_shower_cones_{n,sumE}_notwithin_{1,3,10}cm — same, excluding blips within R cm of vtx
+    #   blip_2shwr_{vtx}_no_gapped_shower_cones_{proton,nonproton}_{n,sumE}
     #   blip_2shwr_{vtx}_{nWithin,sumE}_{1,3,10}cm          — small spheres, no cone exclusion
     #   blip_2shwr_{vtx}_{proton,nonproton}_{nWithin,sumE}_{1,3,10}cm
     #   blip_2shwr_min_{vtx}_to_shower_vtx_dist
@@ -506,6 +510,17 @@ def do_blip_postprocessing(df):
     two_shwr_no_shower_cones_proton_sumE = {k: [] for k in vtx_defs_2shwr}
     two_shwr_no_shower_cones_nonproton_n    = {k: [] for k in vtx_defs_2shwr}
     two_shwr_no_shower_cones_nonproton_sumE = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_shower_cones_notwithin_n    = {k: {R: [] for R in proton_radii_2shwr} for k in vtx_defs_2shwr}
+    two_shwr_no_shower_cones_notwithin_sumE = {k: {R: [] for R in proton_radii_2shwr} for k in vtx_defs_2shwr}
+
+    two_shwr_no_gapped_shower_cones_n           = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_sumE        = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_proton_n    = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_proton_sumE = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_nonproton_n    = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_nonproton_sumE = {k: [] for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_notwithin_n    = {k: {R: [] for R in proton_radii_2shwr} for k in vtx_defs_2shwr}
+    two_shwr_no_gapped_shower_cones_notwithin_sumE = {k: {R: [] for R in proton_radii_2shwr} for k in vtx_defs_2shwr}
 
     two_shwr_nWithin           = {k: {R: [] for R in proton_radii_2shwr} for k in vtx_defs_2shwr}
     two_shwr_sumE              = {k: {R: [] for R in proton_radii_2shwr} for k in vtx_defs_2shwr}
@@ -523,6 +538,18 @@ def do_blip_postprocessing(df):
         two_shwr_no_shower_cones_proton_sumE[k].append(-1)
         two_shwr_no_shower_cones_nonproton_n[k].append(-1)
         two_shwr_no_shower_cones_nonproton_sumE[k].append(-1)
+        for R in proton_radii_2shwr:
+            two_shwr_no_shower_cones_notwithin_n[k][R].append(-1)
+            two_shwr_no_shower_cones_notwithin_sumE[k][R].append(-1)
+        two_shwr_no_gapped_shower_cones_n[k].append(-1)
+        two_shwr_no_gapped_shower_cones_sumE[k].append(-1)
+        two_shwr_no_gapped_shower_cones_proton_n[k].append(-1)
+        two_shwr_no_gapped_shower_cones_proton_sumE[k].append(-1)
+        two_shwr_no_gapped_shower_cones_nonproton_n[k].append(-1)
+        two_shwr_no_gapped_shower_cones_nonproton_sumE[k].append(-1)
+        for R in proton_radii_2shwr:
+            two_shwr_no_gapped_shower_cones_notwithin_n[k][R].append(-1)
+            two_shwr_no_gapped_shower_cones_notwithin_sumE[k][R].append(-1)
         for R in proton_radii_2shwr:
             two_shwr_nWithin[k][R].append(-1)
             two_shwr_sumE[k][R].append(-1)
@@ -621,6 +648,13 @@ def do_blip_postprocessing(df):
             ev_no_shower_cones_n          = 0; ev_no_shower_cones_sumE          = 0.0
             ev_no_shower_cones_proton_n   = 0; ev_no_shower_cones_proton_sumE   = 0.0
             ev_no_shower_cones_nonproton_n = 0; ev_no_shower_cones_nonproton_sumE = 0.0
+            ev_no_shower_cones_notwithin_n    = {R: 0   for R in proton_radii_2shwr}
+            ev_no_shower_cones_notwithin_sumE = {R: 0.0 for R in proton_radii_2shwr}
+            ev_no_gapped_shower_cones_n          = 0; ev_no_gapped_shower_cones_sumE          = 0.0
+            ev_no_gapped_shower_cones_proton_n   = 0; ev_no_gapped_shower_cones_proton_sumE   = 0.0
+            ev_no_gapped_shower_cones_nonproton_n = 0; ev_no_gapped_shower_cones_nonproton_sumE = 0.0
+            ev_no_gapped_shower_cones_notwithin_n    = {R: 0   for R in proton_radii_2shwr}
+            ev_no_gapped_shower_cones_notwithin_sumE = {R: 0.0 for R in proton_radii_2shwr}
             ev_nWithin           = {R: 0   for R in proton_radii_2shwr}
             ev_sumE              = {R: 0.0 for R in proton_radii_2shwr}
             ev_proton_nWithin    = {R: 0   for R in proton_radii_2shwr}
@@ -643,20 +677,39 @@ def do_blip_postprocessing(df):
                             ev_nonproton_nWithin[R] += 1
                             ev_nonproton_sumE[R] += energy
 
-                # 75cm sphere + outside both shower cones
-                if dist_to_nu >= SPHERE_RADIUS_CM:
-                    continue
-                if is_in_cone(nu_vtx, cone_dirs[0], blip_xyz) or is_in_cone(nu_vtx, cone_dirs[1], blip_xyz):
-                    continue
+                # 75cm sphere cuts (shared prerequisite for both cone variants)
+                if dist_to_nu < SPHERE_RADIUS_CM:
+                    # Outside both shower cones (apex at nu vertex)
+                    if not (is_in_cone(nu_vtx, cone_dirs[0], blip_xyz) or
+                            is_in_cone(nu_vtx, cone_dirs[1], blip_xyz)):
+                        ev_no_shower_cones_n    += 1
+                        ev_no_shower_cones_sumE += energy
+                        if is_proton:
+                            ev_no_shower_cones_proton_n    += 1
+                            ev_no_shower_cones_proton_sumE += energy
+                        else:
+                            ev_no_shower_cones_nonproton_n    += 1
+                            ev_no_shower_cones_nonproton_sumE += energy
+                        for R in proton_radii_2shwr:
+                            if dist_to_nu >= R:
+                                ev_no_shower_cones_notwithin_n[R]    += 1
+                                ev_no_shower_cones_notwithin_sumE[R] += energy
 
-                ev_no_shower_cones_n    += 1
-                ev_no_shower_cones_sumE += energy
-                if is_proton:
-                    ev_no_shower_cones_proton_n    += 1
-                    ev_no_shower_cones_proton_sumE += energy
-                else:
-                    ev_no_shower_cones_nonproton_n    += 1
-                    ev_no_shower_cones_nonproton_sumE += energy
+                    # Outside both gapped shower cones (apex at each shower start)
+                    if not (is_in_cone(shower_start_xyzs[0], cone_dirs[0], blip_xyz) or
+                            is_in_cone(shower_start_xyzs[1], cone_dirs[1], blip_xyz)):
+                        ev_no_gapped_shower_cones_n    += 1
+                        ev_no_gapped_shower_cones_sumE += energy
+                        if is_proton:
+                            ev_no_gapped_shower_cones_proton_n    += 1
+                            ev_no_gapped_shower_cones_proton_sumE += energy
+                        else:
+                            ev_no_gapped_shower_cones_nonproton_n    += 1
+                            ev_no_gapped_shower_cones_nonproton_sumE += energy
+                        for R in proton_radii_2shwr:
+                            if dist_to_nu >= R:
+                                ev_no_gapped_shower_cones_notwithin_n[R]    += 1
+                                ev_no_gapped_shower_cones_notwithin_sumE[R] += energy
 
             two_shwr_no_shower_cones_n[k].append(ev_no_shower_cones_n)
             two_shwr_no_shower_cones_sumE[k].append(ev_no_shower_cones_sumE)
@@ -664,6 +717,18 @@ def do_blip_postprocessing(df):
             two_shwr_no_shower_cones_proton_sumE[k].append(ev_no_shower_cones_proton_sumE)
             two_shwr_no_shower_cones_nonproton_n[k].append(ev_no_shower_cones_nonproton_n)
             two_shwr_no_shower_cones_nonproton_sumE[k].append(ev_no_shower_cones_nonproton_sumE)
+            for R in proton_radii_2shwr:
+                two_shwr_no_shower_cones_notwithin_n[k][R].append(ev_no_shower_cones_notwithin_n[R])
+                two_shwr_no_shower_cones_notwithin_sumE[k][R].append(ev_no_shower_cones_notwithin_sumE[R])
+            two_shwr_no_gapped_shower_cones_n[k].append(ev_no_gapped_shower_cones_n)
+            two_shwr_no_gapped_shower_cones_sumE[k].append(ev_no_gapped_shower_cones_sumE)
+            two_shwr_no_gapped_shower_cones_proton_n[k].append(ev_no_gapped_shower_cones_proton_n)
+            two_shwr_no_gapped_shower_cones_proton_sumE[k].append(ev_no_gapped_shower_cones_proton_sumE)
+            two_shwr_no_gapped_shower_cones_nonproton_n[k].append(ev_no_gapped_shower_cones_nonproton_n)
+            two_shwr_no_gapped_shower_cones_nonproton_sumE[k].append(ev_no_gapped_shower_cones_nonproton_sumE)
+            for R in proton_radii_2shwr:
+                two_shwr_no_gapped_shower_cones_notwithin_n[k][R].append(ev_no_gapped_shower_cones_notwithin_n[R])
+                two_shwr_no_gapped_shower_cones_notwithin_sumE[k][R].append(ev_no_gapped_shower_cones_notwithin_sumE[R])
             for R in proton_radii_2shwr:
                 two_shwr_nWithin[k][R].append(ev_nWithin[R])
                 two_shwr_sumE[k][R].append(ev_sumE[R])
@@ -681,6 +746,18 @@ def do_blip_postprocessing(df):
         new_cols[f"blip_2shwr_{k}_no_shower_cones_proton_sumE"]    = two_shwr_no_shower_cones_proton_sumE[k]
         new_cols[f"blip_2shwr_{k}_no_shower_cones_nonproton_n"]    = two_shwr_no_shower_cones_nonproton_n[k]
         new_cols[f"blip_2shwr_{k}_no_shower_cones_nonproton_sumE"] = two_shwr_no_shower_cones_nonproton_sumE[k]
+        for R in proton_radii_2shwr:
+            new_cols[f"blip_2shwr_{k}_no_shower_cones_n_notwithin_{R}cm"]    = two_shwr_no_shower_cones_notwithin_n[k][R]
+            new_cols[f"blip_2shwr_{k}_no_shower_cones_sumE_notwithin_{R}cm"] = two_shwr_no_shower_cones_notwithin_sumE[k][R]
+        new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_n"]             = two_shwr_no_gapped_shower_cones_n[k]
+        new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_sumE"]          = two_shwr_no_gapped_shower_cones_sumE[k]
+        new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_proton_n"]      = two_shwr_no_gapped_shower_cones_proton_n[k]
+        new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_proton_sumE"]   = two_shwr_no_gapped_shower_cones_proton_sumE[k]
+        new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_nonproton_n"]   = two_shwr_no_gapped_shower_cones_nonproton_n[k]
+        new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_nonproton_sumE"] = two_shwr_no_gapped_shower_cones_nonproton_sumE[k]
+        for R in proton_radii_2shwr:
+            new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_n_notwithin_{R}cm"]    = two_shwr_no_gapped_shower_cones_notwithin_n[k][R]
+            new_cols[f"blip_2shwr_{k}_no_gapped_shower_cones_sumE_notwithin_{R}cm"] = two_shwr_no_gapped_shower_cones_notwithin_sumE[k][R]
         for R in proton_radii_2shwr:
             new_cols[f"blip_2shwr_{k}_nWithin_{R}cm"]           = two_shwr_nWithin[k][R]
             new_cols[f"blip_2shwr_{k}_sumE_{R}cm"]              = two_shwr_sumE[k][R]
