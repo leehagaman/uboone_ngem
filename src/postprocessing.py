@@ -918,6 +918,137 @@ def do_wc_postprocessing(df):
     df["wc_2shw_vtx_z"]    = wc_2shw_vtx_zs
     df["wc_2shw_vtx_doca"] = wc_2shw_vtx_doca
 
+    # -----------------------------------------
+    # WC two-shower PCA vertex: intersection of PCA primary axes from spacepoints
+    #
+    # For each of the two highest-energy showers (ordered by total energy, shower 0
+    # being the highest), PCA is run on the associated spacepoints (matched via
+    # wc_Trecchargeblob_spacepoints_real_cluster_id == wc_reco_id).
+    #
+    # Saved per shower (k = 0 or 1):
+    #   wc_2shw_pca_shwk_cx/cy/cz  — spacepoint centroid (cm)
+    #   wc_2shw_pca_shwk_dx/dy/dz  — primary PCA axis unit vector (sign arbitrary)
+    #   wc_2shw_pca_shwk_t_min     — min projection of spacepoints onto the axis (cm)
+    #   wc_2shw_pca_shwk_t_max     — max projection of spacepoints onto the axis (cm)
+    #     (endpoints along axis: centroid ± t * direction)
+    #
+    # wc_2shw_pca_vtx_x/y/z — midpoint of closest approach between the two axes.
+    #
+    # Fills NaN when spacepoint columns are missing, < 2 showers exist, or a
+    # shower has < 3 spacepoints.
+    # -----------------------------------------
+    _has_sp = (
+        "wc_Trecchargeblob_spacepoints_real_cluster_id" in df.columns
+        and "wc_Trecchargeblob_spacepoints_x" in df.columns
+    )
+
+    _pca_cols = {}
+    for k in (0, 1):
+        for coord in ("cx", "cy", "cz", "dx", "dy", "dz", "t_min", "t_max"):
+            _pca_cols[f"wc_2shw_pca_shw{k}_{coord}"] = []
+    wc_2shw_pca_vtx_xs = []
+    wc_2shw_pca_vtx_ys = []
+    wc_2shw_pca_vtx_zs = []
+
+    if _has_sp:
+        _sp_cid  = df["wc_Trecchargeblob_spacepoints_real_cluster_id"].to_numpy()
+        _sp_x    = df["wc_Trecchargeblob_spacepoints_x"].to_numpy()
+        _sp_y    = df["wc_Trecchargeblob_spacepoints_y"].to_numpy()
+        _sp_z    = df["wc_Trecchargeblob_spacepoints_z"].to_numpy()
+        _reco_id = df["wc_reco_id"].to_numpy()
+
+        def _pca_primary_axis(pts):
+            centroid = pts.mean(axis=0)
+            _, _, Vt = np.linalg.svd(pts - centroid, full_matrices=False)
+            return centroid, Vt[0]
+
+        def _append_pca_nan():
+            wc_2shw_pca_vtx_xs.append(np.nan)
+            wc_2shw_pca_vtx_ys.append(np.nan)
+            wc_2shw_pca_vtx_zs.append(np.nan)
+            for lst in _pca_cols.values():
+                lst.append(np.nan)
+
+        for i in tqdm(range(df.shape[0]), desc="Computing WC two-shower PCA vertex", mininterval=10):
+            pdg_arr = reco_pdg[i]
+            if isinstance(pdg_arr, float) or not hasattr(pdg_arr, '__getitem__'):
+                _append_pca_nan(); continue
+            sh_idx = [j for j in range(len(pdg_arr)) if pdg_arr[j] == 11]
+            if len(sh_idx) < 2:
+                _append_pca_nan(); continue
+            sh_idx.sort(key=lambda j: reco_startMomentum[i][j][3], reverse=True)
+            j0, j1 = sh_idx[0], sh_idx[1]
+            rid0 = float(_reco_id[i][j0])
+            rid1 = float(_reco_id[i][j1])
+            cids = np.asarray(_sp_cid[i], dtype=float)
+            spx  = np.asarray(_sp_x[i], dtype=float)
+            spy  = np.asarray(_sp_y[i], dtype=float)
+            spz  = np.asarray(_sp_z[i], dtype=float)
+            m0 = cids == rid0; m1 = cids == rid1
+            if m0.sum() < 3 or m1.sum() < 3:
+                _append_pca_nan(); continue
+            pts0 = np.column_stack([spx[m0], spy[m0], spz[m0]])
+            pts1 = np.column_stack([spx[m1], spy[m1], spz[m1]])
+            c0, d0 = _pca_primary_axis(pts0)
+            c1, d1 = _pca_primary_axis(pts1)
+
+            # Compute the PCA vertex (closest-approach midpoint) first so we can
+            # use it to orient the directions away from the vertex.
+            w0_vec = c0 - c1
+            b_dot  = np.dot(d0, d1)
+            dd     = np.dot(d0, w0_vec)
+            e      = np.dot(d1, w0_vec)
+            denom  = 1.0 - b_dot * b_dot
+            if abs(denom) < 1e-10:
+                # Parallel axes: use midpoint of centroids as orientation reference
+                vtx_ref = 0.5 * (c0 + c1)
+                mid = None
+            else:
+                t   = (b_dot * e - dd) / denom
+                s   = (e - b_dot * dd) / denom
+                mid = 0.5 * ((c0 + t * d0) + (c1 + s * d1))
+                vtx_ref = mid
+
+            # Orient each direction to point away from the vertex reference
+            if np.dot(c0 - vtx_ref, d0) < 0:
+                d0 = -d0
+            if np.dot(c1 - vtx_ref, d1) < 0:
+                d1 = -d1
+
+            # Per-shower centroid, direction, and extent along the PCA axis
+            for k, (c, d, pts) in enumerate([(c0, d0, pts0), (c1, d1, pts1)]):
+                projs = (pts - c) @ d  # signed distances from centroid along axis
+                _pca_cols[f"wc_2shw_pca_shw{k}_cx"].append(float(c[0]))
+                _pca_cols[f"wc_2shw_pca_shw{k}_cy"].append(float(c[1]))
+                _pca_cols[f"wc_2shw_pca_shw{k}_cz"].append(float(c[2]))
+                _pca_cols[f"wc_2shw_pca_shw{k}_dx"].append(float(d[0]))
+                _pca_cols[f"wc_2shw_pca_shw{k}_dy"].append(float(d[1]))
+                _pca_cols[f"wc_2shw_pca_shw{k}_dz"].append(float(d[2]))
+                _pca_cols[f"wc_2shw_pca_shw{k}_t_min"].append(float(projs.min()))
+                _pca_cols[f"wc_2shw_pca_shw{k}_t_max"].append(float(projs.max()))
+
+            if mid is None:
+                wc_2shw_pca_vtx_xs.append(np.nan)
+                wc_2shw_pca_vtx_ys.append(np.nan)
+                wc_2shw_pca_vtx_zs.append(np.nan)
+                continue
+            wc_2shw_pca_vtx_xs.append(float(mid[0]))
+            wc_2shw_pca_vtx_ys.append(float(mid[1]))
+            wc_2shw_pca_vtx_zs.append(float(mid[2]))
+    else:
+        _nan_list = [np.nan] * df.shape[0]
+        wc_2shw_pca_vtx_xs = list(_nan_list)
+        wc_2shw_pca_vtx_ys = list(_nan_list)
+        wc_2shw_pca_vtx_zs = list(_nan_list)
+        for lst in _pca_cols.values():
+            lst.extend(_nan_list)
+
+    df["wc_2shw_pca_vtx_x"] = wc_2shw_pca_vtx_xs
+    df["wc_2shw_pca_vtx_y"] = wc_2shw_pca_vtx_ys
+    df["wc_2shw_pca_vtx_z"] = wc_2shw_pca_vtx_zs
+    for col, lst in _pca_cols.items():
+        df[col] = lst
+
     proton_vtx_defs = {
         "wcvtx":     (nuvtx_x,     nuvtx_y,     nuvtx_z),
         "wcshwrvtx":   (showervtx_x, showervtx_y, showervtx_z),
@@ -1151,16 +1282,19 @@ def add_extra_true_photon_variables(df):
     if num_infinite_loops_broken > 0:
         print(f"Broke infinite loops in the true gamma daughter search {num_infinite_loops_broken} / {df.shape[0]} times")
 
-    df["true_num_gamma"] = true_num_gamma
-    df["true_gamma_energies"] = true_gamma_energies
-    df["true_gamma_pairconversion_xs"] = true_gamma_pairconversion_xs
-    df["true_gamma_pairconversion_ys"] = true_gamma_pairconversion_ys
-    df["true_gamma_pairconversion_zs"] = true_gamma_pairconversion_zs
-    df["true_num_gamma_pairconvert"] = true_num_gamma_pairconvert
-    df["true_num_gamma_pairconvert_in_FV"] = true_num_gamma_pairconvert_in_FV
-    df["true_num_gamma_pairconvert_in_FV_20_MeV"] = true_num_gamma_pairconvert_in_FV_20_MeV
-    df["true_one_pairconvert_in_FV_20_MeV"] = true_num_gamma_pairconvert_in_FV_20_MeV == 1
-    df["true_num_prim_gamma"] = true_num_prim_gamma
+    new_cols = {
+        "true_num_gamma": true_num_gamma,
+        "true_gamma_energies": true_gamma_energies,
+        "true_gamma_pairconversion_xs": true_gamma_pairconversion_xs,
+        "true_gamma_pairconversion_ys": true_gamma_pairconversion_ys,
+        "true_gamma_pairconversion_zs": true_gamma_pairconversion_zs,
+        "true_num_gamma_pairconvert": true_num_gamma_pairconvert,
+        "true_num_gamma_pairconvert_in_FV": true_num_gamma_pairconvert_in_FV,
+        "true_num_gamma_pairconvert_in_FV_20_MeV": true_num_gamma_pairconvert_in_FV_20_MeV,
+        "true_one_pairconvert_in_FV_20_MeV": [x == 1 for x in true_num_gamma_pairconvert_in_FV_20_MeV],
+        "true_num_prim_gamma": true_num_prim_gamma,
+    }
+    df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     return df
 
@@ -1206,8 +1340,11 @@ def do_spacepoint_postprocessing(df):
                     min_distance = distance
             min_distances.append(min_distance)
         min_distances_events.append(min_distances)
-    df["wc_true_gamma_pairconversion_spacepoint_min_distances"] = min_distances_events
-    df["wc_true_gamma_pairconversion_spacepoint_max_min_distance"] = [np.max(x) if isinstance(x, list) and len(x) > 0 else np.nan for x in min_distances_events]
+    new_cols = {
+        "wc_true_gamma_pairconversion_spacepoint_min_distances": min_distances_events,
+        "wc_true_gamma_pairconversion_spacepoint_max_min_distance": [np.max(x) if isinstance(x, list) and len(x) > 0 else np.nan for x in min_distances_events],
+    }
+    df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     return df
 

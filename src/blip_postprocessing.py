@@ -581,7 +581,11 @@ def do_blip_postprocessing(df):
         top2 = shower_indices[:2]
 
         # Shower start positions (same for all vertex hypotheses)
-        shower_start_xyzs = [np.array([xyzt_arr[j][0], xyzt_arr[j][1], xyzt_arr[j][2]]) for j in top2]
+        shower_start_xyzs = [np.array([xyzt_arr[j][0], xyzt_arr[j][1], xyzt_arr[j][2]], dtype=np.float64) for j in top2]
+        if not all(np.all(np.isfinite(xyz)) for xyz in shower_start_xyzs):
+            for k in vtx_defs_2shwr:
+                _append_2shwr_defaults_for_vtx(k)
+            continue
 
         # Pre-filter blips by quality cuts (independent of vertex)
         blip_xs           = all_blip_x[event_index]
@@ -635,8 +639,8 @@ def do_blip_postprocessing(df):
                 if dist_nu_to_sh > 1e-10:
                     cone_dirs.append(nu_to_sh / dist_nu_to_sh)
                 else:
-                    sh_mom = np.array([mom_arr[j][0], mom_arr[j][1], mom_arr[j][2]])
-                    sh_mom_mag = np.linalg.norm(sh_mom)
+                    sh_mom = np.array([mom_arr[j][0], mom_arr[j][1], mom_arr[j][2]], dtype=np.float64)
+                    sh_mom_mag = np.linalg.norm(sh_mom) if np.all(np.isfinite(sh_mom)) else 0.0
                     if sh_mom_mag > 1e-10:
                         cone_dirs.append(sh_mom / sh_mom_mag)
                     else:
