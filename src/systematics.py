@@ -133,10 +133,6 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
     print("creating reweightable systematic covariance matrices...")
 
-    if weights_df is None:
-        print("loading weights_df from parquet file...")
-        weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
-
     derived_filetypes = ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
     if "filetype" in mc_pred_df.columns:
         derived_counts = mc_pred_df.filter(pl.col("filetype").is_in(derived_filetypes)).group_by("filetype").agg(pl.len().alias("count"))
@@ -147,12 +143,23 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
 
     print("merging mc_pred_df and weights_df...")
     pred_vars = ["filename", "run", "subrun", "event", "wc_net_weight", "wc_weight_cv", "wc_weight_spline", var]
-    merged_df = mc_pred_df.select(pred_vars).join(weights_df, on=["filename", "run", "subrun", "event"], how="inner")
-    if merged_df.height != mc_pred_df.height:
-        print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {merged_df.height=}, {mc_pred_df.height=}")
-        debug_cols = [c for c in ["filename", "filetype", "run", "subrun", "event"] if c in mc_pred_df.columns]
-        missing_df = mc_pred_df.select(debug_cols).join(weights_df.select(["filename", "run", "subrun", "event"]), on=["filename", "run", "subrun", "event"], how="anti").sample(10)
-        print(f"Randomly sampled 10 missing events:\n{missing_df.head(10)}")
+    if weights_df is None:
+        print("streaming join with weights parquet file (low-RAM mode)...")
+        weights_lazy = pl.scan_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
+        merged_df = (
+            mc_pred_df.select(pred_vars).lazy()
+            .join(weights_lazy, on=["filename", "run", "subrun", "event"], how="inner")
+            .collect(engine="streaming")
+        )
+        if merged_df.height != mc_pred_df.height:
+            print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {merged_df.height=}, {mc_pred_df.height=}")
+    else:
+        merged_df = mc_pred_df.select(pred_vars).join(weights_df, on=["filename", "run", "subrun", "event"], how="inner")
+        if merged_df.height != mc_pred_df.height:
+            print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {merged_df.height=}, {mc_pred_df.height=}")
+            debug_cols = [c for c in ["filename", "filetype", "run", "subrun", "event"] if c in mc_pred_df.columns]
+            missing_df = mc_pred_df.select(debug_cols).join(weights_df.select(["filename", "run", "subrun", "event"]), on=["filename", "run", "subrun", "event"], how="anti").sample(10)
+            print(f"Randomly sampled 10 missing events:\n{missing_df.head(10)}")
 
 
     pred_vals = get_vals(merged_df, var)
