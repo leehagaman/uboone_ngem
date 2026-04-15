@@ -367,7 +367,10 @@ def make_histogram_plot(
 
         # optional detvar-only fractional uncertainty breakdown plot
         plot_detvar_breakdown=False,
-        
+
+        # optional saving of prediction covariance matrix
+        save_pred_cov_matrix=False,
+
         ):
 
     if include_decomposition and not include_ratio:
@@ -840,6 +843,17 @@ def make_histogram_plot(
             include_rw=False, just_genie_breakdown=False,
             include_detvar=True, just_detvar_breakdown=True, detvar_df=detvar_df,
             print_sys_breakdown=print_sys_breakdown)
+
+    if save_pred_cov_matrix:
+        if savename is None:
+            raise ValueError("savename must be provided if save_pred_cov_matrix is True")
+        if use_detvar_systematics:
+            np.savetxt(f"../plots/{savename}_pred_cov_matrix_with_detvar.csv", tot_pred_sys_cov, delimiter=",")
+            np.savetxt(f"../plots/{savename}_pred_cov_matrix_no_detvar.csv", nodetvar_pred_sys_cov, delimiter=",")
+        elif use_rw_systematics:
+            np.savetxt(f"../plots/{savename}_pred_cov_matrix_no_detvar.csv", nodetvar_pred_sys_cov, delimiter=",")
+        else:
+            np.savetxt(f"../plots/{savename}_pred_cov_matrix.csv", pred_stat_cov, delimiter=",")
 
     if return_p_value_info:
         return p_value_info_dic

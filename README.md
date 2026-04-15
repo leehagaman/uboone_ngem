@@ -14,7 +14,7 @@ nohup bash download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/nge
 
 ## Python environment
 ```
-uv pip install numpy pandas matplotlib uproot umap-learn tqdm xgboost nbconvert polars root
+uv pip install ipykernel numpy pandas matplotlib uproot umap-learn tqdm xgboost nbconvert polars root
 ```
 
 To avoid making ipynb plots visible on github:

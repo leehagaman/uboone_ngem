@@ -141,55 +141,68 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
                   "These events have no flux, cross-section, or re-interaction systematics available,"
                   " so they are assigned unit weights for all reweightable systematics.")
 
-    print("merging mc_pred_df and weights_df...")
-    pred_vars = ["filename", "run", "subrun", "event", "wc_net_weight", "wc_weight_cv", "wc_weight_spline", var]
+    # Filter mc_pred_df to events present in weights, fetching only key columns from weights
+    # so no List[Float32] universe columns are loaded yet.
+    join_keys = ["filename", "run", "subrun", "event"]
+    pred_vars = list(dict.fromkeys(join_keys + ["wc_net_weight", "wc_weight_cv", "wc_weight_spline", var]))
+    weights_parquet_path = f"{intermediate_files_location}/presel_weights_df.parquet"
+
+    print("filtering mc_pred_df to events present in weights...")
     if weights_df is None:
-        print("streaming join with weights parquet file (low-RAM mode)...")
-        weights_lazy = pl.scan_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
-        merged_df = (
+        base_merged = (
             mc_pred_df.select(pred_vars).lazy()
-            .join(weights_lazy, on=["filename", "run", "subrun", "event"], how="inner")
+            .join(pl.scan_parquet(weights_parquet_path).select(join_keys), on=join_keys, how="inner")
             .collect(engine="streaming")
         )
-        if merged_df.height != mc_pred_df.height:
-            print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {merged_df.height=}, {mc_pred_df.height=}")
     else:
-        merged_df = mc_pred_df.select(pred_vars).join(weights_df, on=["filename", "run", "subrun", "event"], how="inner")
-        if merged_df.height != mc_pred_df.height:
-            print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {merged_df.height=}, {mc_pred_df.height=}")
-            debug_cols = [c for c in ["filename", "filetype", "run", "subrun", "event"] if c in mc_pred_df.columns]
-            missing_df = mc_pred_df.select(debug_cols).join(weights_df.select(["filename", "run", "subrun", "event"]), on=["filename", "run", "subrun", "event"], how="anti").sample(10)
-            print(f"Randomly sampled 10 missing events:\n{missing_df.head(10)}")
+        base_merged = mc_pred_df.select(pred_vars).join(
+            weights_df.select(join_keys), on=join_keys, how="inner"
+        )
 
+    if base_merged.height != mc_pred_df.height:
+        print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {base_merged.height=}, {mc_pred_df.height=}")
 
-    pred_vals = get_vals(merged_df, var)
+    pred_vals = get_vals(base_merged, var)
 
     rw_sys_frac_cov_dic = {}
 
     print("getting CV histogram and non-GENIE weights...")
-    cv_hist = np.histogram(pred_vals, weights=merged_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+    cv_hist = np.histogram(pred_vals, weights=base_merged.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
     cv_hist = np.maximum(cv_hist, 1e-3) # avoiding nans when we divide in the next step, this bin will have large stat uncertainty anyway
 
     # we use these weights when we replace GENIE weight_cv with the new systematic weight
-    non_genie_cv_weights = merged_df.get_column("wc_net_weight").to_numpy() / merged_df.get_column("wc_weight_cv").to_numpy()
+    non_genie_cv_weights = base_merged.get_column("wc_net_weight").to_numpy() / base_merged.get_column("wc_weight_cv").to_numpy()
 
     # we use these weights when we consider a new weight independent of the GENIE CV weights
-    normal_weights = merged_df.get_column("wc_net_weight").to_numpy()
+    normal_weights = base_merged.get_column("wc_net_weight").to_numpy()
 
-    All_UBGenie_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("All_UBGenie").to_numpy(), non_genie_cv_weights, description="All_UBGenie")
-    All_UBGenie_cov = create_cov_matrix(All_UBGenie_hists, cv_hist)
-    denom = np.outer(cv_hist, cv_hist)
-    rw_sys_frac_cov_dic["All_UBGenie"] = np.nan_to_num(np.divide(All_UBGenie_cov, denom, out=np.zeros_like(All_UBGenie_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
+    def _get_universe_weights(col_name):
+        """Fetch a single List[Float32] universe column, joining only that column."""
+        if weights_df is None:
+            return (
+                base_merged.select(join_keys).lazy()
+                .join(pl.scan_parquet(weights_parquet_path).select(join_keys + [col_name]), on=join_keys, how="inner")
+                .collect(engine="streaming")
+                .get_column(col_name).to_numpy()
+            )
+        else:
+            return (
+                base_merged.select(join_keys)
+                .join(weights_df.select(join_keys + [col_name]), on=join_keys, how="inner")
+                .get_column(col_name).to_numpy()
+            )
 
-    flux_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("flux_all").to_numpy(), normal_weights, description="flux")
-    flux_cov = create_cov_matrix(flux_hists, cv_hist)
-    denom = np.outer(cv_hist, cv_hist)
-    rw_sys_frac_cov_dic["flux"] = np.nan_to_num(np.divide(flux_cov, denom, out=np.zeros_like(flux_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
-
-    reint_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column("reint_all").to_numpy(), normal_weights, description="reinteraction")
-    reint_cov = create_cov_matrix(reint_hists, cv_hist)
-    denom = np.outer(cv_hist, cv_hist)
-    rw_sys_frac_cov_dic["reinteraction"] = np.nan_to_num(np.divide(reint_cov, denom, out=np.zeros_like(reint_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
+    for sys_name, col_name, event_weights in [
+        ("All_UBGenie", "All_UBGenie", non_genie_cv_weights),
+        ("flux",        "flux_all",    normal_weights),
+        ("reinteraction", "reint_all", normal_weights),
+    ]:
+        uni_weights = _get_universe_weights(col_name)
+        hists = create_universe_histograms(pred_vals, bins, uni_weights, event_weights, description=sys_name)
+        cov = create_cov_matrix(hists, cv_hist)
+        denom = np.outer(cv_hist, cv_hist)
+        rw_sys_frac_cov_dic[sys_name] = np.nan_to_num(np.divide(cov, denom, out=np.zeros_like(cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
+        del uni_weights
 
     print("creating GENIE unisim systematic covariance matrices...")
 
@@ -214,12 +227,11 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
         else:
             num_unis = None
 
-        if unisim_type == "xsr_scc_Fa3_SCC" or unisim_type == "xsr_scc_Fv3_SCC":
-            other_weights = normal_weights
-        else:
-            other_weights = non_genie_cv_weights
+        event_weights = normal_weights if unisim_type in ("xsr_scc_Fa3_SCC", "xsr_scc_Fv3_SCC") else non_genie_cv_weights
 
-        unisim_hists = create_universe_histograms(pred_vals, bins, merged_df.get_column(unisim_type).to_numpy(), other_weights, description=unisim_type, quiet=True)
+        uni_weights = _get_universe_weights(unisim_type)
+        unisim_hists = create_universe_histograms(pred_vals, bins, uni_weights, event_weights, description=unisim_type, quiet=True)
+        del uni_weights
         unisim_cov = create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=num_unis)
         denom = np.outer(cv_hist, cv_hist)
         rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(np.divide(unisim_cov, denom, out=np.zeros_like(unisim_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
