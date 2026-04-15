@@ -850,10 +850,16 @@ def make_histogram_plot(
         if use_detvar_systematics:
             np.savetxt(f"../plots/{savename}_pred_cov_matrix_with_detvar.csv", tot_pred_sys_cov, delimiter=",")
             np.savetxt(f"../plots/{savename}_pred_cov_matrix_no_detvar.csv", nodetvar_pred_sys_cov, delimiter=",")
+            np.savetxt(f"../plots/{savename}_pred_frac_cov_matrix_with_detvar.csv", tot_pred_sys_frac_cov, delimiter=",")
+            np.savetxt(f"../plots/{savename}_pred_frac_cov_matrix_no_detvar.csv", nodetvar_pred_sys_frac_cov, delimiter=",")
         elif use_rw_systematics:
             np.savetxt(f"../plots/{savename}_pred_cov_matrix_no_detvar.csv", nodetvar_pred_sys_cov, delimiter=",")
+            np.savetxt(f"../plots/{savename}_pred_frac_cov_matrix_no_detvar.csv", nodetvar_pred_sys_frac_cov, delimiter=",")
         else:
+            denom = np.outer(pred_counts, pred_counts)
+            pred_stat_frac_cov = np.divide(pred_stat_cov, denom, out=np.zeros_like(pred_stat_cov), where=(denom != 0))
             np.savetxt(f"../plots/{savename}_pred_cov_matrix.csv", pred_stat_cov, delimiter=",")
+            np.savetxt(f"../plots/{savename}_pred_frac_cov_matrix.csv", pred_stat_frac_cov, delimiter=",")
 
     if return_p_value_info:
         return p_value_info_dic
