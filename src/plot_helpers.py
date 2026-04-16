@@ -249,34 +249,34 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
 
 def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x=False, log_y=False,
         additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
-        page_num=None, savename=None, show=True, detvar_df=None):
+        page_num=None, savename=None, show=True, detvar_df=None, net_weight_var="wc_net_weight"):
 
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
 
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
-    cv_counts = np.histogram(get_vals(cv_df, var), weights=cv_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0]
+    cv_counts = np.histogram(get_vals(cv_df, var), weights=cv_df.get_column(net_weight_var).to_numpy()*additional_scaling_factor, bins=bins)[0]
     min_nonzero_y = np.min(cv_counts[cv_counts > 0])
     max_y = np.max(cv_counts)
     ax1.hist(display_bin_centers, weights=cv_counts, bins=display_bins, histtype="step", color="k", lw=2, zorder=-1, label="CV")
 
     ratios_by_var_dic = {}
 
-    total_cv_weight = np.sum(cv_df.get_column("wc_net_weight").to_numpy())
+    total_cv_weight = np.sum(cv_df.get_column(net_weight_var).to_numpy())
     for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
         curr_filetype_rse_df = curr_df.select(["filetype", "run", "subrun", "event"])
         matching_cv_df = cv_df.join(curr_filetype_rse_df, on=["filetype", "run", "subrun", "event"], how="inner")
 
-        matching_cv_weight = np.sum(matching_cv_df.get_column("wc_net_weight").to_numpy())
+        matching_cv_weight = np.sum(matching_cv_df.get_column(net_weight_var).to_numpy())
         match_weight = total_cv_weight / matching_cv_weight
 
         matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
 
-        matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor*match_weight, bins=bins)[0]
-        matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor*match_weight, bins=bins)[0]
+        matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column(net_weight_var).to_numpy()*additional_scaling_factor*match_weight, bins=bins)[0]
+        matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column(net_weight_var).to_numpy()*additional_scaling_factor*match_weight, bins=bins)[0]
 
         var_over_cv_ratio = matching_cv_counts / matching_var_counts
         var_over_cv_ratio = np.nan_to_num(var_over_cv_ratio, nan=0, posinf=0, neginf=0)
@@ -331,6 +331,7 @@ def make_histogram_plot(
         pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, 
         bins=None, include_overflow=True, include_underflow=False, log_x=False, log_y=False, 
         var=None, display_var=None, breakdown_type="del1g_detailed", 
+        net_weight_var="wc_net_weight",
         title=None, savename=None,
         iso1g_norm_factor=None, del1g_norm_factor=None, 
         include_data=True, additional_scaling_factor=1.0, data_type="4a+4b open data",
@@ -457,7 +458,7 @@ def make_histogram_plot(
     for breakdown_i, breakdown_label in enumerate(breakdown_labels):
         curr_df = pred_sel_df.filter(eval(breakdown_queries[breakdown_i], {'pl': pl, '__builtins__': {}}))
         vals = get_vals(curr_df, var)
-        breakdown_counts.append(np.histogram(vals, weights=curr_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0])
+        breakdown_counts.append(np.histogram(vals, weights=curr_df.get_column(net_weight_var).to_numpy()*additional_scaling_factor, bins=bins)[0])
         unweighted_breakdown_counts.append(np.histogram(vals, bins=bins)[0])
     bottom = np.zeros(len(bins)-1)
     tot_pred = 0
@@ -485,8 +486,8 @@ def make_histogram_plot(
         else:
             bottom += n
 
-    pred_counts = np.histogram(get_vals(pred_sel_df, var), weights=pred_sel_df.get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0]
-    mc_pred_counts = np.histogram(get_vals(pred_sel_df.filter(pl.col("filetype") != "ext"), var), weights=pred_sel_df.filter(pl.col("filetype") != "ext").get_column("wc_net_weight").to_numpy()*additional_scaling_factor, bins=bins)[0]
+    pred_counts = np.histogram(get_vals(pred_sel_df, var), weights=pred_sel_df.get_column(net_weight_var).to_numpy()*additional_scaling_factor, bins=bins)[0]
+    mc_pred_counts = np.histogram(get_vals(pred_sel_df.filter(pl.col("filetype") != "ext"), var), weights=pred_sel_df.filter(pl.col("filetype") != "ext").get_column(net_weight_var).to_numpy()*additional_scaling_factor, bins=bins)[0]
     
     max_y = np.max(pred_counts)
     ax1.plot([], [], c="k", lw=0.5, label=f"Total Pred: {tot_pred:.1f} ({tot_unweighted_pred:.0f})")
@@ -523,14 +524,16 @@ def make_histogram_plot(
             raise ValueError("selname must be provided if use_rw_systematics is True")
 
         rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
-            pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, dont_load_rw_from_systematic_cache=dont_load_rw_from_systematic_cache, weights_df=weights_df
+            pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, 
+            dont_load_rw_from_systematic_cache=dont_load_rw_from_systematic_cache, weights_df=weights_df,
+            net_weight_var=net_weight_var
         )
         combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
         for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
             combined_rw_sys_frac_cov += rw_sys_frac_cov
         combined_rw_sys_cov = combined_rw_sys_frac_cov * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
         data_stat_cov = get_data_stat_cov(data_counts, pred_counts)
-        pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column("wc_net_weight").to_numpy(), bins)
+        pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column(net_weight_var).to_numpy(), bins)
         nodetvar_sys_cov = combined_rw_sys_cov + data_stat_cov + pred_stat_cov
         denom = np.outer(pred_counts, pred_counts)
         nodetvar_sys_frac_cov = np.divide(nodetvar_sys_cov, denom, out=np.zeros_like(nodetvar_sys_cov), where=(denom != 0))
@@ -562,7 +565,11 @@ def make_histogram_plot(
                 raise ValueError("detvar_df must be provided if use_detvar_systematics is True")
 
             detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
-                detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, use_detvar_bootstrapping=use_detvar_bootstrapping, num_bootstrap_rounds_detvar=num_bootstrap_rounds_detvar, num_bootstrap_samples_detvar=num_bootstrap_samples_detvar
+                detvar_df, selname, var, bins, 
+                dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, 
+                use_detvar_bootstrapping=use_detvar_bootstrapping, num_bootstrap_rounds_detvar=num_bootstrap_rounds_detvar, 
+                num_bootstrap_samples_detvar=num_bootstrap_samples_detvar,
+                net_weight_var=net_weight_var
             )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():

@@ -32,8 +32,7 @@ You can also add -m to add memory logging printouts, to check if you're running 
 This takes a bit of time, might want to run it in the background with nohup or tmux.
 
 ```
-python src/create_df.py -f 0.01 --create_file_dfs
-python src/create_df.py --merge_file_dfs
+python src/create_df.py -f 0.01 --create_file_dfs --merge_file_dfs
 
 nohup python -u src/create_df.py -m --create_file_dfs --merge_file_dfs > create_file_dfs_nohup.out 2>&1 &
 nohup python -u src/create_df.py -m --merge_file_dfs > merge_file_dfs_nohup.out 2>&1 &

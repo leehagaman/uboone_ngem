@@ -314,9 +314,6 @@ if __name__ == "__main__":
             filetype = meta["filetype"]
             detailed_run_period = meta["detailed_run_period"]
 
-            if detailed_run_period not in ["4a", "4b"]:
-                continue
-
             file_POT = meta["file_POT"]
             n_events = meta["n_events"]
 
@@ -519,6 +516,7 @@ if __name__ == "__main__":
             normalizing_POT = 1.11e21 # if we don't use a data file, assume we want full runs 1-5 data
 
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
+        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT, run4b_only=True)
 
         # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
         new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]

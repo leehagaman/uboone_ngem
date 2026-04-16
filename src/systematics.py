@@ -129,7 +129,7 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
     return hists
 
 
-def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
+def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weight_var="wc_net_weight"):
 
     print("creating reweightable systematic covariance matrices...")
 
@@ -144,7 +144,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     # Filter mc_pred_df to events present in weights, fetching only key columns from weights
     # so no List[Float32] universe columns are loaded yet.
     join_keys = ["filename", "run", "subrun", "event"]
-    pred_vars = list(dict.fromkeys(join_keys + ["wc_net_weight", "wc_weight_cv", "wc_weight_spline", var]))
+    pred_vars = list(dict.fromkeys(join_keys + [net_weight_var, "wc_weight_cv", "wc_weight_spline", var]))
     weights_parquet_path = f"{intermediate_files_location}/presel_weights_df.parquet"
 
     print("filtering mc_pred_df to events present in weights...")
@@ -167,14 +167,14 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None):
     rw_sys_frac_cov_dic = {}
 
     print("getting CV histogram and non-GENIE weights...")
-    cv_hist = np.histogram(pred_vals, weights=base_merged.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+    cv_hist = np.histogram(pred_vals, weights=base_merged.get_column(net_weight_var).to_numpy(), bins=bins)[0]
     cv_hist = np.maximum(cv_hist, 1e-3) # avoiding nans when we divide in the next step, this bin will have large stat uncertainty anyway
 
     # we use these weights when we replace GENIE weight_cv with the new systematic weight
-    non_genie_cv_weights = base_merged.get_column("wc_net_weight").to_numpy() / base_merged.get_column("wc_weight_cv").to_numpy()
+    non_genie_cv_weights = base_merged.get_column(net_weight_var).to_numpy() / base_merged.get_column("wc_weight_cv").to_numpy()
 
     # we use these weights when we consider a new weight independent of the GENIE CV weights
-    normal_weights = base_merged.get_column("wc_net_weight").to_numpy()
+    normal_weights = base_merged.get_column(net_weight_var).to_numpy()
 
     def _get_universe_weights(col_name):
         """Fetch a single List[Float32] universe column, joining only that column."""
@@ -347,7 +347,7 @@ def _key_hash_detvar(sel, var, bins, use_detvar_bootstrapping, num_bootstrap_rou
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None):
+def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None, net_weight_var="wc_net_weight"):
 
     if not dont_load_rw_from_systematic_cache:
         key_h = _key_hash(selname, var, bins)
@@ -357,7 +357,7 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_fr
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["rw_sys_frac_cov_dic"].item()
 
-    rw_sys_frac_cov_dic = create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df)
+    rw_sys_frac_cov_dic = create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df, net_weight_var=net_weight_var)
 
     key_h = _key_hash(selname, var, bins)
     cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"

@@ -65,7 +65,13 @@ def change_dtypes(df):
 
 
 
-def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
+def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT, run4b_only=False):
+
+    if run4b_only:
+        print("in do_orthogonalization_and_POT_weighting, run4b_only=True")
+    else:
+        print("in do_orthogonalization_and_POT_weighting")
+    
 
     print("pot_dic:")
     detailed_run_periods = []
@@ -76,44 +82,39 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     detailed_run_periods = sorted(set(detailed_run_periods))
     print()
 
-    normalizing_run_periods = ["4a", "4nota5"]
+    weight_col_name = "run4b_only_wc_net_weight" if run4b_only else "wc_net_weight"
 
-    # keep 4a separately normalized, since it's different from the rest of run 4
-    # eventually, this will be used to separately normalize run 1, run 2, run 3, etc.
-    df = df.with_columns([
-        pl.when(
-            
-        pl.col("detailed_run_period") == "4a").then(pl.lit("4a"))
+    # Maps detailed_run_period -> normalizing_run_period.
+    # In run4b_only mode only 4b is included; all other periods map to None (→ null weight).
+    if run4b_only:
+        run_period_map = {"4b": "4b"}
+    else:
+        # keep 4a separately normalized, since it's different from the rest of run 4
+        # eventually, this will be used to separately normalize run 1, run 2, run 3, etc.
+        run_period_map = {
+            "4a": "4a",
+            "4b": "4nota5", "4c": "4nota5", "4d": "4nota5", "4bcd": "4nota5", "5": "4nota5",
+        }
 
-        .when(pl.col("detailed_run_period") == "4b").then(pl.lit("4nota5"))
-        .when(pl.col("detailed_run_period") == "4c").then(pl.lit("4nota5"))
-        .when(pl.col("detailed_run_period") == "4d").then(pl.lit("4nota5"))
-        .when(pl.col("detailed_run_period") == "4bcd").then(pl.lit("4nota5"))
-        .when(pl.col("detailed_run_period") == "5").then(pl.lit("4nota5"))
+    normalizing_run_periods = sorted(set(run_period_map.values()))
 
-        .otherwise(pl.lit("error!"))
-        .alias("normalizing_run_period")
-    ])
+    # Build normalizing_run_period column from run_period_map
+    norm_rp_expr = None
+    for drp, nrp in run_period_map.items():
+        if norm_rp_expr is None:
+            norm_rp_expr = pl.when(pl.col("detailed_run_period") == drp).then(pl.lit(nrp))
+        else:
+            norm_rp_expr = norm_rp_expr.when(pl.col("detailed_run_period") == drp).then(pl.lit(nrp))
+    norm_rp_expr = norm_rp_expr.otherwise(pl.lit(None).cast(pl.String))
+    df = df.with_columns([norm_rp_expr.alias("normalizing_run_period")])
 
     normalizing_run_period_pot_dic = defaultdict(float)
     for k, v in pot_dic.items():
         filetype, detailed_run_period = k
-
-        if detailed_run_period == "4a":
-            normalizing_run_period_pot_dic[(filetype, "4a")] += v
-        
-        elif detailed_run_period == "4b":
-            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
-        elif detailed_run_period == "4c":
-            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
-        elif detailed_run_period == "4d":
-            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
-        elif detailed_run_period == "4bcd":
-            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
-        elif detailed_run_period == "5":
-            normalizing_run_period_pot_dic[(filetype, "4nota5")] += v
-        
-        else:
+        nrp = run_period_map.get(detailed_run_period)
+        if nrp is not None:
+            normalizing_run_period_pot_dic[(filetype, nrp)] += v
+        elif not run4b_only:
             raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
 
     print("normalizing_run_period_pot_dic:")
@@ -128,23 +129,11 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     for k, v in pot_dic.items():
         filetype, detailed_run_period = k
         if filetype == "data":
-            data_in_files = True
-
-            if detailed_run_period == "4a":
-                norm_goal_pot_dic["4a"] += v
-
-            elif detailed_run_period == "4b":
-                norm_goal_pot_dic["4nota5"] += v
-            elif detailed_run_period == "4c":
-                norm_goal_pot_dic["4nota5"] += v
-            elif detailed_run_period == "4d":
-                norm_goal_pot_dic["4nota5"] += v
-            elif detailed_run_period == "4bcd":
-                norm_goal_pot_dic["4nota5"] += v
-            elif detailed_run_period == "5":
-                norm_goal_pot_dic["4nota5"] += v
-
-            else:
+            nrp = run_period_map.get(detailed_run_period)
+            if nrp is not None:
+                data_in_files = True
+                norm_goal_pot_dic[nrp] += v
+            elif not run4b_only:
                 raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
     if data_in_files:
         total_norm_goal_pot = sum(norm_goal_pot_dic.values())
@@ -164,12 +153,14 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     print()
 
     # apply norm_goal_pot_dic to df
-    df = df.with_columns([
-        pl.when(pl.col("normalizing_run_period") == "4a").then(pl.lit(norm_goal_pot_dic["4a"]))
-        .when(pl.col("normalizing_run_period") == "4nota5").then(pl.lit(norm_goal_pot_dic["4nota5"]))
-        .otherwise(pl.lit(None).cast(pl.Float64))
-        .alias("norm_goal_pot")
-    ])
+    norm_goal_pot_expr = None
+    for nrp, pot_val in norm_goal_pot_dic.items():
+        if norm_goal_pot_expr is None:
+            norm_goal_pot_expr = pl.when(pl.col("normalizing_run_period") == nrp).then(pl.lit(pot_val))
+        else:
+            norm_goal_pot_expr = norm_goal_pot_expr.when(pl.col("normalizing_run_period") == nrp).then(pl.lit(pot_val))
+    norm_goal_pot_expr = norm_goal_pot_expr.otherwise(pl.lit(None).cast(pl.Float64))
+    df = df.with_columns([norm_goal_pot_expr.alias("norm_goal_pot")])
 
     original_length = df.height
 
@@ -298,13 +289,15 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     ])
 
     # check for null wc_normrunperiod_eventtype_POT values
-    if df["wc_normrunperiod_eventtype_POT"].is_null().any() or (df["wc_normrunperiod_eventtype_POT"] == 0).any():
-        num_null = df["wc_normrunperiod_eventtype_POT"].is_null().sum()
-        num_zero = (df["wc_normrunperiod_eventtype_POT"] == 0).sum()
+    # in run4b_only mode, non-4b events legitimately have null here and will get null weight
+    check_df = df.filter(pl.col("normalizing_run_period").is_not_null()) if run4b_only else df
+    if check_df["wc_normrunperiod_eventtype_POT"].is_null().any() or (check_df["wc_normrunperiod_eventtype_POT"] == 0).any():
+        num_null = check_df["wc_normrunperiod_eventtype_POT"].is_null().sum()
+        num_zero = (check_df["wc_normrunperiod_eventtype_POT"] == 0).sum()
 
-        print(f"about to run debug loop, with {min(df.height, 10)=}")
+        print(f"about to run debug loop, with {min(check_df.height, 10)=}")
 
-        zeros_df = df.filter(df["wc_normrunperiod_eventtype_POT"] == 0)
+        zeros_df = check_df.filter(check_df["wc_normrunperiod_eventtype_POT"] == 0)
 
         # print filetype, detailed_run_period, normalizing_run_period for each zero value
         for i in range(min(zeros_df.height, 10)):
@@ -360,15 +353,17 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT):
     
     # Compute final net weight
     df = df.with_columns([
-        (pl.col("weight_cv_weight_spline") * (pl.col("norm_goal_pot") / pl.col("wc_normrunperiod_eventtype_POT"))).alias("wc_net_weight")
+        (pl.col("weight_cv_weight_spline") * (pl.col("norm_goal_pot") / pl.col("wc_normrunperiod_eventtype_POT"))).alias(weight_col_name)
     ])
 
-    # check for null, nan or infinite values in wc_net_weight
-    if df["wc_net_weight"].is_null().any() or df["wc_net_weight"].is_nan().any() or df["wc_net_weight"].is_infinite().any():
-        num_null = df["wc_net_weight"].is_null().sum()
-        num_nan = df["wc_net_weight"].is_nan().sum()
-        num_infinite = df["wc_net_weight"].is_infinite().sum()
-        raise ValueError(f"wc_net_weight has {num_null} null, {num_nan} nan or {num_infinite} infinite values!")
+    # check for null, nan or infinite values in weight_col_name
+    # in run4b_only mode, non-4b events legitimately have null weight — skip those rows
+    weight_check_df = df.filter(pl.col("normalizing_run_period").is_not_null()) if run4b_only else df
+    if weight_check_df[weight_col_name].is_null().any() or weight_check_df[weight_col_name].is_nan().any() or weight_check_df[weight_col_name].is_infinite().any():
+        num_null = weight_check_df[weight_col_name].is_null().sum()
+        num_nan = weight_check_df[weight_col_name].is_nan().sum()
+        num_infinite = weight_check_df[weight_col_name].is_infinite().sum()
+        raise ValueError(f"{weight_col_name} has {num_null} null, {num_nan} nan or {num_infinite} infinite values!")
 
     final_length = df.height
 

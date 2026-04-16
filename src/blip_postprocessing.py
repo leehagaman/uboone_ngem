@@ -618,7 +618,7 @@ def do_blip_postprocessing(df):
                     continue
                 energy = blip_energies[blip_index]
                 is_proton = reco_proton_blip(energy, blip_dxs_ev[blip_index], blip_dws_ev[blip_index], ev_filetype)
-                passing_blips.append((np.array([bx, by, bz]), energy, is_proton))
+                passing_blips.append((np.array([bx, by, bz], dtype=np.float64), energy, is_proton))
 
         # Process each vertex hypothesis
         for k, (vx_arr, vy_arr, vz_arr) in vtx_arrays_2shwr.items():
@@ -629,7 +629,7 @@ def do_blip_postprocessing(df):
                 _append_2shwr_defaults_for_vtx(k)
                 continue
 
-            nu_vtx = np.array([vx, vy, vz])
+            nu_vtx = np.array([vx, vy, vz], dtype=np.float64)
 
             # Cone directions from this vertex to each shower start
             cone_dirs = []

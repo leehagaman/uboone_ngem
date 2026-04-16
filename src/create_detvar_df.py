@@ -402,6 +402,7 @@ if __name__ == "__main__":
     normalizing_POT = 2.098e19 + 4.038e19 # for run 4a and run 4b open data
     
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
+
     all_df = add_signal_categories(all_df)
 
     temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_detvar_df.parquet"
