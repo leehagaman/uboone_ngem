@@ -62,6 +62,8 @@ wc_T_kine_vars = [             # variables involved with kinematic reconstructio
 wc_T_pf_vars = [               # variables involved with individual particles
     "truth_NprimPio",
     "truth_NCDelta",
+    "truth_nuScatType",
+    "truth_nuIntType",
     "reco_nuvtxX",
     "reco_nuvtxY",
     "reco_nuvtxZ",
