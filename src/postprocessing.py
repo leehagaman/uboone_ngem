@@ -333,8 +333,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT, run4b_o
         pl.when((pl.col("filetype") == "data") | (pl.col("filetype") == "ext"))
         .then(pl.lit(1.0))
         .when(
-            (weight_temp <= 0.0) | (weight_temp > 30.0) | 
-            weight_temp.is_nan() | weight_temp.is_infinite()
+            weight_temp.is_null() | weight_temp.is_nan() | weight_temp.is_infinite() |
+            (weight_temp <= 0.0) | (weight_temp > 30.0)
         )
         .then(pl.lit(1.0))
         .otherwise(weight_temp)

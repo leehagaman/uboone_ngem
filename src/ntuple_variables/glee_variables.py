@@ -240,3 +240,57 @@ glee_postprocessing_vars = [
 glee_training_vars = ["glee_" + var for var in glee_scalar_vars] + glee_postprocessing_vars
 
 glee_vars = glee_scalar_vars + glee_vector_vars + glee_scalar_non_training_vars
+
+# Variables from singlephotonana/eventweight_tree (GENIE truth quantities)
+glee_eventweight_vars = [
+    "GTruth_ResNum",         # resonance number (GENIE resonance code), -1 for non-resonance
+    "GTruth_Gint",           # GENIE interaction type code
+    "GTruth_Gscatter",       # GENIE scattering type code
+    "GTruth_gW",             # hadronic invariant mass W (GeV)
+    "GTruth_gQ2",            # momentum transfer Q^2 (GeV^2)
+    "GTruth_gq2",            # momentum transfer q^2 = -Q^2 (GeV^2)
+    "GTruth_gX",             # Bjorken x
+    "GTruth_gY",             # inelasticity y
+    "GTruth_gT",             # momentum transfer t (GeV^2), used for coherent scattering
+    "GTruth_probability",    # interaction probability
+    "GTruth_Xsec",           # cross section (1e-38 cm^2)
+    "GTruth_DiffXsec",       # differential cross section
+    "GTruth_GPhaseSpace",    # phase space flag
+    "GTruth_tgtPDG",         # target PDG code
+    "GTruth_tgtA",           # target atomic mass number
+    "GTruth_tgtZ",           # target atomic number
+    "GTruth_ProbePDG",       # probe PDG code
+    "GTruth_IsCharm",        # is charm production
+    "GTruth_IsStrange",      # is strange production
+    "GTruth_IsSeaQuark",     # struck nucleon is sea quark
+    "GTruth_NumPiPlus",      # number of pi+ in hadronic system
+    "GTruth_NumPi0",         # number of pi0 in hadronic system
+    "GTruth_NumPiMinus",     # number of pi- in hadronic system
+    "GTruth_NumProton",      # number of protons in hadronic system
+    "GTruth_NumNeutron",     # number of neutrons in hadronic system
+    "GTruth_DecayMode",      # resonance decay mode
+    "GTruth_weight",         # GENIE event weight
+    "GTruth_vertexX",        # interaction vertex x (cm)
+    "GTruth_vertexY",        # interaction vertex y (cm)
+    "GTruth_vertexZ",        # interaction vertex z (cm)
+    "GTruth_vertexT",        # interaction vertex t (ns)
+    "GTruth_ProbeP4x",       # probe 4-momentum px (GeV/c)
+    "GTruth_ProbeP4y",       # probe 4-momentum py (GeV/c)
+    "GTruth_ProbeP4z",       # probe 4-momentum pz (GeV/c)
+    "GTruth_ProbeP4E",       # probe 4-momentum E (GeV)
+    "GTruth_HitNucP4x",      # struck nucleon 4-momentum px (GeV/c)
+    "GTruth_HitNucP4y",      # struck nucleon 4-momentum py (GeV/c)
+    "GTruth_HitNucP4z",      # struck nucleon 4-momentum pz (GeV/c)
+    "GTruth_HitNucP4E",      # struck nucleon 4-momentum E (GeV)
+    "GTruth_HitNucPos",      # struck nucleon position in nucleus
+    "GTruth_TgtP4x",         # target 4-momentum px (GeV/c)
+    "GTruth_TgtP4y",         # target 4-momentum py (GeV/c)
+    "GTruth_TgtP4z",         # target 4-momentum pz (GeV/c)
+    "GTruth_TgtP4E",         # target 4-momentum E (GeV)
+    "GTruth_FShadSystP4x",   # final state hadronic system 4-momentum px (GeV/c)
+    "GTruth_FShadSystP4y",   # final state hadronic system 4-momentum py (GeV/c)
+    "GTruth_FShadSystP4z",   # final state hadronic system 4-momentum pz (GeV/c)
+    "GTruth_FShadSystP4E",   # final state hadronic system 4-momentum E (GeV)
+    "GTruth_StrangeHadronPDG",  # strange hadron PDG code
+    "GTruth_CharmHadronPDG",    # charm hadron PDG code
+]

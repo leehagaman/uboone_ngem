@@ -72,7 +72,7 @@ wc_T_pf_vars = [               # variables involved with individual particles
     "reco_showervtxX",
     "reco_showervtxY",
     "reco_showervtxZ",
-    "reco_showerKE",                # reconstructed primary shower kinetic energy (MeV)
+    "reco_showerKE",                # reconstructed primary shower kinetic energy (GeV)
     "truth_vtxX",                   # true neutrino vertex x (cm)
     "truth_vtxY",                   # true neutrino vertex y (cm)
     "truth_vtxZ",                   # true neutrino vertex z (cm)
@@ -115,7 +115,7 @@ wc_T_pf_data_vars = [          # same as above, but for data files we do not att
     "reco_showervtxX",
     "reco_showervtxY",
     "reco_showervtxZ",
-    "reco_showerKE",                # reconstructed primary shower kinetic energy (MeV)
+    "reco_showerKE",                # reconstructed primary shower kinetic energy (GeV)
     "reco_Ntrack",
     "reco_id",
     "reco_pdg",

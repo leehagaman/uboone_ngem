@@ -12,7 +12,7 @@ import argparse
 
 from ntuple_variables.variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
 from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
-from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
+from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, glee_eventweight_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from blip_postprocessing import do_blip_postprocessing
@@ -201,6 +201,8 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
     # loading gLEE variables
     dic = {}
     dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
+    if filetype != "ext" and filetype != "data":
+        dic.update(f["singlephotonana"]["eventweight_tree"].arrays(glee_eventweight_vars, library="np", **slice_kwargs))
     glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("glee_")
     del dic
     all_df = pd.concat([all_df, glee_df], axis=1)
@@ -440,15 +442,27 @@ if __name__ == "__main__":
         print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
         
         # Validate filetype column immediately after concatenation
+        known_filetypes = {
+            "ext", "data", "nu_overlay", "nue_overlay", "dirt_overlay",
+            "nc_pi0_overlay", "numucc_pi0_overlay",
+            "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
+        }
         if "filetype" in all_df.columns:
-            empty_count = all_df.filter(pl.col("filetype") == '').height
-            null_count = all_df.filter(pl.col("filetype").is_null()).height
-            if empty_count > 0 or null_count > 0:
-                print(f"ERROR after concat: filetype has {empty_count} empty strings and {null_count} nulls")
-                if empty_count > 0:
-                    problem_row = all_df.filter(pl.col("filetype") == '').head(1).row(0, named=True)
-                    print(f"Example empty filetype row: filename={problem_row.get('filename', 'N/A')}")
-                raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null")
+            # Cast to String first so Categorical comparisons don't silently miss values
+            filetype_str = all_df.get_column("filetype").cast(pl.String)
+            null_count = filetype_str.is_null().sum()
+            empty_count = (filetype_str == "").sum()
+            unknown_vals = [v for v in filetype_str.unique().to_list() if v is not None and v not in known_filetypes]
+            if null_count > 0 or empty_count > 0 or unknown_vals:
+                print(f"ERROR after concat: filetype has {empty_count} empty strings, {null_count} nulls, unknown values: {unknown_vals}")
+                bad_mask = filetype_str.is_null() | (filetype_str == "")
+                for uv in unknown_vals:
+                    bad_mask = bad_mask | (filetype_str == uv)
+                bad_rows = all_df.filter(bad_mask)
+                for row in bad_rows.head(5).iter_rows(named=True):
+                    print(f"  Bad filetype row: filetype={row.get('filetype')!r}, filename={row.get('filename', 'N/A')}")
+                    print(f"    Stale parquet detected — delete intermediate parquets and re-run --create_file_dfs")
+                raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null, unknown: {unknown_vals}")
 
         if all_df.is_empty():
             raise ValueError("No events in the dataframe!")
@@ -515,8 +529,15 @@ if __name__ == "__main__":
         if normalizing_POT == 0:
             normalizing_POT = 1.11e21 # if we don't use a data file, assume we want full runs 1-5 data
 
+        run4b_normalizing_POT = 0
+        for key, value in pot_dic.items():
+            if key[0] == "data" and key[1] == "4b":
+                run4b_normalizing_POT += value
+        if run4b_normalizing_POT == 0:
+            run4b_normalizing_POT = normalizing_POT
+
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
-        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT, run4b_only=True)
+        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=run4b_normalizing_POT, run4b_only=True)
 
         # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
         new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
