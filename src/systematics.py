@@ -136,7 +136,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     derived_filetypes = ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
     if "filetype" in mc_pred_df.columns:
         derived_counts = mc_pred_df.filter(pl.col("filetype").is_in(derived_filetypes)).group_by("filetype").agg(pl.len().alias("count"))
-        for row in derived_counts.iter_rows(named=True):
+        for row in derived_counts.collect().iter_rows(named=True):
             print(f"WARNING: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
                   "These events have no flux, cross-section, or re-interaction systematics available,"
                   " so they are assigned unit weights for all reweightable systematics.")
@@ -155,12 +155,15 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
             .collect(engine="streaming")
         )
     else:
-        base_merged = mc_pred_df.select(pred_vars).join(
-            weights_df.select(join_keys), on=join_keys, how="inner"
+        base_merged = (
+            mc_pred_df.select(pred_vars).lazy()
+            .join(weights_df.select(join_keys).lazy(), on=join_keys, how="inner")
+            .collect()
         )
 
-    if base_merged.height != mc_pred_df.height:
-        print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {base_merged.height=}, {mc_pred_df.height=}")
+    mc_pred_count = mc_pred_df.select(pl.len()).collect().item() if isinstance(mc_pred_df, pl.LazyFrame) else mc_pred_df.height
+    if base_merged.height != mc_pred_count:
+        print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {base_merged.height=}, mc_pred_df.height={mc_pred_count}")
 
     pred_vals = get_vals(base_merged, var)
 
@@ -187,8 +190,9 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
             )
         else:
             return (
-                base_merged.select(join_keys)
-                .join(weights_df.select(join_keys + [col_name]), on=join_keys, how="inner")
+                base_merged.select(join_keys).lazy()
+                .join(weights_df.select(join_keys + [col_name]).lazy(), on=join_keys, how="inner")
+                .collect()
                 .get_column(col_name).to_numpy()
             )
 
@@ -258,8 +262,8 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
         matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
 
         if not use_detvar_bootstrapping:
-            matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=matching_cv_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
-            matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=matching_curr_df.get_column("wc_net_weight").to_numpy(), bins=bins)[0]
+            matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, "wc_net_weight"), bins=bins)[0]
+            matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, "wc_net_weight"), bins=bins)[0]
             diff = matching_cv_counts - matching_var_counts
             curr_cov = np.outer(diff, diff)
             denom = np.outer(matching_cv_counts, matching_cv_counts)
@@ -271,9 +275,9 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             # also see code at https://github.com/BNLIF/wcp-uboone-bdt/blob/05acfe6d3c2a175ff52573669be7ce8ba77c623c/src/mcm_1.h#L77
 
             matching_cv_vals = get_vals(matching_cv_df, var)
-            matching_cv_weights = matching_cv_df.get_column("wc_net_weight").to_numpy()
+            matching_cv_weights = get_vals(matching_cv_df, "wc_net_weight")
             matching_var_vals = get_vals(matching_curr_df, var)
-            matching_var_weights = matching_curr_df.get_column("wc_net_weight").to_numpy()
+            matching_var_weights = get_vals(matching_curr_df, "wc_net_weight")
 
             matching_cv_counts = np.histogram(matching_cv_vals, weights=matching_cv_weights, bins=bins)[0]
             matching_var_counts = np.histogram(matching_var_vals, weights=matching_var_weights, bins=bins)[0]

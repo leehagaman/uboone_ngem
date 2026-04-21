@@ -5,6 +5,17 @@ def lazy_height(lf):
     return lf.select(pl.len()).collect().item()
 
 def get_vals(df, var):
+    if isinstance(df, pl.LazyFrame):
+        if var == "(wc_flash_measPe - wc_flash_predPe) / wc_flash_predPe":
+            collected = df.select(["wc_flash_measPe", "wc_flash_predPe"]).collect()
+            vals = (collected.get_column("wc_flash_measPe") - collected.get_column("wc_flash_predPe")) / collected.get_column("wc_flash_predPe")
+            return vals.to_numpy()
+        elif var == "wc_WCPMTInfoChi2 / wc_WCPMTInfoNDF":
+            collected = df.select(["wc_WCPMTInfoChi2", "wc_WCPMTInfoNDF"]).collect()
+            vals = collected.get_column("wc_WCPMTInfoChi2") / collected.get_column("wc_WCPMTInfoNDF")
+            return np.nan_to_num(vals.to_numpy(), nan=-1, posinf=-1, neginf=-1)
+        else:
+            return df.select(var).collect().get_column(var).to_numpy()
     if var == "(wc_flash_measPe - wc_flash_predPe) / wc_flash_predPe":
         vals = (df.get_column("wc_flash_measPe") - df.get_column("wc_flash_predPe")) / df.get_column("wc_flash_predPe")
         vals = vals.to_numpy()
