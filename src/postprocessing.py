@@ -1478,6 +1478,23 @@ def add_signal_categories(all_df):
         cat_neg1_count = all_df.filter(pl.col('topological_signal_category') == -1).height
         cat_null_count = all_df.filter(pl.col('topological_signal_category').is_null()).height
         print(f"  topological_signal_category == -1: {cat_neg1_count}, null: {cat_null_count}")
+        # Show all values to catch out-of-range entries (e.g. UInt overflow, NaN-as-int, etc.)
+        print("  value_counts of topological_signal_category:")
+        print(all_df['topological_signal_category'].value_counts().sort('count', descending=True))
+        valid_range = list(range(len(topological_category_labels))) + [-1]
+        out_of_range_mask = ~pl.col('topological_signal_category').is_in(valid_range) & pl.col('topological_signal_category').is_not_null()
+        out_of_range_count = all_df.filter(out_of_range_mask).height
+        if out_of_range_count > 0:
+            print(f"  WARNING: {out_of_range_count} events have out-of-range topological_signal_category (not in {valid_range[:3]}...[-1])!")
+            for row in all_df.filter(out_of_range_mask).select([
+                "filename", "filetype", "run", "subrun", "event",
+                "topological_signal_category",
+                "normal_overlay", "del1g_overlay", "iso1g_overlay",
+                "wc_truth_inFV", "wc_truth_0e", "wc_truth_1e",
+                "wc_truth_0g", "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
+                "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
+            ]).head(5).iter_rows(named=True):
+                print(f"  Out-of-range example: {row}")
         if cat_neg1_count > 0:
             cat_neg1_df = all_df.filter(pl.col('topological_signal_category') == -1)
             print("Category=-1 by filetype (top 10):")

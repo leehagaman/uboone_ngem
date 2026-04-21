@@ -451,6 +451,12 @@ def make_histogram_plot(
         breakdown_colors = erin_Np0pNn0n_pi0_category_colors
         breakdown_hatches = erin_Np0pNn0n_pi0_category_hatches
         breakdown_queries = erin_Np0pNn0n_pi0_category_queries
+    elif breakdown_type == "erin_intmode_categories":
+        breakdown_labels = erin_intmode_category_labels
+        breakdown_labels_latex = erin_intmode_category_labels_latex
+        breakdown_colors = erin_intmode_category_colors
+        breakdown_hatches = erin_intmode_category_hatches
+        breakdown_queries = erin_intmode_category_queries
     else:
         raise ValueError(f"Invalid breakdown type: {breakdown_type}")
     breakdown_counts = []
@@ -569,7 +575,6 @@ def make_histogram_plot(
                 dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, 
                 use_detvar_bootstrapping=use_detvar_bootstrapping, num_bootstrap_rounds_detvar=num_bootstrap_rounds_detvar, 
                 num_bootstrap_samples_detvar=num_bootstrap_samples_detvar,
-                net_weight_var=net_weight_var
             )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
@@ -858,6 +863,7 @@ def make_histogram_plot(
             np.savetxt(f"../plots/{savename}_pred_cov_matrix_no_detvar.csv", nodetvar_pred_sys_cov, delimiter=",")
             np.savetxt(f"../plots/{savename}_pred_frac_cov_matrix_no_detvar.csv", nodetvar_pred_sys_frac_cov, delimiter=",")
         else:
+            pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), pred_sel_df.get_column(net_weight_var).to_numpy(), bins)
             denom = np.outer(pred_counts, pred_counts)
             pred_stat_frac_cov = np.divide(pred_stat_cov, denom, out=np.zeros_like(pred_stat_cov), where=(denom != 0))
             np.savetxt(f"../plots/{savename}_pred_cov_matrix.csv", pred_stat_cov, delimiter=",")

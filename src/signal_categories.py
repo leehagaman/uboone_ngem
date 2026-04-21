@@ -438,3 +438,44 @@ erin_Np0pNn0n_pi0_category_labels_latex = [
     "iso1g overlay",
     "data",
 ]
+
+erin_intmode_categories = [
+    ("ext",                     "(pl.col('filetype') == 'ext')",                                                                                                                                "xkcd:green",        None),
+    ("dirt_no1gsig",            "(pl.col('filetype') == 'dirt_overlay') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                        "xkcd:brown",        None),
+    ("other_outFV_no1gsig",     "pl.col('normal_overlay') & ~pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                           "xkcd:bright purple", None),
+    ("NC1pi0_inFV_no1gsig",     "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_isNC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",        "xkcd:lavender",     None),
+    ("numuCC1pi0_inFV_no1gsig", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal",   None),
+    ("nueCC_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
+    ("other_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan",         None),
+    ("1gsig_qe",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 1)",                                                                              "tab:blue",          None),
+    ("1gsig_res",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 4)",                                                                              "tab:orange",        None),
+    ("1gsig_dis",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 3)",                                                                              "tab:green",         None),
+    ("1gsig_mec",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 10)",                                                                             "tab:red",           None),
+    ("1gsig_coh",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 5)",                                                                              "tab:purple",        None),
+    ("1gsig_other",             "(pl.col('erin_inclusive_1g_true_sig') == 1) & ~(pl.col('wc_truth_nuScatType') == 1) & ~(pl.col('wc_truth_nuScatType') == 4) & ~(pl.col('wc_truth_nuScatType') == 3) & ~(pl.col('wc_truth_nuScatType') == 10) & ~(pl.col('wc_truth_nuScatType') == 5)", "xkcd:light grey", None),
+    ("del1g_overlay",           "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow",       "++++"),
+    ("iso1g_overlay",           "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise",    "++++"),
+    ("data",                    "pl.col('filetype') == 'data'",                                                                                                                                  "xkcd:black",        None),
+]
+erin_intmode_category_queries  = [cat[1] for cat in erin_intmode_categories]
+erin_intmode_category_labels   = [cat[0] for cat in erin_intmode_categories]
+erin_intmode_category_colors   = [cat[2] for cat in erin_intmode_categories]
+erin_intmode_category_hatches  = [cat[3] for cat in erin_intmode_categories]
+erin_intmode_category_labels_latex = [
+    "ext",
+    "dirt",
+    "other out FV",
+    r"NC $1\pi^0$",
+    r"$\nu_\mu$ CC $1\pi^0$",
+    r"$\nu_e$ CC",
+    "other in FV",
+    "1g signal QE",
+    "1g signal RES",
+    "1g signal DIS",
+    "1g signal MEC",
+    "1g signal COH",
+    "1g signal other",
+    "del1g overlay",
+    "iso1g overlay",
+    "data",
+]

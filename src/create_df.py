@@ -24,6 +24,29 @@ from file_locations import data_files_location, intermediate_files_location
 from df_helpers import align_columns_for_concat
 from memory_monitoring import start_memory_logger
 
+def _filetype_from_filename(filename):
+    fn = filename.lower()
+    if "beam_off" in fn or "beamoff" in fn or "ext" in fn:
+        return "ext"
+    if "nu_overlay" in fn:
+        return "nu_overlay"
+    if "nue_overlay" in fn:
+        return "nue_overlay"
+    if "dirt" in fn:
+        return "dirt_overlay"
+    if "nc_pi0" in fn or "ncpi0" in fn or "nc_pio" in fn or "ncpio" in fn:
+        return "nc_pi0_overlay"
+    if "ccpi0" in fn:
+        return "numucc_pi0_overlay"
+    if "delete_one_gamma" in fn:
+        return "delete_one_gamma_overlay"
+    if "isotropic_one_gamma" in fn:
+        return "isotropic_one_gamma_overlay"
+    if "beam_on" in fn:
+        return "data"
+    raise ValueError("Unknown filetype!", filename)
+
+
 def _get_file_metadata(filename, frac_events=1):
     """Open a ROOT file briefly to collect per-file metadata without reading branch data.
 
@@ -31,29 +54,7 @@ def _get_file_metadata(filename, frac_events=1):
         filetype, detailed_run_period, file_POT, n_events,
         root_file_size_gb, curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars
     """
-    if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower(): # EXT file
-        filetype = "ext"
-    elif "nu_overlay" in filename.lower():
-        filetype = "nu_overlay"
-    elif "nue_overlay" in filename.lower():
-        filetype = "nue_overlay"
-    elif "dirt" in filename.lower():
-        filetype = "dirt_overlay"
-    elif "nc_pi0" in filename.lower() or "ncpi0" in filename.lower() or "nc_pio" in filename.lower() or "ncpio" in filename.lower():
-        filetype = "nc_pi0_overlay"
-    elif "ccpi0" in filename.lower():
-        filetype = "numucc_pi0_overlay"
-    elif "delete_one_gamma" in filename.lower():
-        filetype = "delete_one_gamma_overlay"
-    elif "isotropic_one_gamma" in filename.lower():
-        filetype = "isotropic_one_gamma_overlay"
-    elif "beam_on" in filename.lower():
-        filetype = "data"
-    else:
-        raise ValueError("Unknown filetype!", filename)
-
-    if not filetype or filetype == '':
-        raise ValueError(f"filetype is empty or None for filename: {filename}")
+    filetype = _filetype_from_filename(filename)
 
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -487,6 +488,23 @@ if __name__ == "__main__":
         os.remove(temp_defrag_path)
         gc.collect()
         print(f" done in {time.time() - _t0:.1f}s")
+
+        # Polars sink_parquet can corrupt low-cardinality String columns (like filetype)
+        # via dictionary encoding. Detect and fix any rows where filetype became ''.
+        bad_filetype_mask = pl.col("filetype").is_null() | (pl.col("filetype") == "")
+        bad_count = all_df.filter(bad_filetype_mask).height
+        if bad_count > 0:
+            print(f"WARNING: {bad_count} rows have empty/null filetype after defrag — re-inferring from filename")
+            fixed_filetype = pl.Series(
+                "filetype",
+                [ft if (ft is not None and ft != "") else _filetype_from_filename(fn)
+                 for ft, fn in zip(all_df["filetype"].to_list(), all_df["filename"].to_list())]
+            )
+            all_df = all_df.with_columns(fixed_filetype)
+            still_bad = all_df.filter(bad_filetype_mask).height
+            if still_bad > 0:
+                raise ValueError(f"{still_bad} rows still have empty/null filetype after re-inference!")
+            print(f"  Fixed {bad_count} rows.")
 
         print("doing post-processing that doesn't require vector variables using polars...")
 

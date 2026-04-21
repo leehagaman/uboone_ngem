@@ -73,27 +73,17 @@ FILES_TO_COPY=(
 
     # EXT files
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4a_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4a_BNB_beam_off_data_surprise_reco2_hist.root"
-    #"/pnfs/uboone/persistent/users/uboonepro/surprise/run4b_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4b_v10_04_07_09_Run4b_BNB_beam_off_surprise_reco2_hist.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/retuple/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4c_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_4c.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4d_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_4d.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run5_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_5.root"
-
+    
 
     # Data files
     "/pnfs/uboone/persistent/users/uboonepro/surprise/opendata/BNB/checkout_MCC9.10_Run4a_BNB_beam_on_data_surprise_reco2_hist_opendata_19550.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/retuple/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root"
-    #"/pnfs/uboone/persistent/users/uboonepro/surprise/opendata/BNB/checkout_MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist_opendata_20700.root"
     #"/pnfs/uboone/persistent/users/uboonepro/surprise/run4b_full_samples/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root"
 
-    # # DetVar files
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_lya_surprise_reco2_hist.root"
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_lyd_surprise_reco2_hist.root"
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_lyr_surprise_reco2_hist.root"
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_WMX_surprise_TEST_reco2_hist.root"
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_recomb2_surprise_reco2_hist.root"
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_SCE_surprise_reco2_hist.root"
-    # "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar_test/checkout_DetVar_Run45_v10_04_07_15_BNB_nu_overlay_cv_surprise_reco2_hist.root"
 
     #new detvar files
     "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_cv_surprise_reco2_hist_4d.root"
