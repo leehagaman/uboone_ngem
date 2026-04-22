@@ -134,7 +134,8 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     print("creating reweightable systematic covariance matrices...")
 
     derived_filetypes = ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
-    if "filetype" in mc_pred_df.columns:
+    col_names = mc_pred_df.collect_schema().names() if isinstance(mc_pred_df, pl.LazyFrame) else mc_pred_df.columns
+    if "filetype" in col_names:
         derived_counts = mc_pred_df.filter(pl.col("filetype").is_in(derived_filetypes)).group_by("filetype").agg(pl.len().alias("count"))
         for row in derived_counts.collect().iter_rows(named=True):
             print(f"WARNING: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "

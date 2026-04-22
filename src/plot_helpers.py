@@ -1,6 +1,8 @@
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.rcParams['hatch.linewidth'] = 0.2
 from matplotlib.patches import Rectangle
 import matplotlib.gridspec as gridspec
 
