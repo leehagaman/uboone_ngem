@@ -104,6 +104,9 @@ wc_T_pf_vars = [               # variables involved with individual particles
     # Nanosecond timing
     #"evtTimeNS",      # for data
     "evtTimeNS_cor",  # for MC
+
+    "mcflux_dk2gen",
+    "mcflux_gen2vtx",
 ]
 
 wc_T_pf_data_vars = [          # same as above, but for data files we do not attempt to load any truth information
