@@ -1344,6 +1344,74 @@ def do_spacepoint_postprocessing(df):
     return df
 
 
+def _add_signal_category(all_df, name, queries, labels, debug_columns=None):
+    """Assign a `<name>_signal_category` integer column and verify the
+    categories are exhaustive and mutually exclusive.
+
+    The `pl.when(...).then(...)...otherwise(-1)` chain alone collapses any
+    overlap onto whichever condition appears first, so a separate independent
+    check (summing condition matches per event) is required to catch overlap.
+    """
+    col_name = f"{name}_signal_category"
+    print(f"Adding {name} signal categories...")
+
+    conditions = [eval(q, {'pl': pl, '__builtins__': {}}) for q in queries]
+
+    expr = None
+    for i, cond in enumerate(conditions):
+        expr = pl.when(cond).then(pl.lit(i)) if expr is None else expr.when(cond).then(pl.lit(i))
+    expr = expr.otherwise(pl.lit(-1))
+    all_df = all_df.with_columns(expr.alias(col_name))
+
+    print(f"\n{name} signal categories:")
+    for i, label in enumerate(labels):
+        sub = all_df.filter(pl.col(col_name) == i)
+        print(f"    {label}: {sub['wc_net_weight'].sum():.2f} ({sub.height})")
+
+    # Coalesce nulls so a null condition counts as not-matched (otherwise the
+    # cast-to-Int8 sum would be null and slip past the count check).
+    match_count = pl.sum_horizontal([
+        pl.coalesce(cond, pl.lit(False)).cast(pl.Int8) for cond in conditions
+    ])
+    n_no_match, n_multi_match = all_df.select([
+        (match_count == 0).sum().alias("n_no"),
+        (match_count > 1).sum().alias("n_multi"),
+    ]).row(0)
+
+    available_debug_cols = [c for c in (debug_columns or []) if c in all_df.columns]
+
+    if n_multi_match > 0:
+        print(f"Error: {n_multi_match} events match multiple {name} categories")
+        match_df = all_df.with_columns(
+            [pl.coalesce(cond, pl.lit(False)).alias(f"_match_{i}") for i, cond in enumerate(conditions)]
+            + [match_count.alias("_n_match")]
+        )
+        overlap_df = match_df.filter(pl.col("_n_match") > 1)
+        for i in range(len(labels)):
+            for j in range(i + 1, len(labels)):
+                pair_n = overlap_df.filter(pl.col(f"_match_{i}") & pl.col(f"_match_{j}")).height
+                if pair_n:
+                    print(f"  {labels[i]} & {labels[j]}: {pair_n} events")
+        if available_debug_cols:
+            for row in overlap_df.select(available_debug_cols + ["_n_match"]).head(5).iter_rows(named=True):
+                print(f"  Multi-match example: {row}")
+        raise AssertionError
+
+    if n_no_match > 0:
+        print(f"Uncategorized {name} signal categories ({n_no_match} events)!")
+        no_match_df = all_df.filter(match_count == 0)
+        unique_filetypes = no_match_df["filetype"].unique().to_list()
+        print(f"Unique filetypes in uncategorized events: {unique_filetypes}")
+        for ft in unique_filetypes:
+            print(f"  {ft}: {no_match_df.filter(pl.col('filetype') == ft).height} events")
+        if available_debug_cols:
+            for row in no_match_df.select(available_debug_cols).head(5).iter_rows(named=True):
+                print(f"  No-match example: {row}")
+        raise AssertionError
+
+    return all_df
+
+
 def add_signal_categories(all_df):
 
     print("Adding extra columns for truth categories...")
@@ -1440,315 +1508,58 @@ def add_signal_categories(all_df):
             )
     all_df = all_df.with_columns(_combined_exprs)
 
-    topological_conditions = []
-    print("Adding topological signal categories...")
-    for query_text in topological_category_queries:
-        topological_conditions.append(eval(query_text, {'pl': pl, '__builtins__': {}}))
-    topological_category_expr = None
-    for i, condition in enumerate(topological_conditions):
-        if topological_category_expr is None:
-            topological_category_expr = pl.when(condition).then(pl.lit(i))
-        else:
-            topological_category_expr = topological_category_expr.when(condition).then(pl.lit(i))
-    topological_category_expr = topological_category_expr.otherwise(pl.lit(-1))
-    all_df = all_df.with_columns([
-        topological_category_expr.alias('topological_signal_category')
-    ])
-    print("\ntopological signal categories:")
-    category_counts_unweighted = []
-    category_counts_weighted = []
-    for topological_signal_category_i, topological_signal_category in enumerate(topological_category_labels):
-        curr_df = all_df.filter(pl.col('topological_signal_category') == topological_signal_category_i)
-        unweighted_num = curr_df.height
-        weighted_num = curr_df['wc_net_weight'].sum()
-        category_counts_unweighted.append(unweighted_num)
-        category_counts_weighted.append(weighted_num)
-        print(f"    {topological_signal_category}: {weighted_num:.2f} ({unweighted_num})")
-    total_events = all_df.height
-    if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of topological category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
-        condition_match_count = pl.sum_horizontal([condition.cast(pl.Int8) for condition in topological_conditions])
-        num_no_match, num_multi_match = all_df.select([
-            (condition_match_count == 0).sum().alias("num_no_match"),
-            (condition_match_count > 1).sum().alias("num_multi_match"),
-        ]).row(0)
-        print(f"Debug topological category assignment: no_match={num_no_match}, multi_match={num_multi_match}")
-        # Also check for category=-1 directly; events where ALL conditions are null
-        # won't be caught by the no_match check (since null == 0 returns null, not True).
-        cat_neg1_count = all_df.filter(pl.col('topological_signal_category') == -1).height
-        cat_null_count = all_df.filter(pl.col('topological_signal_category').is_null()).height
-        print(f"  topological_signal_category == -1: {cat_neg1_count}, null: {cat_null_count}")
-        # Show all values to catch out-of-range entries (e.g. UInt overflow, NaN-as-int, etc.)
-        print("  value_counts of topological_signal_category:")
-        print(all_df['topological_signal_category'].value_counts().sort('count', descending=True))
-        valid_range = list(range(len(topological_category_labels))) + [-1]
-        out_of_range_mask = ~pl.col('topological_signal_category').is_in(valid_range) & pl.col('topological_signal_category').is_not_null()
-        out_of_range_count = all_df.filter(out_of_range_mask).height
-        if out_of_range_count > 0:
-            print(f"  WARNING: {out_of_range_count} events have out-of-range topological_signal_category (not in {valid_range[:3]}...[-1])!")
-            for row in all_df.filter(out_of_range_mask).select([
-                "filename", "filetype", "run", "subrun", "event",
-                "topological_signal_category",
-                "normal_overlay", "del1g_overlay", "iso1g_overlay",
-                "wc_truth_inFV", "wc_truth_0e", "wc_truth_1e",
-                "wc_truth_0g", "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
-                "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
-            ]).head(5).iter_rows(named=True):
-                print(f"  Out-of-range example: {row}")
-        if cat_neg1_count > 0:
-            cat_neg1_df = all_df.filter(pl.col('topological_signal_category') == -1)
-            print("Category=-1 by filetype (top 10):")
-            print(cat_neg1_df.group_by("filetype").len().sort("len", descending=True).head(10))
-            print("Category=-1 null truth variable counts:")
-            print(cat_neg1_df.select([
-                pl.col("wc_truth_inFV").is_null().sum().alias("null_inFV"),
-                pl.col("wc_truth_0e").is_null().sum().alias("null_0e"),
-                pl.col("wc_truth_0g").is_null().sum().alias("null_0g"),
-                pl.col("wc_truth_3plusg").is_null().sum().alias("null_3plusg"),
-                pl.col("normal_overlay").is_null().sum().alias("null_normal_overlay"),
-            ]))
-            for row in cat_neg1_df.select([
-                "filename", "filetype", "run", "subrun", "event",
-                "normal_overlay", "del1g_overlay", "iso1g_overlay",
-                "wc_truth_inFV", "wc_truth_0e", "wc_truth_0g",
-                "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
-                "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
-                "wc_truth_nuPdg", "wc_truth_isCC",
-            ]).head(5).iter_rows(named=True):
-                print(f"Category=-1 example: {row}")
-        if num_no_match > 0:
-            no_match_df = all_df.filter(condition_match_count == 0)
-            print("No-match by filetype (top 10):")
-            print(no_match_df.group_by("filetype").len().sort("len", descending=True).head(10))
-            print("No-match overlay flags:")
-            print(no_match_df.select([
-                pl.col("normal_overlay").cast(pl.Int64).sum().alias("normal_overlay"),
-                pl.col("del1g_overlay").cast(pl.Int64).sum().alias("del1g_overlay"),
-                pl.col("iso1g_overlay").cast(pl.Int64).sum().alias("iso1g_overlay"),
-            ]))
-            print("No-match truth signature counts (top 10):")
-            print(no_match_df.group_by([
-                "wc_truth_inFV",
-                "wc_truth_0e",
-                "wc_truth_1e",
-                "wc_truth_0g",
-                "wc_truth_1g",
-                "wc_truth_2g",
-                "wc_truth_3plusg",
-                "wc_truth_0mu",
-                "wc_truth_1mu",
-                "wc_truth_Np",
-                "wc_truth_0p",
-            ]).len().sort("len", descending=True).head(10))
-            for row in no_match_df.select([
-                "filename",
-                "filetype",
-                "run",
-                "subrun",
-                "event",
-                "normal_overlay",
-                "del1g_overlay",
-                "iso1g_overlay",
-                "wc_truth_inFV",
-                "wc_truth_0e",
-                "wc_truth_1e",
-                "wc_truth_0g",
-                "wc_truth_1g",
-                "wc_truth_2g",
-                "wc_truth_3plusg",
-                "wc_truth_0mu",
-                "wc_truth_1mu",
-                "wc_truth_Np",
-                "wc_truth_0p",
-                "wc_truth_nuPdg",
-                "wc_truth_isCC",
-            ]).head(5).iter_rows(named=True):
-                print(f"No-match example: {row}")
-        if num_multi_match > 0:
-            multi_match_df = all_df.filter(condition_match_count > 1).with_columns([
-                condition_match_count.alias("n_topological_matches")
-            ])
-            print("Multi-match by filetype (top 10):")
-            print(multi_match_df.group_by("filetype").len().sort("len", descending=True).head(10))
-            for row in multi_match_df.select([
-                "filename",
-                "filetype",
-                "run",
-                "subrun",
-                "event",
-                "n_topological_matches",
-            ]).head(5).iter_rows(named=True):
-                print(f"Multi-match example: {row}")
-        raise AssertionError
-    uncategorized_count = all_df.filter(pl.col('topological_signal_category') == -1).height
-    if uncategorized_count > 0:
-        print(f"Uncategorized topological signal categories ({uncategorized_count} events)!")
-        row = all_df.filter(pl.col('topological_signal_category') == -1).row(0, named=True)
-        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['true_num_gamma_pairconvert_in_FV']=}, {row['wc_truth_isCC']=}, {row['wc_truth_nuPdg']=}, {row['wc_truth_NprimPio']=}, {row['wc_truth_0e']=}, {row['wc_truth_0g']=}, {row['wc_truth_1g']=}, {row['wc_truth_2g']=}")
-        raise AssertionError
+    _topological_debug_cols = [
+        "filename", "filetype", "run", "subrun", "event",
+        "normal_overlay", "del1g_overlay", "iso1g_overlay",
+        "wc_truth_inFV", "wc_truth_0e", "wc_truth_1e",
+        "wc_truth_0g", "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
+        "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
+        "wc_truth_nuPdg", "wc_truth_isCC",
+    ]
+    _del1g_truth_debug_cols = [
+        "filename", "filetype", "run", "subrun", "event",
+        "normal_overlay", "del1g_overlay", "iso1g_overlay",
+        "wc_truth_inFV", "wc_truth_Np", "wc_truth_0p", "wc_truth_0mu",
+        "wc_truth_isNC", "wc_truth_nueCC", "wc_truth_numuCC",
+        "wc_truth_NCDelta", "wc_truth_NCDeltaRad", "wc_truth_numuCCDeltaRad",
+        "wc_truth_0pi0", "wc_truth_1pi0", "wc_truth_multi_pi0",
+        "wc_true_has_pi0_dalitz_decay",
+        "true_num_prim_gamma",
+        "wc_true_has_photonuclear_absorption",
+        "true_num_gamma_pairconvert_in_FV",
+        "true_num_gamma_pairconvert_in_FV_20_MeV",
+        "wc_true_gamma_pairconversion_spacepoint_max_min_distance",
+    ]
+    _filetype_debug_cols = [
+        "filename", "filetype", "run", "subrun", "event",
+        "wc_truth_inFV", "wc_truth_Np", "wc_truth_0mu",
+    ]
 
-    print("Adding del1g detailed signal categories...")
-    del1g_detailed_conditions = []
-    for query_text in del1g_detailed_category_queries:
-        del1g_detailed_conditions.append(eval(query_text, {'pl': pl, '__builtins__': {}}))
-    # assign integers to categories
-    del1g_detailed_category_expr = None
-    for i, condition in enumerate(del1g_detailed_conditions):
-        if del1g_detailed_category_expr is None:
-            del1g_detailed_category_expr = pl.when(condition).then(pl.lit(i))
-        else:
-            del1g_detailed_category_expr = del1g_detailed_category_expr.when(condition).then(pl.lit(i))
-    del1g_detailed_category_expr = del1g_detailed_category_expr.otherwise(pl.lit(-1))
-    all_df = all_df.with_columns([
-        del1g_detailed_category_expr.alias("del1g_detailed_signal_category")
-    ])
-    print("\ndel1g detailed signal categories:")
-    category_counts_unweighted = []
-    category_counts_weighted = []
-    for del1g_detailed_signal_category_i, del1g_detailed_signal_category in enumerate(del1g_detailed_category_labels):
-        curr_df = all_df.filter(pl.col('del1g_detailed_signal_category') == del1g_detailed_signal_category_i)
-        unweighted_num = curr_df.height
-        weighted_num = curr_df['wc_net_weight'].sum()
-        category_counts_unweighted.append(unweighted_num)
-        category_counts_weighted.append(weighted_num)
-        print(f"    {del1g_detailed_signal_category}: {weighted_num:.2f} ({unweighted_num})")
-    total_events = all_df.height
-    if sum(category_counts_unweighted) > total_events:
-        print(f"Error: Sum of del1g detailed category counts ({sum(category_counts_unweighted)}) > total events ({total_events}), overlapping categories?")
-        raise AssertionError
-    uncategorized_count = all_df.filter(pl.col('del1g_detailed_signal_category') == -1).height
-    if uncategorized_count > 0:
-        print(f"Uncategorized detailed del1g signal categories ({uncategorized_count} events)!")
-        row = all_df.filter(pl.col('del1g_detailed_signal_category') == -1).row(0, named=True)
-        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['del1g_overlay']=}, {row['iso1g_overlay']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_NCDelta']=}, {row['true_num_prim_gamma']=}, {row['wc_truth_0pi0']=}, {row['wc_truth_1pi0']=}, {row['wc_truth_multi_pi0']=}")
-        print(f"Additional fields: {row.get('wc_truth_isNC', 'N/A')=}, {row.get('wc_truth_nueCC', 'N/A')=}, {row.get('wc_truth_numuCC', 'N/A')=}, {row.get('wc_truth_NCDeltaRad', 'N/A')=}, {row.get('normal_overlay', 'N/A')=}")
-        print(f"Additional fields: {row.get('wc_true_has_photonuclear_absorption', 'N/A')=}, {row.get('true_num_gamma_pairconvert_in_FV', 'N/A')=}, {row.get('true_num_gamma_pairconvert_in_FV_20_MeV', 'N/A')=}, {row.get('wc_true_gamma_pairconversion_spacepoint_max_min_distance', 'N/A')=}")
-        print(f"Additional fields: {row.get('wc_true_has_pi0_dalitz_decay', 'N/A')=}, {row.get('wc_truth_notnueCC', 'N/A')=}")
-        raise AssertionError
-
-    print("Adding del1g simple signal categories...")
-    del1g_simple_conditions = []
-    for query_text in del1g_simple_category_queries:
-        del1g_simple_conditions.append(eval(query_text, {'pl': pl, '__builtins__': {}}))
-    # assign integers to categories
-    del1g_simple_category_expr = None
-    for i, condition in enumerate(del1g_simple_conditions):
-        if del1g_simple_category_expr is None:
-            del1g_simple_category_expr = pl.when(condition).then(pl.lit(i))
-        else:
-            del1g_simple_category_expr = del1g_simple_category_expr.when(condition).then(pl.lit(i))
-    del1g_simple_category_expr = del1g_simple_category_expr.otherwise(pl.lit(-1))
-    all_df = all_df.with_columns([
-        del1g_simple_category_expr.alias("del1g_simple_signal_category")
-    ])
-    print("\ndel1g simple signal categories:")
-    category_counts_unweighted = []
-    category_counts_weighted = []
-    for del1g_simple_signal_category_i, del1g_simple_signal_category in enumerate(del1g_simple_category_labels):
-        curr_df = all_df.filter(pl.col('del1g_simple_signal_category') == del1g_simple_signal_category_i)
-        unweighted_num = curr_df.height
-        weighted_num = curr_df['wc_net_weight'].sum()
-        category_counts_unweighted.append(unweighted_num)
-        category_counts_weighted.append(weighted_num)
-        print(f"    {del1g_simple_signal_category}: {weighted_num:.2f} ({unweighted_num})")
-    total_events = all_df.height
-    if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of del1g simple category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
-        raise AssertionError
-    uncategorized_count = all_df.filter(pl.col('del1g_simple_signal_category') == -1).height
-    if uncategorized_count > 0:
-        print(f"Uncategorized simple del1g signal categories ({uncategorized_count} events)!")
-        row = all_df.filter(pl.col('del1g_simple_signal_category') == -1).row(0, named=True)
-        print(f"Example: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['del1g_overlay']=}, {row['iso1g_overlay']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}, {row['wc_truth_numuCC']=}, {row['wc_truth_nueCC']=}, {row['wc_truth_0pi0']=}, {row['wc_truth_1pi0']=}, {row['wc_truth_NCDelta']=}, {row['wc_truth_numuCCDeltaRad']=}, {row['wc_truth_NCDeltaRad']=}")
-        raise AssertionError
-
-    print("Adding filetype signal categories...")
-    filetype_conditions = []
-    for query_text in filetype_category_queries:
-        filetype_conditions.append(eval(query_text, {'pl': pl, '__builtins__': {}}))
-    # assign integers to categories
-    filetype_category_expr = None
-    for i, condition in enumerate(filetype_conditions):
-        if filetype_category_expr is None:
-            filetype_category_expr = pl.when(condition).then(pl.lit(i))
-        else:
-            filetype_category_expr = filetype_category_expr.when(condition).then(pl.lit(i))
-    filetype_category_expr = filetype_category_expr.otherwise(pl.lit(-1))
-    all_df = all_df.with_columns([
-        filetype_category_expr.alias("filetype_signal_category")
-    ])
-    print("\nfiletype signal categories:")
-    category_counts_unweighted = []
-    category_counts_weighted = []
-    for filetype_signal_category_i, filetype_signal_category in enumerate(filetype_category_labels):
-        curr_df = all_df.filter(pl.col('filetype_signal_category') == filetype_signal_category_i)
-        unweighted_num = curr_df.height
-        weighted_num = curr_df['wc_net_weight'].sum()
-        category_counts_unweighted.append(unweighted_num)
-        category_counts_weighted.append(weighted_num)
-        print(f"    {filetype_signal_category}: {weighted_num:.2f} ({unweighted_num})")
-    total_events = all_df.height
-    uncategorized_count = all_df.filter(pl.col('filetype_signal_category') == -1).height
-    if uncategorized_count > 0:
-        print(f"\nUncategorized filetype signal categories ({uncategorized_count} events)!")
-        uncategorized_df = all_df.filter(pl.col('filetype_signal_category') == -1)
-        # Print unique filetypes in uncategorized events
-        unique_filetypes = uncategorized_df['filetype'].unique().to_list()
-        print(f"Unique filetypes in uncategorized events: {unique_filetypes}")
-        # Print counts per filetype
-        for filetype in unique_filetypes:
-            count = uncategorized_df.filter(pl.col('filetype') == filetype).height
-            print(f"  {filetype}: {count} events")
-        row = uncategorized_df.row(0, named=True)
-        print(f"Example uncategorized event: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
-        raise AssertionError
-    if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of filetype category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
-        raise AssertionError
-
-    print("Adding erin signal categories...")
-    erin_conditions = []
-    for query_text in erin_category_queries:
-        erin_conditions.append(eval(query_text, {'pl': pl, '__builtins__': {}}))
-    # assign integers to categories
-    erin_category_expr = None
-    for i, condition in enumerate(erin_conditions):
-        if erin_category_expr is None:
-            erin_category_expr = pl.when(condition).then(pl.lit(i))
-        else:
-            erin_category_expr = erin_category_expr.when(condition).then(pl.lit(i))
-    erin_category_expr = erin_category_expr.otherwise(pl.lit(-1))
-    all_df = all_df.with_columns([
-        erin_category_expr.alias("erin_signal_category")
-    ])
-    print("\nerin signal categories:")
-    category_counts_unweighted = []
-    category_counts_weighted = []
-    for erin_signal_category_i, erin_signal_category in enumerate(erin_category_labels):
-        curr_df = all_df.filter(pl.col('erin_signal_category') == erin_signal_category_i)
-        unweighted_num = curr_df.height
-        weighted_num = curr_df['wc_net_weight'].sum()
-        category_counts_unweighted.append(unweighted_num)
-        category_counts_weighted.append(weighted_num)
-        print(f"    {erin_signal_category}: {weighted_num:.2f} ({unweighted_num})")
-    total_events = all_df.height
-    uncategorized_count = all_df.filter(pl.col('erin_signal_category') == -1).height
-    if uncategorized_count > 0:
-        print(f"\nUncategorized erin signal categories ({uncategorized_count} events)!")
-        uncategorized_df = all_df.filter(pl.col('erin_signal_category') == -1)
-        # Print unique filetypes in uncategorized events
-        unique_filetypes = uncategorized_df['filetype'].unique().to_list()
-        print(f"Unique filetypes in uncategorized events: {unique_filetypes}")
-        # Print counts per filetype
-        for filetype in unique_filetypes:
-            count = uncategorized_df.filter(pl.col('filetype') == filetype).height
-            print(f"  {filetype}: {count} events")
-        row = uncategorized_df.row(0, named=True)
-        print(f"Example uncategorized event: {row['filename']=}, {row['filetype']=}, {row['run']=}, {row['subrun']=}, {row['event']=}, {row['wc_truth_inFV']=}, {row['wc_truth_Np']=}, {row['wc_truth_0mu']=}")
-        raise AssertionError
-    if sum(category_counts_unweighted) != total_events:
-        print(f"Error: Sum of erin category counts ({sum(category_counts_unweighted)}) != total events ({total_events}), missing or overlapping categories?")
-        raise AssertionError
+    all_df = _add_signal_category(
+        all_df, "topological",
+        topological_category_queries, topological_category_labels,
+        debug_columns=_topological_debug_cols,
+    )
+    all_df = _add_signal_category(
+        all_df, "del1g_detailed",
+        del1g_detailed_category_queries, del1g_detailed_category_labels,
+        debug_columns=_del1g_truth_debug_cols,
+    )
+    all_df = _add_signal_category(
+        all_df, "del1g_simple",
+        del1g_simple_category_queries, del1g_simple_category_labels,
+        debug_columns=_del1g_truth_debug_cols,
+    )
+    all_df = _add_signal_category(
+        all_df, "filetype",
+        filetype_category_queries, filetype_category_labels,
+        debug_columns=_filetype_debug_cols,
+    )
+    all_df = _add_signal_category(
+        all_df, "erin",
+        erin_category_queries, erin_category_labels,
+        debug_columns=_filetype_debug_cols,
+    )
 
     print("finished adding signal categories")
 
