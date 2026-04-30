@@ -372,6 +372,67 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT, run4b_o
     return df
 
 
+def apply_rootino_correction(df, pot_dic, weight_col="wc_net_weight"):
+    """Correct for known-bad ROOTino (Delta(1600), glee_GTruth_ResNum == 9) events in runs 1-3 files.
+
+    Runs 1-3 ROOTino events are zeroed; runs 4-5 ROOTino events are scaled up by
+    runs_1_5_data_POT / runs_4_5_data_POT to preserve the total ROOTino contribution
+    in the runs 1-5 normalization. Saves the original weight in pre_rootino_<weight_col>.
+
+    No-op (logs and returns df unchanged) if pot_dic has no runs 1-3 data entries.
+    """
+    print(f"in apply_rootino_correction (weight_col={weight_col})")
+
+    runs_1_3_periods = ["1", "2", "3"]
+    runs_4_5_periods = ["4a", "4b", "4c", "4d", "4bcd", "5"]
+    known_periods = set(runs_1_3_periods) | set(runs_4_5_periods)
+
+    unknown_periods = sorted({rp for (_ft, rp) in pot_dic.keys() if rp not in known_periods})
+    if unknown_periods:
+        raise ValueError(
+            f"apply_rootino_correction: pot_dic contains unknown detailed_run_period(s) {unknown_periods}; "
+            f"expected one of {sorted(known_periods)}"
+        )
+
+    runs_1_3_data_pot = sum(v for (ft, rp), v in pot_dic.items() if ft == "data" and rp in runs_1_3_periods)
+    runs_4_5_data_pot = sum(v for (ft, rp), v in pot_dic.items() if ft == "data" and rp in runs_4_5_periods)
+    runs_1_5_data_pot = runs_1_3_data_pot + runs_4_5_data_pot
+
+    if runs_1_3_data_pot == 0:
+        print("    no runs 1-3 data in pot_dic, skipping ROOTino correction")
+        return df
+
+    if runs_4_5_data_pot == 0:
+        print("WARNING: apply_rootino_correction: runs 1-3 data POT > 0 but runs 4-5 data POT == 0; cannot scale")
+        return df
+
+    scale = runs_1_5_data_pot / runs_4_5_data_pot
+    print(f"    runs 1-3 data POT: {runs_1_3_data_pot:.3e}")
+    print(f"    runs 4-5 data POT: {runs_4_5_data_pot:.3e}")
+    print(f"    runs 1-5 / runs 4-5 scale factor: {scale:.4f}")
+
+    is_rootino = pl.col("glee_GTruth_ResNum") == 9
+    in_runs_1_3 = pl.col("detailed_run_period").is_in(runs_1_3_periods)
+    in_runs_4_5 = pl.col("detailed_run_period").is_in(runs_4_5_periods)
+
+    pre_col = f"pre_rootino_{weight_col}"
+    df = df.with_columns(pl.col(weight_col).alias(pre_col))
+
+    new_weight = (
+        pl.when(is_rootino & in_runs_1_3).then(pl.lit(0.0))
+        .when(is_rootino & in_runs_4_5).then(pl.col(weight_col) * scale)
+        .otherwise(pl.col(weight_col))
+    )
+    df = df.with_columns(new_weight.cast(pl.Float32).alias(weight_col))
+
+    n_zeroed = df.filter(is_rootino & in_runs_1_3).height
+    n_scaled = df.filter(is_rootino & in_runs_4_5).height
+    print(f"    zeroed {n_zeroed} runs 1-3 ROOTino events")
+    print(f"    scaled {n_scaled} runs 4-5 ROOTino events by {scale:.4f}")
+
+    return df
+
+
 def do_wc_postprocessing(df):
 
     # Extra reco variables

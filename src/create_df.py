@@ -13,7 +13,7 @@ import argparse
 from ntuple_variables.variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
 from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, glee_eventweight_vars, lantern_vars, vector_columns
-from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
+from postprocessing import do_orthogonalization_and_POT_weighting, apply_rootino_correction, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables, change_dtypes
@@ -555,6 +555,7 @@ if __name__ == "__main__":
             run4b_normalizing_POT = normalizing_POT
 
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
+        all_df = apply_rootino_correction(all_df, pot_dic, weight_col="wc_net_weight")
         all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=run4b_normalizing_POT, run4b_only=True)
 
         # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
