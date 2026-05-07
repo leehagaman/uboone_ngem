@@ -42,7 +42,13 @@ def _filetype_from_filename(filename):
 
 def _detailed_run_period_from_filename(filename):
     fn = filename.lower()
-    if "4a.root" in filename:
+    if "1.root" in filename:
+        return "1"
+    elif "2.root" in filename:
+        return "2"
+    elif "3.root" in filename:
+        return "3"
+    elif "4a.root" in filename:
         return "4a"
     elif "4b.root" in filename:
         return "4b"

@@ -92,8 +92,15 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT, run4b_o
         # keep 4a separately normalized, since it's different from the rest of run 4
         # eventually, this will be used to separately normalize run 1, run 2, run 3, etc.
         run_period_map = {
+            "1": "1",
+            "2": "2",
+            "3": "3",
             "4a": "4a",
-            "4b": "4nota5", "4c": "4nota5", "4d": "4nota5", "4bcd": "4nota5", "5": "4nota5",
+            "4b": "4nota", 
+            "4c": "4nota", 
+            "4d": "4nota", 
+            "4bcd": "4nota", 
+            "5": "5",
         }
 
     normalizing_run_periods = sorted(set(run_period_map.values()))

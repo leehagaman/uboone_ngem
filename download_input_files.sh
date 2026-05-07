@@ -27,6 +27,9 @@ REMOTE_HOST="uboonegpvm01.fnal.gov"
 FILES_TO_COPY=(
     
     #nu overlay files
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run1_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_1.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run2_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_2.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run3_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_3.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4a_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4a4c4d5_v10_04_07_13_BNB_nu_overlay_surprise_reco2_hist_4a.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/retuple/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4c_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4a4c4d5_v10_04_07_13_BNB_nu_overlay_surprise_reco2_hist_4c.root"
@@ -72,6 +75,9 @@ FILES_TO_COPY=(
 
 
     # EXT files
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run1_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_1.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run2_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_2.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run3_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_3.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4a_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4a_BNB_beam_off_data_surprise_reco2_hist.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/retuple/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run4c_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_4c.root"

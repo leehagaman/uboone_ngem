@@ -63,7 +63,13 @@ def _get_file_metadata(filename, frac_events=1):
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
     detailed_run_period = "?"
-    if "4a.root" in filename:
+    if "1.root" in filename:
+        detailed_run_period = "1"
+    elif "2.root" in filename:
+        detailed_run_period = "2"
+    elif "3.root" in filename:
+        detailed_run_period = "3"
+    elif "4a.root" in filename:
         detailed_run_period = "4a"
     elif "4b.root" in filename:
         detailed_run_period = "4b"

@@ -91,6 +91,7 @@ def _get_file_metadata(filename, frac_events=1):
     f.close()
 
     if filetype == "ext":
+        # TODO: add runs 1-3 num triggers here
         if filename == "checkout_MCC9.10_Run4a_BNB_beam_off_data_surprise_reco2_hist.root": # run 4a
             run4a_ext_num_triggers = 27940007
             file_POT_total = run4a_ext_num_triggers * run4a_pot_per_trigger
@@ -119,7 +120,13 @@ def _get_file_metadata(filename, frac_events=1):
     file_POT = file_POT_total * frac_events
 
     detailed_run_period = "?"
-    if "4a.root" in filename:
+    if "1.root" in filename:
+        detailed_run_period = "1"
+    elif "2.root" in filename:
+        detailed_run_period = "2"
+    elif "3.root" in filename:
+        detailed_run_period = "3"
+    elif "4a.root" in filename:
         detailed_run_period = "4a"
     elif "4b.root" in filename:
         detailed_run_period = "4b"
