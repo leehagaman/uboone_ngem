@@ -36,7 +36,7 @@ glee_scalar_vars = [
     # PSV was trained on NC Delta Rad, but nu_overlay might be better?
 
     # unassociated hits on each plane grouped by DBscan
-    # also there is more candadate-by-candidate stuff in vector variables
+    # also there is more candidate-by-candidate stuff in vector variables
     # (don't use RMS stuff for that, extra model dependent)
     # matched variable tells us in truth whether this is from a pi0 shower
     # remerge could be used to add extra energy to the main shower
