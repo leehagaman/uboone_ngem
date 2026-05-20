@@ -260,6 +260,9 @@ all_numu_scalars += overall_var
 all_numu_scalars += ["cosmict_flag_1", "kine_reco_Enu", "match_isFC"]
 
 
+# Commenting this out, not using the vector variables for anything right now.
+# Some of these could be updated to Erin's shw_sp_ equivalents as done for the scalars above.
+"""
 # These are the vector variables saved for the numu tagger
 var_numu1 = [#'weight',
              #'numu_cc_flag',
@@ -294,6 +297,34 @@ all_numu_vectors = []
 all_numu_vectors += var_numu1
 all_numu_vectors += var_numu2
 all_numu_vectors += var_cos10
+"""
+
+# https://github.com/uboone/wcp-uboone-bdt/blob/7b99e78d464efaa20b375955637f1203020e7d48/inc/WCPLEEANA/tagger.h#L3849
+# not actually part of the nue_scalars, but we're including it under that umbrella here since many shw_sp variables
+# replace nueCC tagger variables
+new_erin_shw_sp_vars = [
+    "shw_sp_flag",    
+    "shw_sp_filled",
+    "shw_sp_num_mip_tracks",
+    "shw_sp_num_muons",
+    "shw_sp_num_pions",
+    "shw_sp_num_protons",
+    "shw_sp_proton_length_1",
+    "shw_sp_proton_dqdx_1",
+    "shw_sp_proton_energy_1",
+    "shw_sp_proton_length_2",
+    "shw_sp_proton_dqdx_2",
+    "shw_sp_proton_energy_2",
+    "shw_sp_n_good_showers",
+    #"shw_sp_n_20mev_showers", # these variables already included in wc_T_bdt_vars above
+    #"shw_sp_n_br1_showers",
+    "shw_sp_n_br2_showers",
+    "shw_sp_n_br3_showers",
+    "shw_sp_n_br4_showers",
+    "shw_sp_n_20br1_showers",
+    "shw_sp_shw_vtx_dis",
+    "shw_sp_max_shw_dis",
+]
 
 # These are the scalar variables saved for the nue tagger
 taggerCMEAMC_var = ["cme_mu_energy","cme_energy","cme_mu_length","cme_length",
@@ -302,9 +333,21 @@ taggerCMEAMC_var = ["cme_mu_energy","cme_energy","cme_mu_length","cme_length",
                 "anc_shower_main_length","anc_shower_total_length","anc_flag_main_outside"]
 taggerGAP_var = ["gap_flag_prolong_u","gap_flag_prolong_v","gap_flag_prolong_w","gap_flag_parallel",
                  "gap_n_points","gap_n_bad","gap_energy","gap_num_valid_tracks","gap_flag_single_shower"]
+
+# Old versions, replaced by Erin's lower threshold processing:
+"""
 taggerHOL_var = ["hol_1_n_valid_tracks","hol_1_min_angle","hol_1_energy","hol_1_flag_all_shower","hol_1_min_length",
                "hol_2_min_angle","hol_2_medium_dQ_dx","hol_2_ncount","lol_3_angle_beam","lol_3_n_valid_tracks",
                "lol_3_min_angle","lol_3_vtx_n_segs","lol_3_shower_main_length","lol_3_n_out","lol_3_n_sum"]
+"""
+taggerHOL_var = [
+    # these are new
+    "shw_sp_hol_1_flag","shw_sp_hol_2_energy","shw_sp_hol_2_flag","shw_sp_hol_flag","shw_sp_lol_flag","shw_sp_lol_3_energy","shw_sp_lol_3_flag",
+    # these are equivalents as before
+    "shw_sp_hol_1_n_valid_tracks","shw_sp_hol_1_min_angle","shw_sp_hol_1_energy","shw_sp_hol_1_flag_all_shower","shw_sp_hol_1_min_length",          
+    "shw_sp_hol_2_min_angle","shw_sp_hol_2_medium_dQ_dx","shw_sp_hol_2_ncount","shw_sp_lol_3_angle_beam","shw_sp_lol_3_n_valid_tracks",
+    "shw_sp_lol_3_min_angle","shw_sp_lol_3_vtx_n_segs","shw_sp_lol_3_shower_main_length","shw_sp_lol_3_n_out","shw_sp_lol_3_n_sum"]
+
 taggerMGOMGT_var = ["mgo_energy","mgo_max_energy","mgo_total_energy","mgo_n_showers","mgo_max_energy_1",
                     "mgo_max_energy_2","mgo_total_other_energy","mgo_n_total_showers","mgo_total_other_energy_1",
                    "mgt_flag_single_shower","mgt_max_energy","mgt_total_other_energy","mgt_max_energy_1",
@@ -313,6 +356,9 @@ taggerMGOMGT_var = ["mgo_energy","mgo_max_energy","mgo_total_energy","mgo_n_show
 taggerMIPQUALITY_var = ["mip_quality_energy","mip_quality_overlap","mip_quality_n_showers","mip_quality_n_tracks",
                         "mip_quality_flag_inside_pi0","mip_quality_n_pi0_showers","mip_quality_shortest_length",
                         "mip_quality_acc_length","mip_quality_shortest_angle","mip_quality_flag_proton"]
+
+# Old versions, replaced by Erin's lower threshold processing:
+"""
 taggerBR1_var = ["br1_1_shower_type","br1_1_vtx_n_segs","br1_1_energy","br1_1_n_segs","br1_1_flag_sg_topology",
                  "br1_1_flag_sg_trajectory","br1_1_sg_length","br1_2_n_connected","br1_2_max_length",
                 "br1_2_n_connected_1","br1_2_n_shower_segs","br1_2_max_length_ratio","br1_2_shower_length",
@@ -321,41 +367,145 @@ taggerBR3_var = ["br3_1_energy","br3_1_n_shower_segments","br3_1_sg_flag_traject
                 "br3_1_sg_length","br3_1_total_main_length","br3_1_total_length","br3_1_iso_angle",
                  "br3_1_sg_flag_topology","br3_2_n_ele","br3_2_n_other","br3_2_other_fid","br3_4_acc_length",
                  "br3_4_total_length","br3_7_min_angle","br3_8_max_dQ_dx","br3_8_n_main_segs"]
+"""
+taggerBR1_var = [
+    # these are new
+    "shw_sp_br_filled", "shw_sp_br1_flag", "shw_sp_br1_1_flag", "shw_sp_br1_1_energy", "shw_sp_br1_1_flag_sg_topology", "shw_sp_br1_1_flag_sg_trajectory",
+    "shw_sp_br1_2_flag", "shw_sp_br1_2_energy", "shw_sp_br1_2_vtx_n_segs", "shw_sp_br1_3_flag", "shw_sp_br1_3_energy", "shw_sp_br1_3_n_connected_p", 
+    "shw_sp_br1_3_n_shower_segs", "shw_sp_br1_3_flag_sg_topology", "shw_sp_br1_3_flag_sg_trajectory", "shw_sp_br1_3_sg_length"
+    # these are equivalents as before
+    "shw_sp_br1_1_shower_type", "shw_sp_br1_1_vtx_n_segs", "shw_sp_br1_1_n_segs", "shw_sp_br1_1_sg_length",
+    "shw_sp_br1_2_n_connected", "shw_sp_br1_2_max_length", "shw_sp_br1_2_n_connected_1", "shw_sp_br1_2_n_shower_segs",
+    "shw_sp_br1_2_max_length_ratio", "shw_sp_br1_2_shower_length", "shw_sp_br1_3_max_length_p", "shw_sp_br1_3_n_shower_main_segs"]
+taggerBR3_var = [
+    # these are new
+    "shw_sp_br3_1_energy", "shw_sp_br3_1_sg_flag_trajectory", "shw_sp_br3_1_iso_angle", "shw_sp_br3_1_sg_flag_topology", "shw_sp_br3_1_flag", "shw_sp_br3_2_energy", 
+    "shw_sp_br3_2_total_main_length", "shw_sp_br3_2_total_length", "shw_sp_br3_2_flag", "shw_sp_br3_4_energy", "shw_sp_br3_4_flag",
+    "shw_sp_br3_7_energy", "shw_sp_br3_7_min_angle","shw_sp_br3_7_sg_length","shw_sp_br3_7_shower_main_length","shw_sp_br3_7_flag",
+    "shw_sp_br3_8_energy","shw_sp_br3_8_shower_main_length","shw_sp_br3_8_shower_length","shw_sp_br3_8_flag","shw_sp_br3_flag",
+    # these are equivalents as before
+    "shw_sp_br3_1_n_shower_segments", "shw_sp_br3_1_sg_direct_length", "shw_sp_br3_1_sg_length", "shw_sp_br3_1_total_main_length",
+    "shw_sp_br3_1_total_length", "shw_sp_br3_2_n_ele", "shw_sp_br3_2_n_other", "shw_sp_br3_2_other_fid", 
+    "shw_sp_br3_4_acc_length", "shw_sp_br3_4_total_length", "shw_sp_br3_8_max_dQ_dx", "shw_sp_br3_8_n_main_segs"]
+
+# Old versions, replaced by Erin's lower threshold processing:
+"""
 taggerBR4TRE_var = ["br4_1_shower_main_length","br4_1_shower_total_length","br4_1_min_dis","br4_1_energy",
                     "br4_1_flag_avoid_muon_check","br4_1_n_vtx_segs","br4_1_n_main_segs","br4_2_ratio_45",
                    "br4_2_ratio_35","br4_2_ratio_25","br4_2_ratio_15","br4_2_ratio1_45","br4_2_ratio1_35",
                    "br4_2_ratio1_25","br4_2_ratio1_15","br4_2_iso_angle","br4_2_iso_angle1","br4_2_angle",
                    "tro_3_stem_length","tro_3_n_muon_segs"]
+"""
+taggerTRO_var = ["tro_3_stem_length","tro_3_n_muon_segs"]
+
+taggerBR4_var = [
+    # these are new
+    "shw_sp_br4_1_flag","shw_sp_br4_2_energy","shw_sp_br4_2_flag","shw_sp_br4_flag"
+    # these are equivalents as before
+    "shw_sp_br4_1_shower_main_length","shw_sp_br4_1_shower_total_length","shw_sp_br4_1_min_dis","shw_sp_br4_1_energy",
+    "shw_sp_br4_1_flag_avoid_muon_check","shw_sp_br4_1_n_vtx_segs","shw_sp_br4_1_n_main_segs","shw_sp_br4_2_ratio_45",
+    "shw_sp_br4_2_ratio_35","shw_sp_br4_2_ratio_25","shw_sp_br4_2_ratio_15","shw_sp_br4_2_ratio1_45","shw_sp_br4_2_ratio1_35",
+    "shw_sp_br4_2_ratio1_25","shw_sp_br4_2_ratio1_15","shw_sp_br4_2_iso_angle","shw_sp_br4_2_iso_angle1","shw_sp_br4_2_angle",
+]
+
 taggerVIS1_var = ["vis_1_n_vtx_segs","vis_1_energy","vis_1_num_good_tracks","vis_1_max_angle",
                   "vis_1_max_shower_angle","vis_1_tmp_length1","vis_1_tmp_length2"]
 taggerVIS2_var = ["vis_2_n_vtx_segs","vis_2_min_angle","vis_2_min_weak_track","vis_2_angle_beam","vis_2_min_angle1",
                  "vis_2_iso_angle1","vis_2_min_medium_dQ_dx","vis_2_min_length","vis_2_sg_length","vis_2_max_angle",
                  "vis_2_max_weak_track"]
-taggerPI01_var = ["pio_1_mass","pio_1_pio_type","pio_1_energy_1","pio_1_energy_2","pio_1_dis_1","pio_1_dis_2","pio_mip_id"]
+
+# Old version, replaced by Erin's lower threshold processing
+#taggerPI01_var = ["pio_1_mass","pio_1_pio_type","pio_1_energy_1","pio_1_energy_2","pio_1_dis_1","pio_1_dis_2","pio_mip_id"]
+taggerPI01_var = [
+    "shw_sp_pio_flag","shw_sp_pio_mip_id","shw_sp_pio_filled","shw_sp_pio_flag_pio","shw_sp_pio_1_flag", # not included before
+    "shw_sp_pio_1_mass","shw_sp_pio_1_pio_type","shw_sp_pio_1_energy_1","shw_sp_pio_1_energy_2","shw_sp_pio_1_dis_1","shw_sp_pio_1_dis_2", # same as before
+]
+
+# Old version, replaced by Erin's lower threshold processing
+"""
 taggerSTEMDIRBR2_var = ["stem_dir_flag_single_shower","stem_dir_angle","stem_dir_energy","stem_dir_angle1",
                         "stem_dir_angle2","stem_dir_angle3","stem_dir_ratio","br2_num_valid_tracks",
                         "br2_n_shower_main_segs","br2_max_angle","br2_sg_length","br2_flag_sg_trajectory"]
+"""
+taggerSTEMDIR_var = ["stem_dir_flag_single_shower","stem_dir_angle","stem_dir_energy","stem_dir_angle1",
+                        "stem_dir_angle2","stem_dir_angle3","stem_dir_ratio"]
+# several of these variables are new, not replacements of the above version
+taggerBR2_var = ["shw_sp_br2_flag", "shw_sp_br2_flag_single_shower","shw_sp_br2_num_valid_tracks","shw_sp_br2_energy",
+                "shw_sp_br2_angle1","shw_sp_br2_angle2","shw_sp_br2_angle","shw_sp_br2_angle3","shw_sp_br2_n_shower_main_segs",
+                "shw_sp_br2_max_angle","shw_sp_br2_sg_length","shw_sp_br2_flag_sg_trajectory",
+]
+
+taggerSTBRM_var = ["stem_len_energy","stem_len_length","stem_len_flag_avoid_muon_check","stem_len_num_daughters",
+                      "stem_len_daughter_length","brm_n_mu_segs","brm_Ep","brm_acc_length","brm_shower_total_length",
+                      "brm_connected_length","brm_n_size","brm_acc_direct_length","brm_n_shower_main_segs",
+                       "brm_n_mu_main"]
+
+# Old version, replaced by Erin's lower threshold processing
+"""
 taggerSTLLEMBRM_var = ["stem_len_energy","stem_len_length","stem_len_flag_avoid_muon_check","stem_len_num_daughters",
                       "stem_len_daughter_length","brm_n_mu_segs","brm_Ep","brm_acc_length","brm_shower_total_length",
                       "brm_connected_length","brm_n_size","brm_acc_direct_length","brm_n_shower_main_segs",
                        "brm_n_mu_main","lem_shower_main_length","lem_n_3seg","lem_e_charge","lem_e_dQdx",
                        "lem_shower_num_main_segs"]
+"""
+# these two same as before, now split up
+taggerSTL_var = ["stem_len_energy","stem_len_length","stem_len_flag_avoid_muon_check","stem_len_num_daughters","stem_len_daughter_length"]
+taggerBRM_var = ["brm_n_mu_segs","brm_Ep","brm_acc_length","brm_shower_total_length","brm_connected_length",
+                 "brm_n_size","brm_acc_direct_length","brm_n_shower_main_segs","brm_n_mu_main"]
+# this one new and expanded
+taggerLEM_var = [
+    "shw_sp_lem_shower_total_length","shw_sp_lem_shower_main_length","shw_sp_lem_n_3seg","shw_sp_lem_e_charge","shw_sp_lem_e_dQdx",
+    "shw_sp_lem_shower_num_segs","shw_sp_lem_shower_num_main_segs","shw_sp_lem_flag",
+]
+
 taggerSTWSPT_var = ["stw_1_energy","stw_1_dis","stw_1_dQ_dx","stw_1_flag_single_shower","stw_1_n_pi0",
                     "stw_1_num_valid_tracks","spt_shower_main_length","spt_shower_total_length","spt_angle_beam",
                     "spt_angle_vertical","spt_max_dQ_dx","spt_angle_beam_1","spt_angle_drift","spt_angle_drift_1",
                     "spt_num_valid_tracks","spt_n_vtx_segs","spt_max_length"]
+
+# Old version, replaced by Erin's lower threshold processing
+"""
 taggerMIP_var = ["mip_energy","mip_n_end_reduction","mip_n_first_mip","mip_n_first_non_mip","mip_n_first_non_mip_1",
-                "mip_n_first_non_mip_2","mip_vec_dQ_dx_0","mip_vec_dQ_dx_1","mip_max_dQ_dx_sample",
+                "mip_n_first_non_mip_2",
+                
+                "mip_vec_dQ_dx_0","mip_vec_dQ_dx_1","mip_max_dQ_dx_sample",
                 "mip_n_below_threshold","mip_n_below_zero","mip_n_lowest","mip_n_highest","mip_lowest_dQ_dx",
                  "mip_highest_dQ_dx","mip_medium_dQ_dx","mip_stem_length","mip_length_main","mip_length_total",
                  "mip_angle_beam","mip_iso_angle","mip_n_vertex","mip_n_good_tracks","mip_E_indirect_max_energy",
                  "mip_flag_all_above","mip_min_dQ_dx_5","mip_n_other_vertex","mip_n_stem_size",
                  "mip_flag_stem_trajectory","mip_min_dis"]
+"""
+# new versions of this were renamed using mip_ -> shw_sp_
+# some variables didn't get updated and are left with mip_
+taggerMIP_var = [
+    "shw_sp_energy", 
+    "mip_n_end_reduction", "mip_n_first_mip","mip_n_first_non_mip","mip_n_first_non_mip_1","mip_n_first_non_mip_2",
+    "shw_sp_vec_dQ_dx_0","shw_sp_vec_dQ_dx_1","shw_sp_max_dQ_dx_sample",
+    "shw_sp_n_below_threshold","shw_sp_n_below_zero","shw_sp_n_lowest","shw_sp_n_highest","shw_sp_lowest_dQ_dx",
+    "shw_sp_highest_dQ_dx","shw_sp_medium_dQ_dx","shw_sp_stem_length","shw_sp_length_main","shw_sp_length_total",
+    "shw_sp_angle_beam","shw_sp_iso_angle","shw_sp_n_vertex","shw_sp_n_good_tracks","shw_sp_E_indirect_max_energy",
+    "shw_sp_flag_all_above","shw_sp_min_dQ_dx_5","shw_sp_n_other_vertex","shw_sp_n_stem_size",
+    "shw_sp_flag_stem_trajectory","shw_sp_min_dis",
+]
+
+# Old version, replaced by Erin's lower threshold processing
+"""
 taggerAdditional_Var = ["mip_vec_dQ_dx_2","mip_vec_dQ_dx_3","mip_vec_dQ_dx_4","mip_vec_dQ_dx_5","mip_vec_dQ_dx_6",
                         "mip_vec_dQ_dx_7","mip_vec_dQ_dx_8","mip_vec_dQ_dx_9","mip_vec_dQ_dx_10","mip_vec_dQ_dx_11",
                         "mip_vec_dQ_dx_12","mip_vec_dQ_dx_13","mip_vec_dQ_dx_14","mip_vec_dQ_dx_15",
                         "mip_vec_dQ_dx_16","mip_vec_dQ_dx_17","mip_vec_dQ_dx_18","mip_vec_dQ_dx_19"]
+"""
+taggerAdditional_Var = [
+    "shw_sp_vec_dQ_dx_2","shw_sp_vec_dQ_dx_3","shw_sp_vec_dQ_dx_4","shw_sp_vec_dQ_dx_5","shw_sp_vec_dQ_dx_6",
+    "shw_sp_vec_dQ_dx_7","shw_sp_vec_dQ_dx_8","shw_sp_vec_dQ_dx_9","shw_sp_vec_dQ_dx_10","shw_sp_vec_dQ_dx_11",
+    "shw_sp_vec_dQ_dx_12","shw_sp_vec_dQ_dx_13","shw_sp_vec_dQ_dx_14","shw_sp_vec_dQ_dx_15",
+    "shw_sp_vec_dQ_dx_16","shw_sp_vec_dQ_dx_17","shw_sp_vec_dQ_dx_18","shw_sp_vec_dQ_dx_19",
+    "shw_sp_vec_median_dedx",
+    "shw_sp_vec_mean_dedx",
+]
+
 all_nue_scalars = []
+all_nue_scalars += new_erin_shw_sp_vars
 all_nue_scalars += taggerCMEAMC_var
 all_nue_scalars += taggerGAP_var
 all_nue_scalars += taggerHOL_var
@@ -363,9 +513,13 @@ all_nue_scalars += taggerMGOMGT_var
 all_nue_scalars += taggerMIPQUALITY_var
 all_nue_scalars += taggerBR1_var
 all_nue_scalars += taggerBR3_var
-all_nue_scalars += taggerBR4TRE_var
-all_nue_scalars += taggerSTEMDIRBR2_var
-all_nue_scalars += taggerSTLLEMBRM_var
+all_nue_scalars += taggerBR4_var
+all_nue_scalars += taggerTRO_var
+all_nue_scalars += taggerSTEMDIR_var
+all_nue_scalars += taggerBR2_var
+all_nue_scalars += taggerSTL_var
+all_nue_scalars += taggerBRM_var
+all_nue_scalars += taggerLEM_var
 all_nue_scalars += taggerSTWSPT_var
 all_nue_scalars += taggerMIP_var
 all_nue_scalars += taggerVIS1_var
@@ -374,6 +528,9 @@ all_nue_scalars += taggerPI01_var
 all_nue_scalars += taggerAdditional_Var
 all_nue_scalars += ["kine_reco_Enu", "match_isFC"]
 
+# Commenting this out, not using the vector variables for anything right now.
+# Some of these could be updated to Erin's shw_sp_ equivalents as done for the scalars above.
+"""
 # These are the vector variables saved for the nue tagger
 taggerTRO5_var = ["tro_5_v_max_angle","tro_5_v_min_angle","tro_5_v_max_length","tro_5_v_iso_angle","tro_5_v_n_vtx_segs",
                 "tro_5_v_min_count","tro_5_v_max_count","tro_5_v_energy"]
@@ -415,6 +572,7 @@ all_nue_vectors += taggerLOL1_var
 all_nue_vectors += taggerBR3TAGGER6_var
 all_nue_vectors += taggerBR3TAGGER5_var
 all_nue_vectors += taggerBR3TAGGER3_var
+"""
 
 numu_bdt_score_variables = [
     "cosmict_10_score",

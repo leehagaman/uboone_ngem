@@ -27,8 +27,6 @@ vector_columns = [
     "wc_reco_startXYZT",
     "wc_reco_endXYZT",
 
-    "lantern_showerPhScore",
-
     "blip_x",
     "blip_y",
     "blip_z",
@@ -207,3 +205,23 @@ not_using_for_training_vars += ["pandora_max2_len_trk_pfng2shrfrac", "pandora_ma
 not_using_for_training_vars += ["pandora_max3_len_trk_pfng2shrfrac", "pandora_max3_len_trk_pfng2mipfrac", "pandora_max3_len_trk_pfng2hipfrac", "pandora_max3_len_trk_pfng2mclfrac", "pandora_max3_len_trk_pfng2dfsfrac"]
 
 combined_training_vars = [var for var in combined_training_vars if var not in not_using_for_training_vars]
+
+
+# check that no list variable defined or imported in this module contains duplicate entries
+from collections import Counter
+
+_vars_with_duplicates = {}
+for _name, _value in list(globals().items()):
+    if _name.startswith("_"):
+        continue
+    if not isinstance(_value, list):
+        continue
+    _counts = Counter(_value)
+    _dups = [_item for _item, _count in _counts.items() if _count > 1]
+    if _dups:
+        _vars_with_duplicates[_name] = _dups
+
+if _vars_with_duplicates:
+    for _name, _dups in _vars_with_duplicates.items():
+        print(f"Duplicate entries in '{_name}': {_dups}")
+    raise ValueError(f"Found duplicate entries in variable lists: {sorted(_vars_with_duplicates)}")
