@@ -3546,6 +3546,10 @@ def add_1g1mu_rad_corr_events(df):
     """
     print("adding 1g1mu rad correction events to the dataframe")
 
+    # TODO: make del1g_rad_correction_weights.parquet processed from the df here,
+    # replicating the behavior of rad_corrections_reweighting.ipynb so we don't have
+    # to run that separately.
+
     is_lazy = isinstance(df, pl.LazyFrame)
 
     # Weights are pre-computed in rad_corrections_reweighting.ipynb and saved to parquet.
@@ -3572,6 +3576,88 @@ def add_1g1mu_rad_corr_events(df):
     if stale:
         print(f"  WARNING: dropping stale weight columns before join: {stale}")
         lf = lf.drop(stale)
+
+    # ── Run-period assignment + POT rescaling ────────────────────────────────
+    # The rad-corrected events are derived from delete_one_gamma_overlay (runs
+    # 4-5) files, so their inherited wc_net_weight is normalized to the runs-4-5
+    # data POT only.  We want a prediction for the full analyzed POT (all run
+    # periods present), assuming the rate per POT is run-independent (we ignore
+    # detector time-dependence for this small, rare component).
+    #
+    # We keep a SINGLE copy of each event -- duplicating one event into every
+    # run period would undercount its per-bin MC statistical variance (Sum w^2),
+    # since N real simulated events would masquerade as 6*N independent ones.
+    # Instead we:
+    #   1. rescale each event's weight from its native-run data POT up to the
+    #      total data POT across all analyzed run periods, and
+    #   2. randomly assign each event to one normalizing_run_period in proportion
+    #      to that period's data POT.
+    # The runs-1-5 total is then exact and fluctuation-free (each event appears
+    # once with its full weight regardless of assignment); only the per-run split
+    # carries Monte-Carlo noise, which is acceptable here.
+    #
+    # Assignment is at normalizing_run_period granularity (the level used for POT
+    # normalization).  detailed_run_period is set to the most common real detailed
+    # period seen in the data for that normalizing period, so downstream string
+    # filters on detailed_run_period (e.g. .str.contains("4")) behave sensibly.
+    rp_info = (
+        lf.select(["normalizing_run_period", "detailed_run_period", "norm_goal_pot"])
+          .filter(pl.col("normalizing_run_period").is_not_null()
+                  & pl.col("norm_goal_pot").is_not_null())
+          .group_by(["normalizing_run_period", "detailed_run_period", "norm_goal_pot"])
+          .len()
+          .collect()
+    )
+    pot_per_nrp = {}
+    detailed_counts_per_nrp = defaultdict(dict)
+    for row in rp_info.iter_rows(named=True):
+        nrp = row["normalizing_run_period"]
+        pot_per_nrp[nrp] = row["norm_goal_pot"]
+        detailed_counts_per_nrp[nrp][row["detailed_run_period"]] = row["len"]
+    rep_detailed = {
+        nrp: max(counts.items(), key=lambda kv: kv[1])[0]
+        for nrp, counts in detailed_counts_per_nrp.items()
+    }
+    print(f"  rad-corr run-period spreading: pot_per_nrp={pot_per_nrp}")
+    print(f"  rad-corr representative detailed periods={rep_detailed}")
+
+    def _spread_rad_corr_across_runs(rcdf, seed=12345):
+        """Single copy per event: rescale to total POT and randomly assign a
+        normalizing_run_period in proportion to per-period data POT."""
+        if rcdf.height == 0 or len(pot_per_nrp) == 0:
+            return rcdf
+        nrps = list(pot_per_nrp.keys())
+        pots = np.array([pot_per_nrp[n] for n in nrps], dtype=float)
+        pot_total = pots.sum()
+        probs = pots / pot_total
+
+        # native (runs-4-5) data POT each event was normalized to; guard against
+        # null/zero so we never divide by zero.
+        native_pot = rcdf["norm_goal_pot"].to_numpy().astype(float)
+        valid = np.isfinite(native_pot) & (native_pot > 0)
+        if not valid.all():
+            print(f"  WARNING: dropping {(~valid).sum()} rad-corr rows with "
+                  f"null/zero norm_goal_pot before run-period spreading")
+            rcdf = rcdf.filter(pl.Series(valid))
+            native_pot = native_pot[valid]
+        if rcdf.height == 0:
+            return rcdf
+
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(nrps), size=rcdf.height, p=probs)
+        nrp_arr = [nrps[i] for i in idx]
+        det_arr = [rep_detailed[nrps[i]] for i in idx]
+        new_pot = pots[idx]
+
+        # rescale: (corrected weight / native POT) * total POT  ==  rate * POT_total
+        new_weight = rcdf["wc_net_weight"].to_numpy().astype(float) * pot_total / native_pot
+
+        return rcdf.with_columns([
+            pl.Series("wc_net_weight", new_weight).cast(pl.Float32),
+            pl.Series("normalizing_run_period", nrp_arr, dtype=pl.String),
+            pl.Series("detailed_run_period", det_arr, dtype=pl.String),
+            pl.Series("norm_goal_pot", new_pot),
+        ])
 
     rad_corrected_lf = (
         lf.filter(
@@ -3603,12 +3689,14 @@ def add_1g1mu_rad_corr_events(df):
         # these new rows with the full df after reading it separately.
         print("  collecting rad_corrected rows (lazy mode)...")
         rad_corrected_df = rad_corrected_lf.collect()
+        rad_corrected_df = _spread_rad_corr_across_runs(rad_corrected_df)
         print(f"  collected {rad_corrected_df.height} rad-corrected rows")
         return rad_corrected_df
 
     # Eager path: concat immediately and return full df.
     print("  starting concat...")
     rad_corrected_df = rad_corrected_lf.collect()
+    rad_corrected_df = _spread_rad_corr_across_runs(rad_corrected_df)
     df = pl.concat([df, rad_corrected_df], how="diagonal_relaxed")
     del rad_corrected_df
     gc.collect()
