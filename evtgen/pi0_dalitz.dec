@@ -1,0 +1,11 @@
+# Force pi0 to always undergo the Dalitz decay pi0 -> e+ e- gamma,
+# using EvtGen's PI0_DALITZ model (Kroll-Wada QED matrix element).
+# This overrides the default DECAY.DEC branching fractions (which are
+# ~98.8% gamma gamma, ~1.2% e+ e- gamma) so that every generated pi0
+# is a Dalitz decay, for high-statistics comparison against Geant4.
+
+Decay pi0
+1.0  e+ e- gamma  PI0_DALITZ;
+Enddecay
+
+End

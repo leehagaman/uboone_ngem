@@ -15,3 +15,4 @@ small_data_files/genie_univs/*
 training_outputs/*/*.csv
 plots/*
 *.db
+*.npz
