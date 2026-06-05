@@ -36,3 +36,6 @@ conda create -y -p /nevis/riverside/data/leehagaman/ngem/evtgen_env -c conda-for
   sample → `pi0_dalitz_momenta.npz`.
 - `../ipynb_notebooks/pi0_dalitz_geant4_vs_evtgen.ipynb` — overlays the two
   (rest-frame energies, opening angle, energy asymmetry, dilepton angle, `m_ee`).
+
+
+## Rough behavior should match what's described here: https://doi.org/10.1103/PhysRevC.95.025202
