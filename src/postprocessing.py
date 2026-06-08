@@ -17,6 +17,9 @@ from signal_categories import erin_category_queries, erin_category_labels
 
 from file_locations import intermediate_files_location
 
+from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
+from coh_1g_reweighting import compute_nc_coh_1g_reweighting
+
 def change_dtypes(df):
     """
     Convert Float64 to Float32 and Int64 to Int32 to reduce memory usage.
@@ -3533,8 +3536,31 @@ def remove_vector_variables(df):
     return df[save_columns]
 
 
-def add_1g1mu_rad_corr_events(df):
+def apply_1g1mu_rad_corr_reweighting(df, normalizing_POT=None):
     """Append numuCC_rad_corrected events derived from delete_one_gamma_overlay.
+
+    This is the *apply* half of the 1g1mu radiative-correction reweighting: it
+    reads the binned weights previously written by
+    compute_1g1mu_rad_corr_reweighting (numuCC_rad_corr_1g_reweighting.parquet) and
+    applies them per-event.  Call compute_1g1mu_rad_corr_reweighting first to
+    (re)generate that parquet from the central sample; this function only reads
+    it, so the same precomputed reweighting can be applied to other sets of files
+    without recomputing the binned weights.
+
+    The binned weights are POT-independent (the x_eta and fix_del1g factors carry
+    canceling POT dependence, and rad_frac_x_eta is pure theory), so the target
+    POT enters only here.  Each rad-corrected event is rescaled from its native
+    (runs-4-5) POT up to the target total POT and randomly assigned a run period in
+    proportion to that period's data POT.
+
+    ``normalizing_POT`` is that target total POT.  If None (default), it is derived
+    from the df as the sum of the per-run-period ``norm_goal_pot`` actually present
+    (current pipeline behavior).  Passing it explicitly overrides that, letting the
+    same computed reweighting be applied at a different run-fraction POT.  NOTE: in
+    the current pipeline the run4b_only orthogonalization pass leaves only run-4b
+    populated in norm_goal_pot, so the df-derived default is the run-4b data POT,
+    which is NOT the same as create_df's full normalizing_POT -- do not pass the
+    latter here without intending to change the normalization.
 
     Accepts either an eager DataFrame or a LazyFrame.
 
@@ -3544,21 +3570,17 @@ def add_1g1mu_rad_corr_events(df):
       responsible for concatenating these rows with the full df after calling
       pl.read_parquet separately.
     """
-    print("adding 1g1mu rad correction events to the dataframe")
-
-    # TODO: make del1g_rad_correction_weights.parquet processed from the df here,
-    # replicating the behavior of rad_corrections_reweighting.ipynb so we don't have
-    # to run that separately.
+    print(f"applying 1g1mu rad correction reweighting to the dataframe (normalizing_POT={normalizing_POT})")
 
     is_lazy = isinstance(df, pl.LazyFrame)
 
-    # Weights are pre-computed in rad_corrections_reweighting.ipynb and saved to parquet.
+    # Weights are pre-computed by compute_1g1mu_rad_corr_reweighting and saved to parquet.
     # Columns: run, subrun, event, fix_del1g_weight, x_eta_uniform_weight, rad_frac_x_eta,
     #          wc_muon_gamma_opening_angle
     # Only events with all weights > 0 are present in the parquet.
     # Use scan_parquet so the weights are read lazily as part of the same query plan.
     rad_weights_lf = pl.scan_parquet(
-        f"{intermediate_files_location}/del1g_rad_correction_weights.parquet"
+        f"{intermediate_files_location}/numuCC_rad_corr_1g_reweighting.parquet"
     )
     print("  rad_weights parquet queued for lazy scan")
 
@@ -3627,9 +3649,17 @@ def add_1g1mu_rad_corr_events(df):
         if rcdf.height == 0 or len(pot_per_nrp) == 0:
             return rcdf
         nrps = list(pot_per_nrp.keys())
-        pots = np.array([pot_per_nrp[n] for n in nrps], dtype=float)
-        pot_total = pots.sum()
-        probs = pots / pot_total
+        # Per-run-period composition comes from the df; the absolute target total
+        # POT comes from the normalizing_POT argument (== sum(df_pots) in the
+        # standard pipeline, since norm_goal_pot sums to normalizing_POT).
+        df_pots = np.array([pot_per_nrp[n] for n in nrps], dtype=float)
+        df_pot_total = df_pots.sum()
+        # Default target total POT: the per-run-period total found in the df
+        # (current behavior).  An explicit normalizing_POT overrides it.
+        target_total = normalizing_POT if normalizing_POT is not None else df_pot_total
+        probs = df_pots / df_pot_total
+        # per-period POTs scaled so they sum to target_total
+        pots = df_pots * target_total / df_pot_total
 
         # native (runs-4-5) data POT each event was normalized to; guard against
         # null/zero so we never divide by zero.
@@ -3649,8 +3679,8 @@ def add_1g1mu_rad_corr_events(df):
         det_arr = [rep_detailed[nrps[i]] for i in idx]
         new_pot = pots[idx]
 
-        # rescale: (corrected weight / native POT) * total POT  ==  rate * POT_total
-        new_weight = rcdf["wc_net_weight"].to_numpy().astype(float) * pot_total / native_pot
+        # rescale: (corrected weight / native POT) * target_total == rate * POT_total
+        new_weight = rcdf["wc_net_weight"].to_numpy().astype(float) * target_total / native_pot
 
         return rcdf.with_columns([
             pl.Series("wc_net_weight", new_weight).cast(pl.Float32),
@@ -3702,8 +3732,22 @@ def add_1g1mu_rad_corr_events(df):
     gc.collect()
     return df
 
-def add_nc_coh_1g_reweighted_events(df):
+def apply_nc_coh_1g_reweighting(df, normalizing_POT):
     """Append NC_coherent_1g_reweighted events derived from isotropic_one_gamma_overlay.
+
+    This is the *apply* half of the NC-coherent-1g reweighting: it reads the
+    binned weights previously written by compute_nc_coh_1g_reweighting
+    (coh_1g_reweighting.parquet) and applies them per-event.  Call
+    compute_nc_coh_1g_reweighting first to (re)generate that parquet from the
+    central sample; this function only reads it, so the same precomputed
+    reweighting can be applied to other sets of files without recomputing the
+    binned weights.
+
+    The saved weight is POT-independent (events per POT).  ``normalizing_POT`` is
+    the target POT the reweighted events should be normalized to; the final
+    per-event weight is coherent_1g_weight_per_pot * normalizing_POT.  Passing it
+    here (rather than baking it into the computed weights) lets the same computed
+    reweighting be applied at multiple POT normalizations (e.g. run-fractions).
 
     Accepts either an eager DataFrame or a LazyFrame.
 
@@ -3713,16 +3757,17 @@ def add_nc_coh_1g_reweighted_events(df):
       responsible for concatenating these rows with the full df after calling
       pl.read_parquet separately.
     """
-    print("adding NC Coherent 1g reweighted events to the dataframe")
+    print(f"applying NC Coherent 1g reweighting to the dataframe (normalizing_POT={normalizing_POT:.6g})")
 
     is_lazy = isinstance(df, pl.LazyFrame)
 
-    # Weights are pre-computed in coherent_1g_reweighting.ipynb and saved to parquet.
-    # Columns: run, subrun, event, coherent_1g_weight, coherent_1g_keep
-    # Only events with coherent_1g_weight > 0 are present in the parquet.
+    # Weights are pre-computed by compute_nc_coh_1g_reweighting and saved to parquet.
+    # Columns: run, subrun, event, coherent_1g_weight_per_pot, coherent_1g_keep
+    # The weight is per-POT; multiply by normalizing_POT here to get the final weight.
+    # Only events with coherent_1g_weight_per_pot > 0 are present in the parquet.
     # Use scan_parquet so the weights are read lazily as part of the same query plan.
     coherent_weights_lf = pl.scan_parquet(
-        f"{intermediate_files_location}/coherent_1g_reweighting_weights.parquet"
+        f"{intermediate_files_location}/coh_1g_reweighting.parquet"
     )
     print("  coherent_weights parquet queued for lazy scan")
 
@@ -3733,14 +3778,14 @@ def add_nc_coh_1g_reweighted_events(df):
         # inner join: events in empty coherent bins are dropped
         .join(coherent_weights_lf, on=["run", "subrun", "event"], how="inner")
         .with_columns([
-            (pl.col("coherent_1g_weight"))
+            (pl.col("coherent_1g_weight_per_pot") * normalizing_POT)
               .cast(pl.Float32).alias("wc_net_weight"),
             pl.lit("NC_coherent_1g_reweighted").alias("filetype"),
             pl.lit(False).alias("normal_overlay"),
             pl.lit(False).alias("del1g_overlay"),
             pl.lit(False).alias("iso1g_overlay"),
         ])
-        .drop("coherent_1g_weight")
+        .drop("coherent_1g_weight_per_pot")
     )
 
     if is_lazy:

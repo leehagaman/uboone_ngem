@@ -17,11 +17,11 @@ from postprocessing import do_orthogonalization_and_POT_weighting, apply_rootino
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables, change_dtypes
-from postprocessing import add_1g1mu_rad_corr_events, add_nc_coh_1g_reweighted_events
+from postprocessing import compute_1g1mu_rad_corr_reweighting, apply_1g1mu_rad_corr_reweighting
+from postprocessing import compute_nc_coh_1g_reweighting, apply_nc_coh_1g_reweighting
 
 from file_locations import data_files_location, intermediate_files_location
 
-from df_helpers import align_columns_for_concat
 from memory_monitoring import start_memory_logger
 
 def _filetype_from_filename(filename):
@@ -597,8 +597,8 @@ if __name__ == "__main__":
         print(f"Number of events in all_df with will_use_for_50_50_training == True: {all_df.select(pl.col('will_use_for_50_50_training').sum()).item()}")
 
         # Write all_df (with signal categories + train_test_score) to a temp parquet
-        # so that add_1g1mu_rad_corr_events and add_nc_coh_1g_reweighted_events can
-        # use scan_parquet with predicate pushdown to collect only the small filtered
+        # so that apply_1g1mu_rad_corr_reweighting and apply_nc_coh_1g_reweighting
+        # can use scan_parquet with predicate pushdown to collect only the small filtered
         # sub-dfs cheaply, then read the full df fresh from disk.
         temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
         print(f"Writing temp parquet to {temp_defrag_path}...", end="", flush=True)
@@ -621,8 +621,17 @@ if __name__ == "__main__":
         print(f" done in {time.time() - start_time:.1f}s")
         all_lf = pl.scan_parquet(temp_defrag_path)
 
-        rad_corrected_df = add_1g1mu_rad_corr_events(all_lf)
-        coherent_1g_df = add_nc_coh_1g_reweighted_events(all_lf)
+        # First compute the binned reweighting from the dataframe (replacing the
+        # manual rad_corrections_reweighting.ipynb / coherent_1g_reweighting.ipynb
+        # step), writing it to parquet, then apply it to produce the new rows.
+        compute_1g1mu_rad_corr_reweighting(all_lf)
+        # rad-corr: normalizing_POT left as default (derived from the df's per-run-period
+        # norm_goal_pot, currently run-4b only) to preserve the existing normalization.
+        rad_corrected_df = apply_1g1mu_rad_corr_reweighting(all_lf)
+        compute_nc_coh_1g_reweighting(all_lf)
+        # coherent: previously hardcoded current_normalizing_POT (run 4a+4b open data POT),
+        # which equals create_df's normalizing_POT, so passing it preserves behavior.
+        coherent_1g_df = apply_nc_coh_1g_reweighting(all_lf, normalizing_POT=normalizing_POT)
         del all_lf
 
         print("Reading full df from parquet...")
