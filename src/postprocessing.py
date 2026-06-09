@@ -19,6 +19,7 @@ from file_locations import intermediate_files_location
 
 from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
 from coh_1g_reweighting import compute_nc_coh_1g_reweighting
+from pi0_dalitz_reweighting import get_dalitz_rest_frame_observables
 
 def change_dtypes(df):
     """
@@ -604,6 +605,19 @@ def do_wc_postprocessing(df):
         # Extra truth variables
         has_photonuclear_absorption_flags = []
         has_pi0_dalitz_decay_flags = []
+        # pi0 Dalitz reweighting variables (m_ee, cos theta*), computed inline for
+        # each Dalitz decay (-1 / -2 default for non-Dalitz events).  These are the
+        # variables the Geant4->EvtGen weight is looked up from in
+        # apply_pi0_dalitz_reweighting, so no second loop over the truth particle
+        # vectors (and no re-reading of the checkout root files) is needed there.
+        # We also store the (recovered) gamma / e+ / e- lab four-vectors [E,px,py,pz]
+        # MeV (zeros for non-Dalitz / unrecoverable) so apply can rebuild the
+        # monitoring plots (lab-frame kinematics, rest-frame closures) without them.
+        pi0_dalitz_m_ees = []
+        pi0_dalitz_cos_theta_stars = []
+        pi0_dalitz_gamma_p4s = []
+        pi0_dalitz_ep_p4s = []
+        pi0_dalitz_em_p4s = []
         max_true_prim_proton_energies = []
         max_true_prim_proton_costhetas = []
         max_true_prim_proton_phis = []
@@ -665,6 +679,11 @@ def do_wc_postprocessing(df):
                 num_particles = len(truth_id_list)
             has_photonuclear_absorption = False
             has_pi0_dalitz_decay = False
+            pi0_dalitz_m_ee = -1.
+            pi0_dalitz_cos_theta_star = -2.
+            pi0_dalitz_gamma_p4 = np.zeros(4)
+            pi0_dalitz_ep_p4 = np.zeros(4)
+            pi0_dalitz_em_p4 = np.zeros(4)
             for j in range(num_particles):
                 if truth_pdg_list[j] == 22: # photon
                     truth_photon_parent_id = truth_mother_list[j]
@@ -717,13 +736,52 @@ def do_wc_postprocessing(df):
                             dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
                             max_pi0_opening_angle = np.arccos(dot_product) * 180 / np.pi
 
-                    daughter_pdgs = []
+                    # Dalitz decay: pi0 -> e+ e- gamma. Collect the pi0's direct
+                    # daughters in a single pass, capturing the gamma / e+ / e-
+                    # four-vectors as we see them.
+                    def dalitz_p4_mev(idx):  # [px,py,pz,E] GeV -> [E,px,py,pz] MeV
+                        sm = truth_startMomentum_list[idx]
+                        return np.array([sm[3], sm[0], sm[1], sm[2]], dtype=float) * 1000.0
+
+                    g_p4 = ep_p4 = em_p4 = None
                     for k in range(num_particles):
-                        if truth_mother_list[k] == truth_id_list[j]:
-                            daughter_pdgs.append(truth_pdg_list[k])
-                    #print("pi0 daughter pdgs:", daughter_pdgs)
-                    if 22 in daughter_pdgs and 11 in daughter_pdgs and -11 in daughter_pdgs:
+                        if truth_mother_list[k] != truth_id_list[j]:
+                            continue
+                        if truth_pdg_list[k] == 22 and g_p4 is None:
+                            g_p4 = dalitz_p4_mev(k)
+                        elif truth_pdg_list[k] == -11 and ep_p4 is None:
+                            ep_p4 = dalitz_p4_mev(k)
+                        elif truth_pdg_list[k] == 11 and em_p4 is None:
+                            em_p4 = dalitz_p4_mev(k)
+
+                    # Any pi0 with at least one e+/e- direct daughter is treated as Dalitz
+                    # (other leptonic channels are negligible), which also flags the
+                    # partially-saved decays where a soft lepton fell below the WC ~10 MeV
+                    # truth-storage threshold.
+                    if ep_p4 is not None or em_p4 is not None:
                         has_pi0_dalitz_decay = True
+                        pi0_p4 = dalitz_p4_mev(j)
+                        # if exactly one of {gamma, e+, e-} is missing, recover it from
+                        # 4-momentum conservation; two missing -> can't recover.
+                        present = [x for x in (g_p4, ep_p4, em_p4) if x is not None]
+                        if len(present) == 2:
+                            # recover the missing daughter from 4-momentum conservation
+                            missing = pi0_p4 - present[0] - present[1]
+                            if g_p4 is None:
+                                g_p4 = missing
+                            elif ep_p4 is None:
+                                ep_p4 = missing
+                            else:
+                                em_p4 = missing
+                        if g_p4 is not None and ep_p4 is not None and em_p4 is not None:
+                            # m_ee and the lepton helicity angle cos(theta*), the two
+                            # boost-invariant Dalitz reweighting variables.
+                            _obs = get_dalitz_rest_frame_observables(g_p4[None, :], ep_p4[None, :], em_p4[None, :])
+                            pi0_dalitz_m_ee = _obs["m_ee"][0]
+                            pi0_dalitz_cos_theta_star = _obs["cos_theta_l"][0]
+                            pi0_dalitz_gamma_p4 = g_p4
+                            pi0_dalitz_ep_p4 = ep_p4
+                            pi0_dalitz_em_p4 = em_p4
 
                 if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2212: # primary proton
                     true_num_prim_protons += 1
@@ -773,6 +831,11 @@ def do_wc_postprocessing(df):
             true_leading_pi0_opening_angles.append(max_pi0_opening_angle)
             has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
             has_pi0_dalitz_decay_flags.append(has_pi0_dalitz_decay)
+            pi0_dalitz_m_ees.append(pi0_dalitz_m_ee)
+            pi0_dalitz_cos_theta_stars.append(pi0_dalitz_cos_theta_star)
+            pi0_dalitz_gamma_p4s.append(pi0_dalitz_gamma_p4)
+            pi0_dalitz_ep_p4s.append(pi0_dalitz_ep_p4)
+            pi0_dalitz_em_p4s.append(pi0_dalitz_em_p4)
 
         df["wc_true_max_prim_proton_energy"] = max_true_prim_proton_energies
         df["wc_true_max_prim_proton_costheta"] = max_true_prim_proton_costhetas
@@ -799,14 +862,39 @@ def do_wc_postprocessing(df):
         df["wc_true_leading_pi0_opening_angle"] = true_leading_pi0_opening_angles
         df["wc_true_has_photonuclear_absorption"] = pd.Series(has_photonuclear_absorption_flags, dtype=bool)
         df["wc_true_has_pi0_dalitz_decay"] = pd.Series(has_pi0_dalitz_decay_flags, dtype=bool)
+        # m_ee / cos theta* (the Geant4->EvtGen reweighting variables) computed inline
+        # above; -1 / -2 wherever wc_true_has_pi0_dalitz_decay is False.
+        df["wc_true_pi0_dalitz_m_ee"] = pi0_dalitz_m_ees
+        df["wc_true_pi0_dalitz_cos_theta_star"] = pi0_dalitz_cos_theta_stars
+        # (recovered) gamma / e+ / e- lab four-vectors [E,px,py,pz] MeV, used only to
+        # rebuild the monitoring plots in apply_pi0_dalitz_reweighting -- dropped there
+        # right after, so they do not bloat the saved df.
+        for _name, _p4s in [("gamma", pi0_dalitz_gamma_p4s),
+                            ("ep", pi0_dalitz_ep_p4s), ("em", pi0_dalitz_em_p4s)]:
+            _arr = np.asarray(_p4s, dtype=float)
+            df[f"wc_true_pi0_dalitz_{_name}_E"] = _arr[:, 0]
+            df[f"wc_true_pi0_dalitz_{_name}_px"] = _arr[:, 1]
+            df[f"wc_true_pi0_dalitz_{_name}_py"] = _arr[:, 2]
+            df[f"wc_true_pi0_dalitz_{_name}_pz"] = _arr[:, 3]
 
     # Ensure this column exists and is boolean for all filetypes (e.g., EXT)
     if "wc_true_has_photonuclear_absorption" not in df.columns:
         df["wc_true_has_photonuclear_absorption"] = False
         df["wc_true_has_pi0_dalitz_decay"] = False
+        df["wc_true_pi0_dalitz_m_ee"] = -1.0
+        df["wc_true_pi0_dalitz_cos_theta_star"] = -2.0
+        for _name in ("gamma", "ep", "em"):
+            for _c in ("E", "px", "py", "pz"):
+                df[f"wc_true_pi0_dalitz_{_name}_{_c}"] = 0.0
     else:
         df["wc_true_has_photonuclear_absorption"] = df["wc_true_has_photonuclear_absorption"].fillna(False).astype(bool)
         df["wc_true_has_pi0_dalitz_decay"] = df["wc_true_has_pi0_dalitz_decay"].fillna(False).astype(bool)
+        if "wc_true_pi0_dalitz_m_ee" not in df.columns:
+            df["wc_true_pi0_dalitz_m_ee"] = -1.0
+            df["wc_true_pi0_dalitz_cos_theta_star"] = -2.0
+            for _name in ("gamma", "ep", "em"):
+                for _c in ("E", "px", "py", "pz"):
+                    df[f"wc_true_pi0_dalitz_{_name}_{_c}"] = 0.0
 
     # extra primary shower position and angle variables
     shower_thetas = []

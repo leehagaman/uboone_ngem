@@ -19,6 +19,7 @@ from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables, change_dtypes
 from postprocessing import compute_1g1mu_rad_corr_reweighting, apply_1g1mu_rad_corr_reweighting
 from postprocessing import compute_nc_coh_1g_reweighting, apply_nc_coh_1g_reweighting
+from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dalitz_reweighting
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -634,6 +635,14 @@ if __name__ == "__main__":
         coherent_1g_df = apply_nc_coh_1g_reweighting(all_lf, normalizing_POT=normalizing_POT)
         del all_lf
 
+        # pi0 Dalitz Geant4->EvtGen reweighting: build the bin-by-bin weight grid from
+        # the standalone-Geant4 and EvtGen pure-model samples (independent of the df).
+        # apply_pi0_dalitz_reweighting below then looks up each truth Dalitz decay's
+        # weight from the wc_true_pi0_dalitz_m_ee / _cos_theta_star columns already on
+        # the df.  Unlike the two reweightings above, this APPENDS no rows -- it is a
+        # shape correction applied in-place to existing Dalitz events below.
+        compute_pi0_dalitz_reweighting()
+
         print("Reading full df from parquet...")
         start_read = time.time()
         all_df = pl.read_parquet(temp_defrag_path)
@@ -646,6 +655,11 @@ if __name__ == "__main__":
         del rad_corrected_df, coherent_1g_df
         gc.collect()
         print(f"  all_df has {all_df.height} rows after adding rad_corr and coherent events")
+
+        # Apply the pi0 Dalitz reweighting in-place to the full df: adds a
+        # standalone pi0_dalitz_reweight_weight column (1.0 for non-Dalitz events) and
+        # multiplies it into wc_net_weight.
+        all_df = apply_pi0_dalitz_reweighting(all_df)
 
         dup_mask = pl.struct("filetype", "run", "subrun", "event").is_duplicated()
         n_dups = all_df.select(dup_mask.sum()).item()
