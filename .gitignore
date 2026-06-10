@@ -16,3 +16,27 @@ training_outputs/*/*.csv
 plots/*
 *.db
 *.npz
+BuildEventGenerators/*
+!BuildEventGenerators/.gitkeep
+
+# Track the INTRANUKE pion cross-section text tables needed by the pure-Python
+# pion-FSI reweighting (src/pion_fsi_reweighting.py) -- the rest of the GENIE
+# build stays ignored.  Re-include the path one level at a time (git can't
+# un-ignore a file whose parent dir is ignored), then the 5 data dirs the
+# calculator actually reads: the 2025 cross-section tables and the 2018 fraction
+# tables (pipA_{cex,abs,inelas,pipro}_frac).
+!BuildEventGenerators/Generator/
+BuildEventGenerators/Generator/*
+!BuildEventGenerators/Generator/data/
+BuildEventGenerators/Generator/data/*
+!BuildEventGenerators/Generator/data/evgen/
+BuildEventGenerators/Generator/data/evgen/*
+!BuildEventGenerators/Generator/data/evgen/intranuke/
+BuildEventGenerators/Generator/data/evgen/intranuke/*
+!BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/
+BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/*
+!BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/2025/
+!BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_cex_frac/
+!BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_abs_frac/
+!BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_inelas_frac/
+!BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_pipro_frac/

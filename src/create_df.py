@@ -20,6 +20,7 @@ from postprocessing import remove_vector_variables, change_dtypes
 from postprocessing import compute_1g1mu_rad_corr_reweighting, apply_1g1mu_rad_corr_reweighting
 from postprocessing import compute_nc_coh_1g_reweighting, apply_nc_coh_1g_reweighting
 from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dalitz_reweighting
+from pion_fsi_reweighting import compute_pion_fsi_weights_from_arrays
 
 from file_locations import data_files_location, intermediate_files_location
 
@@ -29,6 +30,8 @@ def _filetype_from_filename(filename):
     fn = filename.lower()
     if "beam_off" in fn or "beamoff" in fn or "ext" in fn:
         return "ext"
+    if "nuwro" in fn:
+        return "nuwro_fake_data"
     if "nu_overlay" in fn:
         return "nu_overlay"
     if "nue_overlay" in fn:
@@ -206,6 +209,31 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
     del dic
     all_df = pd.concat([all_df, pandora_df], axis=1)
     del pandora_df
+
+    # hA2025 pion-FSI reweight: a standalone per-event weight computed (in pure
+    # Python, no GENIE/ROOT) from the same nuselection mc_generator_* truth slice.
+    # It reweights GENIE's INTRANUKE hA2018->hA2025, so it is skipped for data/EXT
+    # (no truth), NuWro fake data (a different generator), and the isotropic
+    # one-gamma overlay; those are left without the column (-> filled 1.0 when it
+    # is folded into wc_net_weight below).
+    if filetype not in ("data", "ext", "nuwro_fake_data", "isotropic_one_gamma_overlay"):
+        mcg = f["nuselection"]["NeutrinoSelectionFilter"].arrays(
+            ["mc_generator_pdg", "mc_generator_mother", "mc_generator_rescatter",
+             "mc_generator_statuscode", "mc_generator_E", "mc_generator_px",
+             "mc_generator_py", "mc_generator_pz"], library="np", **slice_kwargs)
+        # one pass returns both the hA2025 weight and the additional hA2025c
+        # factor (hA2025 + pion-charge effects).  hA2025_pion_fsi_rw_weight is the
+        # default (folded into wc_net_weight below); multiply it by
+        # additional_hA2025c_weight to get the hA2025c variant.  Both stored
+        # separately -- additional_hA2025c_weight is NOT folded into wc_net_weight.
+        hA2025_w, additional_hA2025c_w = compute_pion_fsi_weights_from_arrays(
+            mcg["mc_generator_pdg"], mcg["mc_generator_mother"],
+            mcg["mc_generator_rescatter"], mcg["mc_generator_statuscode"],
+            mcg["mc_generator_E"], mcg["mc_generator_px"],
+            mcg["mc_generator_py"], mcg["mc_generator_pz"])
+        all_df["hA2025_pion_fsi_rw_weight"] = hA2025_w
+        all_df["additional_hA2025c_weight"] = additional_hA2025c_w
+        del mcg
 
     # loading gLEE variables
     dic = {}
@@ -660,6 +688,22 @@ if __name__ == "__main__":
         # standalone pi0_dalitz_reweight_weight column (1.0 for non-Dalitz events) and
         # multiplies it into wc_net_weight.
         all_df = apply_pi0_dalitz_reweighting(all_df)
+
+        # hA2025 pion-FSI (charge-exchange etc.) reweighting.  Both per-event
+        # columns are computed in _load_chunk for the GENIE overlays and absent
+        # elsewhere (data/EXT/NuWro/isotropic-1g, and the derived rad-corr /
+        # coherent-1g rows); default them to 1.0 wherever missing.  Only
+        # hA2025_pion_fsi_rw_weight is folded into wc_net_weight (the default);
+        # additional_hA2025c_weight is kept standalone (multiply it onto
+        # hA2025_pion_fsi_rw_weight to get the hA2025c variant).
+        for _col in ("hA2025_pion_fsi_rw_weight", "additional_hA2025c_weight"):
+            if _col not in all_df.columns:
+                all_df = all_df.with_columns(pl.lit(1.0).alias(_col))
+            all_df = all_df.with_columns(pl.col(_col).fill_null(1.0).cast(pl.Float32))
+        all_df = all_df.with_columns(
+            (pl.col("wc_net_weight") * pl.col("hA2025_pion_fsi_rw_weight"))
+            .cast(pl.Float32).alias("wc_net_weight")
+        )
 
         dup_mask = pl.struct("filetype", "run", "subrun", "event").is_duplicated()
         n_dups = all_df.select(dup_mask.sum()).item()
