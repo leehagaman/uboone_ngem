@@ -84,10 +84,10 @@ FILES_TO_COPY=(
     "/pnfs/uboone/persistent/users/uboonepro/surprise/run5_full_samples/wc_processed/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_5.root"
 
     # Data files
-    # TODO: Add run 1 and run 3 open data
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_on_data_surprise_reco2_hist_1_5e19opendata.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_on_data_surprise_reco2_hist_3_1e19opendata.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/opendata/BNB/checkout_MCC9.10_Run4a_BNB_beam_on_data_surprise_reco2_hist_opendata_19550.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/retuple/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root"
-    # older: "/pnfs/uboone/persistent/users/uboonepro/surprise/run4b_full_samples/wc_processed/BNB/MCC9.10_Run4b_v10_04_07_11_BNB_beam_on_surprise_reco2_hist.root"
 
     # NuWro fake data files
     "/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_1.root"
