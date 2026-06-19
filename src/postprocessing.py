@@ -3,8 +3,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from tqdm import tqdm
-import warnings
-import copy
 
 from collections import defaultdict
 
@@ -17,8 +15,6 @@ from signal_categories import erin_category_queries, erin_category_labels
 
 from file_locations import intermediate_files_location
 
-from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
-from coh_1g_reweighting import compute_nc_coh_1g_reweighting
 from pi0_dalitz_reweighting import get_dalitz_rest_frame_observables
 
 def change_dtypes(df):
@@ -69,279 +65,302 @@ def change_dtypes(df):
 
 
 
-def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT, run4b_only=False):
+def _orthogonalization_masks():
+    """Return the per-event-type Polars mask expressions used for orthogonalization.
 
-    if run4b_only:
-        print("in do_orthogonalization_and_POT_weighting, run4b_only=True")
-    else:
-        print("in do_orthogonalization_and_POT_weighting")
-    
+    These define how the dedicated samples (nc_pi0/nue/numucc_pi0 overlays) and the
+    inclusive nu_overlay are split into non-overlapping truth classes, plus the
+    simple per-filetype masks (dirt/ext/nuwro/del1g/iso1g/data).  Returned as a
+    dict so both do_orthogonalization_and_POT_weighting and the weighting helpers
+    share one definition.
+    """
+    masks = {}
+    masks["nc_pi0_overlay_true_nc_1pi0"] = (
+        (pl.col("filetype") == 'nc_pi0_overlay') &
+        (pl.col("wc_truth_isCC") == 0) &
+        (pl.col("wc_truth_NprimPio") == 1) &
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    masks["nu_overlay_true_nc_1pi0"] = (
+        (pl.col("filetype") == 'nu_overlay') &
+        (pl.col("wc_truth_isCC") == 0) &
+        (pl.col("wc_truth_NprimPio") == 1) &
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    masks["nue_overlay_true_nue_cc"] = (
+        (pl.col("filetype") == 'nue_overlay') &
+        (pl.col("wc_truth_isCC") == 1) &
+        (pl.col("wc_truth_nuPdg").abs() == 12) &
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    masks["nu_overlay_true_nue_cc"] = (
+        (pl.col("filetype") == 'nu_overlay') &
+        (pl.col("wc_truth_isCC") == 1) &
+        (pl.col("wc_truth_nuPdg").abs() == 12) &
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    masks["numucc_pi0_overlay_true_numucc_pi0"] = (
+        (pl.col("filetype") == 'numucc_pi0_overlay') &
+        (pl.col("wc_truth_isCC") == 1) &
+        (pl.col("wc_truth_nuPdg") == 14) &
+        (pl.col("wc_truth_NprimPio") == 1) &
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    masks["nu_overlay_true_numucc_pi0"] = (
+        (pl.col("filetype") == 'nu_overlay') &
+        (pl.col("wc_truth_isCC") == 1) &
+        (pl.col("wc_truth_nuPdg") == 14) &
+        (pl.col("wc_truth_NprimPio") == 1) &
+        (pl.col("wc_truth_vtxInside") == 1)
+    )
+    masks["nu_overlay_other"] = (
+        (pl.col("filetype") == 'nu_overlay') &  # nu_overlay
+        ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) &  # not NC 1pi0 inFV
+        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1)) &  # not nueCC inFV
+        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg") == 14) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1))  # not numuCC 1pi0 inFV
+    )
+    masks["dirt"] = pl.col("filetype") == 'dirt_overlay'
+    masks["ext"] = pl.col("filetype") == 'ext'
+    masks["nuwro"] = pl.col("filetype") == 'nuwro_fake_data'
+    masks["del1g"] = pl.col("filetype") == 'delete_one_gamma_overlay'
+    masks["iso1g"] = pl.col("filetype") == 'isotropic_one_gamma_overlay'
+    masks["data"] = pl.col("filetype") == 'data'
+    return masks
 
-    print("pot_dic:")
-    detailed_run_periods = []
-    for k, v in sorted(pot_dic.items(), key=lambda item: item[0]):
-        print(f"    {k}: {v}")
-        filetype, detailed_run_period = k
-        detailed_run_periods.append(detailed_run_period)
-    detailed_run_periods = sorted(set(detailed_run_periods))
-    print()
 
-    weight_col_name = "run4b_only_wc_net_weight" if run4b_only else "wc_net_weight"
+# Filetypes whose base (cv*spline) weight is forced to 1.0: real data, cosmic
+# EXT, and NuWro fake data (a different generator, so GENIE tune/spline weights
+# do not apply).  In configs where these play the "data" role their net weight
+# is goal_pot / their own POT; in configs where they are excluded they get a
+# null weight instead.
+UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
 
-    # Maps detailed_run_period -> normalizing_run_period.
-    # In run4b_only mode only 4b is included; all other periods map to None (→ null weight).
-    if run4b_only:
-        run_period_map = {"4b": "4b"}
-    else:
-        # keep 4a separately normalized, since it's different from the rest of run 4
-        # eventually, this will be used to separately normalize run 1, run 2, run 3, etc.
-        run_period_map = {
-            "1": "1",
-            "2": "2",
-            "3": "3",
-            "4a": "4a",
-            "4b": "4nota", 
-            "4c": "4nota", 
-            "4d": "4nota", 
-            "4bcd": "4nota", 
-            "5": "5",
-        }
 
+def _build_normalizing_run_period_expr(run_period_map):
+    """when/then chain mapping detailed_run_period -> normalizing_run_period (else null)."""
+    expr = None
+    for drp, nrp in run_period_map.items():
+        cond = pl.col("detailed_run_period") == drp
+        expr = pl.when(cond).then(pl.lit(nrp)) if expr is None else expr.when(cond).then(pl.lit(nrp))
+    return expr.otherwise(pl.lit(None).cast(pl.String))
+
+
+def _compute_config_pot_dics(pot_dic, config):
+    """Compute, for one weighting config, the three per-(filetype, normalizing_run_period)
+    and per-normalizing_run_period POT dictionaries used to build the weight.
+
+    Returns (normalizing_run_period_pot_dic, norm_goal_pot_dic, summed_POT_dics) where
+    summed_POT_dics maps each overlap class name to its per-normalizing_run_period dict.
+    """
+    run_period_map = config["run_period_map"]
     normalizing_run_periods = sorted(set(run_period_map.values()))
 
-    # Build normalizing_run_period column from run_period_map
-    norm_rp_expr = None
-    for drp, nrp in run_period_map.items():
-        if norm_rp_expr is None:
-            norm_rp_expr = pl.when(pl.col("detailed_run_period") == drp).then(pl.lit(nrp))
-        else:
-            norm_rp_expr = norm_rp_expr.when(pl.col("detailed_run_period") == drp).then(pl.lit(nrp))
-    norm_rp_expr = norm_rp_expr.otherwise(pl.lit(None).cast(pl.String))
-    df = df.with_columns([norm_rp_expr.alias("normalizing_run_period")])
-
+    # POT per (filetype, normalizing_run_period); detailed periods not in the map
+    # are simply dropped (their events get a null weight in this config).
     normalizing_run_period_pot_dic = defaultdict(float)
-    for k, v in pot_dic.items():
-        filetype, detailed_run_period = k
-        nrp = run_period_map.get(detailed_run_period)
+    for (filetype, drp), v in pot_dic.items():
+        nrp = run_period_map.get(drp)
         if nrp is not None:
             normalizing_run_period_pot_dic[(filetype, nrp)] += v
-        elif not run4b_only:
-            raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
 
-    print("normalizing_run_period_pot_dic:")
-    for k, v in sorted(normalizing_run_period_pot_dic.items(), key=lambda item: item[0]):
-        print(f"    {k}: {v}")
-    print()
-
-    norm_goal_pot_dic = {}
-    for normalizing_run_period in normalizing_run_periods:
-        norm_goal_pot_dic[normalizing_run_period] = 0
-    data_in_files = False
-    for k, v in pot_dic.items():
-        filetype, detailed_run_period = k
-        if filetype == "data":
-            nrp = run_period_map.get(detailed_run_period)
-            if nrp is not None:
-                data_in_files = True
-                norm_goal_pot_dic[nrp] += v
-            elif not run4b_only:
-                raise ValueError("Detailed run period not found in pot_dic!", detailed_run_period)
-    if data_in_files:
-        total_norm_goal_pot = sum(norm_goal_pot_dic.values())
-        extra_pot_scale_factor = normalizing_POT / total_norm_goal_pot
-        print(f"applying extra pot scale factor {extra_pot_scale_factor} to norm_goal_pot_dic...")
-        for k, v in norm_goal_pot_dic.items():
-            norm_goal_pot_dic[k] = v * extra_pot_scale_factor
-    else: # no data (possibly DetVar processing), just normalize to nu_overlay CV POTs found earlier
-        for k, v in normalizing_run_period_pot_dic.items():
-            filetype, normalizing_run_period = k
-            if filetype == 'nu_overlay':
-                norm_goal_pot_dic[normalizing_run_period] += v
-    
-    print("norm_goal_pot_dic:")
-    for k, v in sorted(norm_goal_pot_dic.items(), key=lambda item: item[0]):
-        print(f"    {k}: {v}")
-    print()
-
-    # apply norm_goal_pot_dic to df
-    norm_goal_pot_expr = None
-    for nrp, pot_val in norm_goal_pot_dic.items():
-        if norm_goal_pot_expr is None:
-            norm_goal_pot_expr = pl.when(pl.col("normalizing_run_period") == nrp).then(pl.lit(pot_val))
+    # Goal (target) POT per normalizing_run_period.
+    norm_goal_pot_dic = {nrp: 0.0 for nrp in normalizing_run_periods}
+    if config.get("goal_pot") is not None:
+        # explicit per-group target POT (e.g. expected full-dataset POT)
+        for nrp in normalizing_run_periods:
+            if nrp not in config["goal_pot"]:
+                raise ValueError(f"config '{config['name']}': goal_pot missing normalizing_run_period {nrp}")
+            norm_goal_pot_dic[nrp] = float(config["goal_pot"][nrp])
+    else:
+        # sum the "goal" filetypes' POT per group (e.g. data, or nuwro fake data)
+        goal_filetypes = config["goal_pot_filetypes"]
+        goal_in_files = False
+        for (filetype, drp), v in pot_dic.items():
+            if filetype in goal_filetypes:
+                nrp = run_period_map.get(drp)
+                if nrp is not None:
+                    goal_in_files = True
+                    norm_goal_pot_dic[nrp] += v
+        if goal_in_files:
+            if config.get("total_pot") is not None:
+                total = sum(norm_goal_pot_dic.values())
+                scale = config["total_pot"] / total
+                norm_goal_pot_dic = {k: v * scale for k, v in norm_goal_pot_dic.items()}
         else:
-            norm_goal_pot_expr = norm_goal_pot_expr.when(pl.col("normalizing_run_period") == nrp).then(pl.lit(pot_val))
-    norm_goal_pot_expr = norm_goal_pot_expr.otherwise(pl.lit(None).cast(pl.Float64))
-    df = df.with_columns([norm_goal_pot_expr.alias("norm_goal_pot")])
+            # no goal-filetype POT present (e.g. DetVar processing with no data):
+            # normalize each group to its nu_overlay CV POT instead
+            for (filetype, nrp), v in normalizing_run_period_pot_dic.items():
+                if filetype == 'nu_overlay':
+                    norm_goal_pot_dic[nrp] += v
+
+    # Summed POTs for the overlapping truth classes (a dedicated sample plus the
+    # inclusive nu_overlay share one combined denominator per group).
+    summed = {"nc_1pi0": {}, "nue_cc": {}, "numucc_pi0": {}}
+    for nrp in normalizing_run_periods:
+        summed["nc_1pi0"][nrp] = 0.0
+        summed["nue_cc"][nrp] = 0.0
+        summed["numucc_pi0"][nrp] = 0.0
+    for (filetype, nrp), v in normalizing_run_period_pot_dic.items():
+        if filetype in ('nc_pi0_overlay', 'nu_overlay'):
+            summed["nc_1pi0"][nrp] += v
+        if filetype in ('nue_overlay', 'nu_overlay'):
+            summed["nue_cc"][nrp] += v
+        if filetype in ('numucc_pi0_overlay', 'nu_overlay'):
+            summed["numucc_pi0"][nrp] += v
+
+    return dict(normalizing_run_period_pot_dic), norm_goal_pot_dic, summed
+
+
+def _add_config_weight_columns(df, pot_dic, masks, config):
+    """Add one weighting config's columns to df (suffixed by config['name']):
+        normalizing_run_period_<name>, norm_goal_pot_<name>,
+        wc_normrunperiod_eventtype_POT_<name>, and config['weight_col'].
+
+    Rows whose detailed_run_period is not in the config's run_period_map, or whose
+    filetype is in config['exclude_filetypes'], get a null weight (and are skipped
+    by the validation).  Assumes weight_cv_weight_spline already exists on df.
+    """
+    name = config["name"]
+    weight_col = config["weight_col"]
+    run_period_map = config["run_period_map"]
+    exclude_filetypes = set(config.get("exclude_filetypes", []))
+    normalizing_run_periods = sorted(set(run_period_map.values()))
+
+    nrp_col = f"normalizing_run_period_{name}"
+    goal_col = f"norm_goal_pot_{name}"
+    eventtype_pot_col = f"wc_normrunperiod_eventtype_POT_{name}"
+
+    print(f"  config '{name}': computing POT dictionaries...")
+    normalizing_run_period_pot_dic, norm_goal_pot_dic, summed = _compute_config_pot_dics(pot_dic, config)
+
+    print(f"    normalizing_run_period_pot_dic: {dict(sorted(normalizing_run_period_pot_dic.items()))}")
+    print(f"    norm_goal_pot_dic: {dict(sorted(norm_goal_pot_dic.items()))}")
+
+    # normalizing_run_period column for this config
+    df = df.with_columns(_build_normalizing_run_period_expr(run_period_map).alias(nrp_col))
+
+    # goal POT column
+    goal_expr = None
+    for nrp, pot_val in norm_goal_pot_dic.items():
+        cond = pl.col(nrp_col) == nrp
+        goal_expr = pl.when(cond).then(pl.lit(pot_val)) if goal_expr is None else goal_expr.when(cond).then(pl.lit(pot_val))
+    goal_expr = goal_expr.otherwise(pl.lit(None).cast(pl.Float64))
+    df = df.with_columns(goal_expr.alias(goal_col))
+
+    # per-(filetype, normalizing_run_period) denominator POT, with summed-POT
+    # overrides for the overlapping truth classes
+    eventtype_expr = None
+    for (filetype, nrp), normalizing_pot in sorted(normalizing_run_period_pot_dic.items()):
+        if normalizing_pot == 0:
+            raise ValueError(f"config '{name}': normalizing_pot is zero for {filetype} {nrp}!")
+        cond = (pl.col("filetype") == filetype) & (pl.col(nrp_col) == nrp)
+        eventtype_expr = pl.when(cond).then(pl.lit(normalizing_pot)) if eventtype_expr is None else eventtype_expr.when(cond).then(pl.lit(normalizing_pot))
+    eventtype_expr = eventtype_expr.otherwise(pl.lit(None).cast(pl.Float64))
+
+    for nrp in normalizing_run_periods:
+        in_nrp = pl.col(nrp_col) == nrp
+        eventtype_expr = (
+            pl.when(masks["nc_pi0_overlay_true_nc_1pi0"] & in_nrp).then(pl.lit(summed["nc_1pi0"][nrp]))
+            .when(masks["nu_overlay_true_nc_1pi0"] & in_nrp).then(pl.lit(summed["nc_1pi0"][nrp]))
+            .when(masks["numucc_pi0_overlay_true_numucc_pi0"] & in_nrp).then(pl.lit(summed["numucc_pi0"][nrp]))
+            .when(masks["nu_overlay_true_numucc_pi0"] & in_nrp).then(pl.lit(summed["numucc_pi0"][nrp]))
+            .when(masks["nue_overlay_true_nue_cc"] & in_nrp).then(pl.lit(summed["nue_cc"][nrp]))
+            .when(masks["nu_overlay_true_nue_cc"] & in_nrp).then(pl.lit(summed["nue_cc"][nrp]))
+            .otherwise(eventtype_expr)
+        )
+    df = df.with_columns(eventtype_expr.alias(eventtype_pot_col))
+
+    # rows that legitimately have no weight in this config: unmapped run period or
+    # excluded filetype
+    valid_row = pl.col(nrp_col).is_not_null()
+    if exclude_filetypes:
+        valid_row = valid_row & ~pl.col("filetype").is_in(list(exclude_filetypes))
+
+    # validate denominator on the rows that should have a weight
+    check_df = df.filter(valid_row)
+    if check_df[eventtype_pot_col].is_null().any() or (check_df[eventtype_pot_col] == 0).any():
+        num_null = check_df[eventtype_pot_col].is_null().sum()
+        num_zero = (check_df[eventtype_pot_col] == 0).sum()
+        zeros_df = check_df.filter((check_df[eventtype_pot_col] == 0) | check_df[eventtype_pot_col].is_null())
+        for i in range(min(zeros_df.height, 10)):
+            print(f"    {eventtype_pot_col}={zeros_df[eventtype_pot_col][i]}, filetype={zeros_df['filetype'][i]}, "
+                  f"detailed_run_period={zeros_df['detailed_run_period'][i]}, {nrp_col}={zeros_df[nrp_col][i]}")
+        raise ValueError(f"config '{name}': {eventtype_pot_col} has {num_null} null and {num_zero} zero values!")
+
+    # net weight = base (cv*spline, or 1.0 for data/ext/nuwro) * goal/denominator,
+    # null where the row has no weight in this config
+    weight_expr = (
+        pl.when(valid_row)
+        .then(pl.col("weight_cv_weight_spline") * (pl.col(goal_col) / pl.col(eventtype_pot_col)))
+        .otherwise(pl.lit(None).cast(pl.Float64))
+    )
+    df = df.with_columns(weight_expr.alias(weight_col))
+
+    weight_check_df = df.filter(valid_row)
+    if weight_check_df[weight_col].is_null().any() or weight_check_df[weight_col].is_nan().any() or weight_check_df[weight_col].is_infinite().any():
+        num_null = weight_check_df[weight_col].is_null().sum()
+        num_nan = weight_check_df[weight_col].is_nan().sum()
+        num_infinite = weight_check_df[weight_col].is_infinite().sum()
+        raise ValueError(f"config '{name}': {weight_col} has {num_null} null, {num_nan} nan, {num_infinite} infinite values!")
+
+    n_weighted = weight_check_df.height
+    print(f"    -> {weight_col}: {n_weighted} weighted events "
+          f"(of {df.height}; {df.height - n_weighted} get null weight)")
+    return df
+
+
+def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
+    """Orthogonalize the combined dataframe and add one net-weight column per config.
+
+    Orthogonalization (row filtering + the cv*spline base weight) is done once and
+    is config-independent.  Then, for each entry in ``weight_configs``, a separate
+    POT-normalized net-weight column (and its suffixed helper columns) is added, so
+    the same dataframe can be histogrammed at several different normalizations
+    (e.g. full-dataset prediction, runs-1-5 open data, NuWro fake data).
+
+    ``weight_configs`` is a list of dicts, each with keys:
+        name              : str, suffix for this config's helper columns
+        weight_col        : str, output net-weight column name
+        run_period_map    : dict detailed_run_period -> normalizing_run_period;
+                            detailed periods absent from the map get a null weight
+        goal_pot          : dict normalizing_run_period -> target POT, or None
+        goal_pot_filetypes: list of filetypes whose POT sum is the per-group goal
+                            when goal_pot is None (e.g. ["data"] or ["nuwro_fake_data"])
+        total_pot         : float or None; if set (and goal_pot is None), rescale the
+                            summed goal POT so its total equals this value
+        exclude_filetypes : list of filetypes to give a null weight in this config
+
+    Returns the orthogonalized dataframe with all configs' weight columns added.
+    """
+    print("in do_orthogonalization_and_POT_weighting")
+    print(f"  weight configs: {[c['name'] for c in weight_configs]}")
+
+    print("pot_dic:")
+    for k, v in sorted(pot_dic.items(), key=lambda item: item[0]):
+        print(f"    {k}: {v}")
+    print()
+
+    masks = _orthogonalization_masks()
 
     original_length = df.height
 
-    # these dataframes store the POTs split by norm_run_period, summed over the different filetypes
-    summed_POT_nc_1pi0_dic = {}
-    summed_POT_nue_cc_dic = {}
-    summed_POT_numucc_pi0_dic = {}
-    for normalizing_run_period in normalizing_run_periods:
-        summed_POT_nc_1pi0_dic[normalizing_run_period] = 0
-        summed_POT_nue_cc_dic[normalizing_run_period] = 0
-        summed_POT_numucc_pi0_dic[normalizing_run_period] = 0
-        
-    for k, normalizing_pot in normalizing_run_period_pot_dic.items():
-        filetype, normalizing_run_period = k
-        if filetype == 'nc_pi0_overlay' or filetype == 'nu_overlay':
-            summed_POT_nc_1pi0_dic[normalizing_run_period] += normalizing_pot
-        if filetype == 'nue_overlay' or filetype == 'nu_overlay':
-            summed_POT_nue_cc_dic[normalizing_run_period] += normalizing_pot
-        if filetype == 'numucc_pi0_overlay' or filetype == 'nu_overlay':
-            summed_POT_numucc_pi0_dic[normalizing_run_period] += normalizing_pot
-
-    print("summed_POT_nc_1pi0_dic:")
-    for k, v in sorted(summed_POT_nc_1pi0_dic.items(), key=lambda item: item[0]):
-        print(f"    {k}: {v}")
-    print()
-
-    print("summed_POT_nue_cc_dic:")
-    for k, v in sorted(summed_POT_nue_cc_dic.items(), key=lambda item: item[0]):
-        print(f"    {k}: {v}")
-    print()
-
-    print("summed_POT_numucc_pi0_dic:")
-    for k, v in sorted(summed_POT_numucc_pi0_dic.items(), key=lambda item: item[0]):
-        print(f"    {k}: {v}")
-    print()
-
-    print("creating masks...")
-
-    # Get masks for different event types using Polars expressions
-    nc_pi0_overlay_true_nc_1pi0_mask = (
-        (pl.col("filetype") == 'nc_pi0_overlay') & 
-        (pl.col("wc_truth_isCC") == 0) & 
-        (pl.col("wc_truth_NprimPio") == 1) & 
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    nu_overlay_true_nc_1pi0_mask = (
-        (pl.col("filetype") == 'nu_overlay') & 
-        (pl.col("wc_truth_isCC") == 0) & 
-        (pl.col("wc_truth_NprimPio") == 1) & 
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-
-    nue_overlay_true_nue_cc_mask = (
-        (pl.col("filetype") == 'nue_overlay') & 
-        (pl.col("wc_truth_isCC") == 1) & 
-        (pl.col("wc_truth_nuPdg").abs() == 12) & 
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    nu_overlay_true_nue_cc_mask = (
-        (pl.col("filetype") == 'nu_overlay') & 
-        (pl.col("wc_truth_isCC") == 1) & 
-        (pl.col("wc_truth_nuPdg").abs() == 12) & 
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-
-    numucc_pi0_overlay_true_numucc_pi0_mask = (
-        (pl.col("filetype") == 'numucc_pi0_overlay') & 
-        (pl.col("wc_truth_isCC") == 1) & 
-        (pl.col("wc_truth_nuPdg") == 14) & 
-        (pl.col("wc_truth_NprimPio") == 1) & 
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    nu_overlay_true_numucc_pi0_mask = (
-        (pl.col("filetype") == 'nu_overlay') & 
-        (pl.col("wc_truth_isCC") == 1) & 
-        (pl.col("wc_truth_nuPdg") == 14) & 
-        (pl.col("wc_truth_NprimPio") == 1) & 
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-
-    nu_overlay_other_mask = (
-        (pl.col("filetype") == 'nu_overlay') & # nu_overlay
-        ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) & # not NC 1pi0 inFV
-        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1)) & # not nueCC inFV
-        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg") == 14) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) # not numuCC 1pi0 inFV
-    )
-
-    dirt_mask = pl.col("filetype") == 'dirt_overlay'
-    ext_mask = pl.col("filetype") == 'ext'
-    del1g_mask = pl.col("filetype") == 'delete_one_gamma_overlay'
-    iso1g_mask = pl.col("filetype") == 'isotropic_one_gamma_overlay'
-    data_mask = pl.col("filetype") == 'data'
-
-    print("adding wc_normrunperiod_eventtype_POT variable...")
-
-    # Building the wc_normrunperiod_eventtype_POT column using nested when-then-otherwise
-    # Starting with default values from pot_dic, building a chain
-    wc_normrunperiod_eventtype_POT_expr = None
-    for k, normalizing_pot in sorted(normalizing_run_period_pot_dic.items(), key=lambda item: item[0]):
-        filetype, normalizing_run_period = k
-        if normalizing_pot == 0:
-            raise ValueError(f"normalizing_pot is zero for {filetype} {normalizing_run_period}!")
-        if wc_normrunperiod_eventtype_POT_expr is None:
-            wc_normrunperiod_eventtype_POT_expr = pl.when((pl.col("filetype") == filetype) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(normalizing_pot))
-        else:
-            wc_normrunperiod_eventtype_POT_expr = wc_normrunperiod_eventtype_POT_expr.when((pl.col("filetype") == filetype) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(normalizing_pot))
-    
-    # Add the final otherwise clause (shouldn't happen if all filetypes are covered, will error if used later)
-    wc_normrunperiod_eventtype_POT_expr = wc_normrunperiod_eventtype_POT_expr.otherwise(pl.lit(None).cast(pl.Float64))
-    
-    # Override with summed POTs for specific masks (these are checked first)
-    for normalizing_run_period in normalizing_run_periods:
-        wc_normrunperiod_eventtype_POT_expr = (
-            pl.when((nc_pi0_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[normalizing_run_period]))
-            .when((nu_overlay_true_nc_1pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nc_1pi0_dic[normalizing_run_period]))
-            .when((numucc_pi0_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[normalizing_run_period]))
-            .when((nu_overlay_true_numucc_pi0_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_numucc_pi0_dic[normalizing_run_period]))
-            .when((nue_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[normalizing_run_period]))
-            .when((nu_overlay_true_nue_cc_mask) & (pl.col("normalizing_run_period") == normalizing_run_period)).then(pl.lit(summed_POT_nue_cc_dic[normalizing_run_period]))
-            .otherwise(wc_normrunperiod_eventtype_POT_expr)
-        )
-    
-    # Apply the expression to the dataframe
-    df = df.with_columns([
-        wc_normrunperiod_eventtype_POT_expr.alias("wc_normrunperiod_eventtype_POT")
-    ])
-
-    # check for null wc_normrunperiod_eventtype_POT values
-    # in run4b_only mode, non-4b events legitimately have null here and will get null weight
-    check_df = df.filter(pl.col("normalizing_run_period").is_not_null()) if run4b_only else df
-    if check_df["wc_normrunperiod_eventtype_POT"].is_null().any() or (check_df["wc_normrunperiod_eventtype_POT"] == 0).any():
-        num_null = check_df["wc_normrunperiod_eventtype_POT"].is_null().sum()
-        num_zero = (check_df["wc_normrunperiod_eventtype_POT"] == 0).sum()
-
-        print(f"about to run debug loop, with {min(check_df.height, 10)=}")
-
-        zeros_df = check_df.filter(check_df["wc_normrunperiod_eventtype_POT"] == 0)
-
-        # print filetype, detailed_run_period, normalizing_run_period for each zero value
-        for i in range(min(zeros_df.height, 10)):
-            if zeros_df["wc_normrunperiod_eventtype_POT"][i] == 0:
-                wc_normrunperiod_eventtype_POT = zeros_df["wc_normrunperiod_eventtype_POT"][i]
-                filetype = zeros_df["filetype"][i]
-                detailed_run_period = zeros_df["detailed_run_period"][i]
-                normalizing_run_period = zeros_df["normalizing_run_period"][i]
-                print(f"wc_normrunperiod_eventtype_POT: {wc_normrunperiod_eventtype_POT}, filetype: {filetype}, detailed_run_period: {detailed_run_period}, normalizing_run_period: {normalizing_run_period}")
-
-        raise ValueError(f"wc_normrunperiod_eventtype_POT has {num_null} null values and {num_zero} values equal to zero!")
-
-    # Filter out unwanted events by keeping only the events we want
+    # ── Orthogonalization: keep only the events we want (config-independent) ──
+    print("applying combined (orthogonalization) mask...")
     combined_mask = (
-        nc_pi0_overlay_true_nc_1pi0_mask | nu_overlay_true_nc_1pi0_mask
-        | numucc_pi0_overlay_true_numucc_pi0_mask | nu_overlay_true_numucc_pi0_mask
-        | nue_overlay_true_nue_cc_mask | nu_overlay_true_nue_cc_mask
-        | nu_overlay_other_mask
-        | dirt_mask | ext_mask | del1g_mask | iso1g_mask | data_mask
+        masks["nc_pi0_overlay_true_nc_1pi0"] | masks["nu_overlay_true_nc_1pi0"]
+        | masks["numucc_pi0_overlay_true_numucc_pi0"] | masks["nu_overlay_true_numucc_pi0"]
+        | masks["nue_overlay_true_nue_cc"] | masks["nu_overlay_true_nue_cc"]
+        | masks["nu_overlay_other"]
+        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["del1g"] | masks["iso1g"] | masks["data"]
     )
-
-    print("applying combined mask...")
     df = df.filter(combined_mask)
     gc.collect()
 
-    print("adding net weights...")
-
-    # Compute net weights using Polars expressions
+    # ── Base weight: cv*spline, forced to 1.0 for data/ext/nuwro and invalid ──
+    print("adding base weight_cv_weight_spline...")
     weight_temp = pl.col("wc_weight_cv") * pl.col("wc_weight_spline")
-    
-    # Set weight_temp to 1.0 for data/ext, or if weight is invalid
     weight_temp = (
-        pl.when((pl.col("filetype") == "data") | (pl.col("filetype") == "ext"))
+        pl.when(pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES)))
         .then(pl.lit(1.0))
         .when(
             weight_temp.is_null() | weight_temp.is_nan() | weight_temp.is_infinite() |
@@ -350,54 +369,79 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, normalizing_POT, run4b_o
         .then(pl.lit(1.0))
         .otherwise(weight_temp)
     )
+    df = df.with_columns([weight_temp.alias("weight_cv_weight_spline")])
 
-    df = df.with_columns([
-        weight_temp.alias("weight_cv_weight_spline")
-    ])
-
-    # check for null, nan or infinite values in weight_cv_weight_spline
     if df["weight_cv_weight_spline"].is_null().any() or df["weight_cv_weight_spline"].is_nan().any() or df["weight_cv_weight_spline"].is_infinite().any():
         num_null = df["weight_cv_weight_spline"].is_null().sum()
         num_nan = df["weight_cv_weight_spline"].is_nan().sum()
         num_infinite = df["weight_cv_weight_spline"].is_infinite().sum()
         raise ValueError(f"weight_cv_weight_spline has {num_null} null, {num_nan} nan or {num_infinite} infinite values!")
-    
-    # Compute final net weight
-    df = df.with_columns([
-        (pl.col("weight_cv_weight_spline") * (pl.col("norm_goal_pot") / pl.col("wc_normrunperiod_eventtype_POT"))).alias(weight_col_name)
-    ])
 
-    # check for null, nan or infinite values in weight_col_name
-    # in run4b_only mode, non-4b events legitimately have null weight — skip those rows
-    weight_check_df = df.filter(pl.col("normalizing_run_period").is_not_null()) if run4b_only else df
-    if weight_check_df[weight_col_name].is_null().any() or weight_check_df[weight_col_name].is_nan().any() or weight_check_df[weight_col_name].is_infinite().any():
-        num_null = weight_check_df[weight_col_name].is_null().sum()
-        num_nan = weight_check_df[weight_col_name].is_nan().sum()
-        num_infinite = weight_check_df[weight_col_name].is_infinite().sum()
-        raise ValueError(f"{weight_col_name} has {num_null} null, {num_nan} nan or {num_infinite} infinite values!")
+    # ── Per-config net weights ──
+    print("adding per-config net weights...")
+    seen_names, seen_cols = set(), set()
+    for config in weight_configs:
+        if config["name"] in seen_names:
+            raise ValueError(f"duplicate weight config name: {config['name']}")
+        if config["weight_col"] in seen_cols:
+            raise ValueError(f"duplicate weight_col: {config['weight_col']}")
+        seen_names.add(config["name"])
+        seen_cols.add(config["weight_col"])
+        df = _add_config_weight_columns(df, pot_dic, masks, config)
+        gc.collect()
 
-    final_length = df.height
-
-    print(f"When combining different file types, went from {original_length} to {final_length} events")
+    print(f"When combining different file types, went from {original_length} to {df.height} events")
 
     return df
 
 
-def apply_rootino_correction(df, pot_dic, weight_col="wc_net_weight"):
+ROOTINO_RUNS_1_3_PERIODS = ["1", "2", "3"]
+ROOTINO_RUNS_4_5_PERIODS = ["4a", "4b", "4c", "4d", "4bcd", "5"]
+
+
+def _rootino_scale_for_config(pot_dic, config):
+    """Return the runs-1-5 / runs-4-5 ROOTino scale factor for one weighting config,
+    or None if the config has no runs-1-3 contribution to redistribute.
+
+    The known-bad runs-1-3 ROOTino events are zeroed; to preserve the total ROOTino
+    rate, the runs-4-5 ROOTino events are scaled up by (total goal POT) /
+    (runs-4-5 goal POT) in this config's normalization.  When the config has no
+    runs-1-3 normalizing group (e.g. run4b_only) those two are equal -> no-op.
+    """
+    run_period_map = config["run_period_map"]
+    _, norm_goal_pot_dic, _ = _compute_config_pot_dics(pot_dic, config)
+
+    # classify each normalizing_run_period as runs-1-3 or runs-4-5 (must not mix)
+    nrp_is_runs45 = {}
+    for drp, nrp in run_period_map.items():
+        is45 = drp in ROOTINO_RUNS_4_5_PERIODS
+        if nrp in nrp_is_runs45 and nrp_is_runs45[nrp] != is45:
+            raise ValueError(
+                f"config '{config['name']}': normalizing_run_period {nrp} mixes runs 1-3 and runs 4-5 "
+                f"detailed periods; cannot define a ROOTino scale"
+            )
+        nrp_is_runs45[nrp] = is45
+
+    total_goal = sum(norm_goal_pot_dic.values())
+    runs_4_5_goal = sum(v for nrp, v in norm_goal_pot_dic.items() if nrp_is_runs45.get(nrp))
+    if runs_4_5_goal == 0 or total_goal == runs_4_5_goal:
+        return None
+    return total_goal / runs_4_5_goal
+
+
+def apply_rootino_correction(df, pot_dic, weight_configs):
     """Correct for known-bad ROOTino (Delta(1600), glee_GTruth_ResNum == 9) events in runs 1-3 files.
 
-    Runs 1-3 ROOTino events are zeroed; runs 4-5 ROOTino events are scaled up by
-    runs_1_5_data_POT / runs_4_5_data_POT to preserve the total ROOTino contribution
-    in the runs 1-5 normalization. Saves the original weight in pre_rootino_<weight_col>.
-
-    No-op (logs and returns df unchanged) if pot_dic has no runs 1-3 data entries.
+    Applied once per weighting config.  For each config's weight column, the runs
+    1-3 ROOTino events are zeroed and the runs 4-5 ROOTino events are scaled up by
+    that config's (total goal POT) / (runs 4-5 goal POT) so the total ROOTino
+    contribution is preserved in that config's normalization.  Each config's
+    original weight is saved in pre_rootino_<weight_col>.  Configs with no runs-1-3
+    normalizing group are left unchanged.
     """
-    print(f"in apply_rootino_correction (weight_col={weight_col})")
+    print("in apply_rootino_correction")
 
-    runs_1_3_periods = ["1", "2", "3"]
-    runs_4_5_periods = ["4a", "4b", "4c", "4d", "4bcd", "5"]
-    known_periods = set(runs_1_3_periods) | set(runs_4_5_periods)
-
+    known_periods = set(ROOTINO_RUNS_1_3_PERIODS) | set(ROOTINO_RUNS_4_5_PERIODS)
     unknown_periods = sorted({rp for (_ft, rp) in pot_dic.keys() if rp not in known_periods})
     if unknown_periods:
         raise ValueError(
@@ -405,41 +449,31 @@ def apply_rootino_correction(df, pot_dic, weight_col="wc_net_weight"):
             f"expected one of {sorted(known_periods)}"
         )
 
-    runs_1_3_data_pot = sum(v for (ft, rp), v in pot_dic.items() if ft == "data" and rp in runs_1_3_periods)
-    runs_4_5_data_pot = sum(v for (ft, rp), v in pot_dic.items() if ft == "data" and rp in runs_4_5_periods)
-    runs_1_5_data_pot = runs_1_3_data_pot + runs_4_5_data_pot
-
-    if runs_1_3_data_pot == 0:
-        print("    no runs 1-3 data in pot_dic, skipping ROOTino correction")
-        return df
-
-    if runs_4_5_data_pot == 0:
-        print("WARNING: apply_rootino_correction: runs 1-3 data POT > 0 but runs 4-5 data POT == 0; cannot scale")
-        return df
-
-    scale = runs_1_5_data_pot / runs_4_5_data_pot
-    print(f"    runs 1-3 data POT: {runs_1_3_data_pot:.3e}")
-    print(f"    runs 4-5 data POT: {runs_4_5_data_pot:.3e}")
-    print(f"    runs 1-5 / runs 4-5 scale factor: {scale:.4f}")
-
     is_rootino = pl.col("glee_GTruth_ResNum") == 9
-    in_runs_1_3 = pl.col("detailed_run_period").is_in(runs_1_3_periods)
-    in_runs_4_5 = pl.col("detailed_run_period").is_in(runs_4_5_periods)
+    in_runs_1_3 = pl.col("detailed_run_period").is_in(ROOTINO_RUNS_1_3_PERIODS)
+    in_runs_4_5 = pl.col("detailed_run_period").is_in(ROOTINO_RUNS_4_5_PERIODS)
 
-    pre_col = f"pre_rootino_{weight_col}"
-    df = df.with_columns(pl.col(weight_col).alias(pre_col))
+    for config in weight_configs:
+        weight_col = config["weight_col"]
+        scale = _rootino_scale_for_config(pot_dic, config)
+        if scale is None:
+            print(f"    config '{config['name']}' ({weight_col}): no runs 1-3 normalization, skipping")
+            continue
+        print(f"    config '{config['name']}' ({weight_col}): runs 1-5 / runs 4-5 scale = {scale:.4f}")
 
-    new_weight = (
-        pl.when(is_rootino & in_runs_1_3).then(pl.lit(0.0))
-        .when(is_rootino & in_runs_4_5).then(pl.col(weight_col) * scale)
-        .otherwise(pl.col(weight_col))
-    )
-    df = df.with_columns(new_weight.cast(pl.Float32).alias(weight_col))
+        pre_col = f"pre_rootino_{weight_col}"
+        df = df.with_columns(pl.col(weight_col).alias(pre_col))
+
+        new_weight = (
+            pl.when(is_rootino & in_runs_1_3).then(pl.lit(0.0))
+            .when(is_rootino & in_runs_4_5).then(pl.col(weight_col) * scale)
+            .otherwise(pl.col(weight_col))
+        )
+        df = df.with_columns(new_weight.cast(pl.Float32).alias(weight_col))
 
     n_zeroed = df.filter(is_rootino & in_runs_1_3).height
     n_scaled = df.filter(is_rootino & in_runs_4_5).height
-    print(f"    zeroed {n_zeroed} runs 1-3 ROOTino events")
-    print(f"    scaled {n_scaled} runs 4-5 ROOTino events by {scale:.4f}")
+    print(f"    {n_zeroed} runs 1-3 ROOTino events zeroed, {n_scaled} runs 4-5 ROOTino events scaled (per config)")
 
     return df
 
@@ -902,9 +936,9 @@ def do_wc_postprocessing(df):
     distances_to_boundary = []
     backwards_projected_dists = []
     reco_shower_momentum = df["wc_reco_showerMomentum"].to_numpy()
-    reco_nu_vtx_x = df["wc_reco_showervtxX"].to_numpy()
-    reco_nu_vtx_y = df["wc_reco_showervtxY"].to_numpy()
-    reco_nu_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
+    reco_shw_vtx_x = df["wc_reco_showervtxX"].to_numpy()
+    reco_shw_vtx_y = df["wc_reco_showervtxY"].to_numpy()
+    reco_shw_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
     for i in tqdm(range(df.shape[0]), desc="Adding WC shower position and angle variables", mininterval=10):
 
         if isinstance(reco_shower_momentum[i], float) and np.isnan(reco_shower_momentum[i]):
@@ -932,41 +966,41 @@ def do_wc_postprocessing(df):
             center_x = 130.
             center_y = 0.
             center_z = 525.    
-            towards_center_length = np.sqrt((reco_nu_vtx_x[i] - center_x) * (reco_nu_vtx_x[i] - center_x) + 
-                                            (reco_nu_vtx_y[i] - center_y) * (reco_nu_vtx_y[i] - center_y) + 
-                                            (reco_nu_vtx_z[i] - center_z) * (reco_nu_vtx_z[i] - center_z))
-            towards_center_unit_vector_3d = [(center_x - reco_nu_vtx_x[i]) / towards_center_length, 
-                                                (center_y - reco_nu_vtx_y[i]) / towards_center_length, 
-                                                (center_z - reco_nu_vtx_z[i]) / towards_center_length]
+            towards_center_length = np.sqrt((reco_shw_vtx_x[i] - center_x) * (reco_shw_vtx_x[i] - center_x) + 
+                                            (reco_shw_vtx_y[i] - center_y) * (reco_shw_vtx_y[i] - center_y) + 
+                                            (reco_shw_vtx_z[i] - center_z) * (reco_shw_vtx_z[i] - center_z))
+            towards_center_unit_vector_3d = [(center_x - reco_shw_vtx_x[i]) / towards_center_length, 
+                                                (center_y - reco_shw_vtx_y[i]) / towards_center_length, 
+                                                (center_z - reco_shw_vtx_z[i]) / towards_center_length]
 
             shower_momentum_total_2d = np.sqrt(reco_shower_momentum_0 * reco_shower_momentum_0 + 
                                                 reco_shower_momentum_1 * reco_shower_momentum_1)
             shower_unit_vector_2d = [reco_shower_momentum_0 / shower_momentum_total_3d, 
                                         reco_shower_momentum_1 / shower_momentum_total_3d]
-            towards_center_length = np.sqrt((reco_nu_vtx_x[i] - center_x) * (reco_nu_vtx_x[i] - center_x) + 
-                                            (reco_nu_vtx_y[i] - center_y) * (reco_nu_vtx_y[i] - center_y))
-            towards_center_unit_vector_2d = [(center_x - reco_nu_vtx_x[i]) / towards_center_length, 
-                                                (center_y - reco_nu_vtx_y[i]) / towards_center_length]
+            towards_center_length = np.sqrt((reco_shw_vtx_x[i] - center_x) * (reco_shw_vtx_x[i] - center_x) + 
+                                            (reco_shw_vtx_y[i] - center_y) * (reco_shw_vtx_y[i] - center_y))
+            towards_center_unit_vector_2d = [(center_x - reco_shw_vtx_x[i]) / towards_center_length, 
+                                                (center_y - reco_shw_vtx_y[i]) / towards_center_length]
             
             min_backwards_projected_dist = 1e9
                     
             # projecting to x walls
             if shower_unit_vector_3d[0] > 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_x[i] - (-1)) / shower_unit_vector_3d[0])
+                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_x[i] - (-1)) / shower_unit_vector_3d[0])
             elif shower_unit_vector_3d[0] < 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_x[i] - (254.3)) / shower_unit_vector_3d[0])
+                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_x[i] - (254.3)) / shower_unit_vector_3d[0])
                 
             # projecting to y walls
             if shower_unit_vector_3d[1] > 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_y[i] - (-115.)) / shower_unit_vector_3d[1])
+                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_y[i] - (-115.)) / shower_unit_vector_3d[1])
             elif shower_unit_vector_3d[1] < 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_y[i] - (117.)) / shower_unit_vector_3d[1])
+                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_y[i] - (117.)) / shower_unit_vector_3d[1])
                 
             # projecting to z walls
             if shower_unit_vector_3d[2] > 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_z[i] - (0.6)) / shower_unit_vector_3d[2])
+                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_z[i] - (0.6)) / shower_unit_vector_3d[2])
             elif shower_unit_vector_3d[2] < 0:
-                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_nu_vtx_z[i] - (1036.4)) / shower_unit_vector_3d[2])
+                min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_z[i] - (1036.4)) / shower_unit_vector_3d[2])
 
             backwards_projected_dists.append(min_backwards_projected_dist)
             
@@ -976,12 +1010,12 @@ def do_wc_postprocessing(df):
             backwards_projected_dists.append(np.nan)
             
         distances_to_boundary.append(np.min([
-            abs(reco_nu_vtx_x[i] - (-1.)),
-            abs(reco_nu_vtx_x[i] - (254.3)),
-            abs(reco_nu_vtx_y[i] - (-115.)),
-            abs(reco_nu_vtx_y[i] - (117.)),
-            abs(reco_nu_vtx_z[i] - (0.6)),
-            abs(reco_nu_vtx_z[i] - (1036.4))
+            abs(reco_shw_vtx_x[i] - (-1.)),
+            abs(reco_shw_vtx_x[i] - (254.3)),
+            abs(reco_shw_vtx_y[i] - (-115.)),
+            abs(reco_shw_vtx_y[i] - (117.)),
+            abs(reco_shw_vtx_z[i] - (0.6)),
+            abs(reco_shw_vtx_z[i] - (1036.4))
         ]))
     df["wc_reco_shower_theta"] = shower_thetas
     df["wc_reco_shower_phi"] = shower_phis
@@ -1265,14 +1299,19 @@ def do_wc_postprocessing(df):
         for k in proton_vtx_defs:
             num_protons_35_MeV_75cm_lists[k].append(num_protons_35_MeV_75cm[k])
 
-    df["wc_reco_max_prim_proton_energy"] = max_prim_proton_energies
-    df["wc_reco_max_prim_proton_costheta"] = max_prim_proton_costhetas
-    df["wc_reco_max_prim_proton_phi"] = max_prim_proton_phis
-    df["wc_reco_max_prim_other_track_energy"] = max_prim_other_track_energies
-    df["wc_reco_max_prim_other_track_costheta"] = max_prim_other_track_costhetas
-    df["wc_reco_max_prim_other_track_phi"] = max_prim_other_track_phis
+    # add all new columns in one concat to avoid DataFrame fragmentation
+    # (many individual df[col] = ... inserts trigger pandas PerformanceWarnings)
+    new_cols = {
+        "wc_reco_max_prim_proton_energy": max_prim_proton_energies,
+        "wc_reco_max_prim_proton_costheta": max_prim_proton_costhetas,
+        "wc_reco_max_prim_proton_phi": max_prim_proton_phis,
+        "wc_reco_max_prim_other_track_energy": max_prim_other_track_energies,
+        "wc_reco_max_prim_other_track_costheta": max_prim_other_track_costhetas,
+        "wc_reco_max_prim_other_track_phi": max_prim_other_track_phis,
+    }
     for k in proton_vtx_defs:
-        df[f"wc_reco_num_protons_35_MeV_75cm_from_{k}"] = num_protons_35_MeV_75cm_lists[k]
+        new_cols[f"wc_reco_num_protons_35_MeV_75cm_from_{k}"] = num_protons_35_MeV_75cm_lists[k]
+    df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     return df
 
@@ -1522,10 +1561,17 @@ def _add_signal_category(all_df, name, queries, labels, debug_columns=None):
     expr = expr.otherwise(pl.lit(-1))
     all_df = all_df.with_columns(expr.alias(col_name))
 
-    print(f"\n{name} signal categories:")
+    # diagnostic per-category weighted yield: use whichever net-weight column is
+    # present (the open-data weighting on the main df, or the detvar df's
+    # wc_net_weight), falling back to the raw count if none exists.
+    weight_col = next((c for c in ("wc_net_weight_open_data", "wc_net_weight")
+                       if c in all_df.columns), None)
+    print(f"\n{name} signal categories (weighted by {weight_col or 'unweighted count'}):")
     for i, label in enumerate(labels):
         sub = all_df.filter(pl.col(col_name) == i)
-        print(f"    {label}: {sub['wc_net_weight'].sum():.2f} ({sub.height})")
+        wsum = sub[weight_col].sum() if weight_col is not None else None
+        wsum = 0.0 if wsum is None else wsum
+        print(f"    {label}: {wsum:.2f} ({sub.height})")
 
     # Coalesce nulls so a null condition counts as not-matched (otherwise the
     # cast-to-Int8 sum would be null and slip past the count check).
@@ -3624,31 +3670,51 @@ def remove_vector_variables(df):
     return df[save_columns]
 
 
-def apply_1g1mu_rad_corr_reweighting(df, normalizing_POT=None):
+def _config_total_goal_pots(pot_dic, weight_configs):
+    """Return {config name: total goal POT} = sum of that config's per-group goal POT."""
+    totals = {}
+    for config in weight_configs:
+        _, norm_goal_pot_dic, _ = _compute_config_pot_dics(pot_dic, config)
+        totals[config["name"]] = sum(norm_goal_pot_dic.values())
+    return totals
+
+
+def _data_pot_per_detailed_period(pot_dic):
+    """Return {detailed_run_period: summed beam-on data POT} from pot_dic."""
+    out = defaultdict(float)
+    for (ft, drp), v in pot_dic.items():
+        if ft == "data":
+            out[drp] += v
+    return dict(out)
+
+
+def apply_1g1mu_rad_corr_reweighting(df, pot_dic, weight_configs, seed=12345):
     """Append numuCC_rad_corrected events derived from delete_one_gamma_overlay.
 
     This is the *apply* half of the 1g1mu radiative-correction reweighting: it
     reads the binned weights previously written by
     compute_1g1mu_rad_corr_reweighting (numuCC_rad_corr_1g_reweighting.parquet) and
     applies them per-event.  Call compute_1g1mu_rad_corr_reweighting first to
-    (re)generate that parquet from the central sample; this function only reads
-    it, so the same precomputed reweighting can be applied to other sets of files
-    without recomputing the binned weights.
+    (re)generate that parquet from the central sample.
 
     The binned weights are POT-independent (the x_eta and fix_del1g factors carry
-    canceling POT dependence, and rad_frac_x_eta is pure theory), so the target
-    POT enters only here.  Each rad-corrected event is rescaled from its native
-    (runs-4-5) POT up to the target total POT and randomly assigned a run period in
-    proportion to that period's data POT.
+    canceling POT dependence, and rad_frac_x_eta is pure theory).  For each
+    weighting config, each rad-corrected event's net weight is
 
-    ``normalizing_POT`` is that target total POT.  If None (default), it is derived
-    from the df as the sum of the per-run-period ``norm_goal_pot`` actually present
-    (current pipeline behavior).  Passing it explicitly overrides that, letting the
-    same computed reweighting be applied at a different run-fraction POT.  NOTE: in
-    the current pipeline the run4b_only orthogonalization pass leaves only run-4b
-    populated in norm_goal_pot, so the df-derived default is the run-4b data POT,
-    which is NOT the same as create_df's full normalizing_POT -- do not pass the
-    latter here without intending to change the normalization.
+        (source del1g rate per POT in that config) * corrections * (config total goal POT)
+
+    where the source rate per POT is wc_net_weight_<config> / norm_goal_pot_<config>
+    on the parent delete_one_gamma_overlay event (so the config's per-group denominator
+    cancels and the result is normalized to that config's full goal POT).  An event with
+    a null source weight in a config (e.g. its run period is unmapped there) gets a null
+    weight in that config.
+
+    A SINGLE copy of each event is kept (duplicating into every run period would
+    undercount per-bin MC variance); each event is randomly assigned one
+    detailed_run_period in proportion to the per-period beam-on data POT, and each
+    config's normalizing_run_period_<config> is set from that period via its run_period_map.
+    The weight itself is the full-goal-POT contribution, so the runs-1-5 total is exact;
+    only the per-run split carries Monte-Carlo noise.
 
     Accepts either an eager DataFrame or a LazyFrame.
 
@@ -3658,15 +3724,11 @@ def apply_1g1mu_rad_corr_reweighting(df, normalizing_POT=None):
       responsible for concatenating these rows with the full df after calling
       pl.read_parquet separately.
     """
-    print(f"applying 1g1mu rad correction reweighting to the dataframe (normalizing_POT={normalizing_POT})")
+    print("applying 1g1mu rad correction reweighting to the dataframe")
+    print(f"  weight configs: {[c['name'] for c in weight_configs]}")
 
     is_lazy = isinstance(df, pl.LazyFrame)
 
-    # Weights are pre-computed by compute_1g1mu_rad_corr_reweighting and saved to parquet.
-    # Columns: run, subrun, event, fix_del1g_weight, x_eta_uniform_weight, rad_frac_x_eta,
-    #          wc_muon_gamma_opening_angle
-    # Only events with all weights > 0 are present in the parquet.
-    # Use scan_parquet so the weights are read lazily as part of the same query plan.
     rad_weights_lf = pl.scan_parquet(
         f"{intermediate_files_location}/numuCC_rad_corr_1g_reweighting.parquet"
     )
@@ -3674,12 +3736,7 @@ def apply_1g1mu_rad_corr_reweighting(df, normalizing_POT=None):
 
     lf = df if is_lazy else df.lazy()
 
-    # Drop any stale weight columns that may already exist on the main df (e.g.
-    # from a previous run whose temp parquet was not cleaned up) to avoid column
-    # naming collisions when the join suffix is applied.
-    # Note: wc_muon_gamma_opening_angle comes from the weights parquet and should
-    # NOT be in the main df before this step (we no longer add it as a null column
-    # to the full df since that caused a ~44 GB memory spike).
+    # Drop any stale weight columns that may already exist on the main df.
     stale = [c for c in ["fix_del1g_weight", "x_eta_uniform_weight",
                           "rad_frac_x_eta", "wc_muon_gamma_opening_angle"]
              if c in lf.collect_schema().names()]
@@ -3687,155 +3744,105 @@ def apply_1g1mu_rad_corr_reweighting(df, normalizing_POT=None):
         print(f"  WARNING: dropping stale weight columns before join: {stale}")
         lf = lf.drop(stale)
 
-    # ── Run-period assignment + POT rescaling ────────────────────────────────
-    # The rad-corrected events are derived from delete_one_gamma_overlay (runs
-    # 4-5) files, so their inherited wc_net_weight is normalized to the runs-4-5
-    # data POT only.  We want a prediction for the full analyzed POT (all run
-    # periods present), assuming the rate per POT is run-independent (we ignore
-    # detector time-dependence for this small, rare component).
-    #
-    # We keep a SINGLE copy of each event -- duplicating one event into every
-    # run period would undercount its per-bin MC statistical variance (Sum w^2),
-    # since N real simulated events would masquerade as 6*N independent ones.
-    # Instead we:
-    #   1. rescale each event's weight from its native-run data POT up to the
-    #      total data POT across all analyzed run periods, and
-    #   2. randomly assign each event to one normalizing_run_period in proportion
-    #      to that period's data POT.
-    # The runs-1-5 total is then exact and fluctuation-free (each event appears
-    # once with its full weight regardless of assignment); only the per-run split
-    # carries Monte-Carlo noise, which is acceptable here.
-    #
-    # Assignment is at normalizing_run_period granularity (the level used for POT
-    # normalization).  detailed_run_period is set to the most common real detailed
-    # period seen in the data for that normalizing period, so downstream string
-    # filters on detailed_run_period (e.g. .str.contains("4")) behave sensibly.
-    rp_info = (
-        lf.select(["normalizing_run_period", "detailed_run_period", "norm_goal_pot"])
-          .filter(pl.col("normalizing_run_period").is_not_null()
-                  & pl.col("norm_goal_pot").is_not_null())
-          .group_by(["normalizing_run_period", "detailed_run_period", "norm_goal_pot"])
-          .len()
-          .collect()
-    )
-    pot_per_nrp = {}
-    detailed_counts_per_nrp = defaultdict(dict)
-    for row in rp_info.iter_rows(named=True):
-        nrp = row["normalizing_run_period"]
-        pot_per_nrp[nrp] = row["norm_goal_pot"]
-        detailed_counts_per_nrp[nrp][row["detailed_run_period"]] = row["len"]
-    rep_detailed = {
-        nrp: max(counts.items(), key=lambda kv: kv[1])[0]
-        for nrp, counts in detailed_counts_per_nrp.items()
-    }
-    print(f"  rad-corr run-period spreading: pot_per_nrp={pot_per_nrp}")
-    print(f"  rad-corr representative detailed periods={rep_detailed}")
+    total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
+    # per-config per-normalizing-run-period goal POT, used to set norm_goal_pot_<name>
+    # consistently with each appended event's reassigned run period (otherwise the
+    # row would keep the stale goal inherited from its del1g source event)
+    config_goal_pots = {c["name"]: _compute_config_pot_dics(pot_dic, c)[1] for c in weight_configs}
+    data_pot_per_period = _data_pot_per_detailed_period(pot_dic)
+    print(f"  rad-corr per-config total goal POT: {total_goal_pots}")
+    print(f"  rad-corr detailed-period data POT (for run-period spreading): {data_pot_per_period}")
 
-    def _spread_rad_corr_across_runs(rcdf, seed=12345):
-        """Single copy per event: rescale to total POT and randomly assign a
-        normalizing_run_period in proportion to per-period data POT."""
-        if rcdf.height == 0 or len(pot_per_nrp) == 0:
-            return rcdf
-        nrps = list(pot_per_nrp.keys())
-        # Per-run-period composition comes from the df; the absolute target total
-        # POT comes from the normalizing_POT argument (== sum(df_pots) in the
-        # standard pipeline, since norm_goal_pot sums to normalizing_POT).
-        df_pots = np.array([pot_per_nrp[n] for n in nrps], dtype=float)
-        df_pot_total = df_pots.sum()
-        # Default target total POT: the per-run-period total found in the df
-        # (current behavior).  An explicit normalizing_POT overrides it.
-        target_total = normalizing_POT if normalizing_POT is not None else df_pot_total
-        probs = df_pots / df_pot_total
-        # per-period POTs scaled so they sum to target_total
-        pots = df_pots * target_total / df_pot_total
-
-        # native (runs-4-5) data POT each event was normalized to; guard against
-        # null/zero so we never divide by zero.
-        native_pot = rcdf["norm_goal_pot"].to_numpy().astype(float)
-        valid = np.isfinite(native_pot) & (native_pot > 0)
-        if not valid.all():
-            print(f"  WARNING: dropping {(~valid).sum()} rad-corr rows with "
-                  f"null/zero norm_goal_pot before run-period spreading")
-            rcdf = rcdf.filter(pl.Series(valid))
-            native_pot = native_pot[valid]
+    def _weight_and_spread_rad_corr(rcdf):
+        """Compute each config's appended-event weight and assign run periods."""
         if rcdf.height == 0:
             return rcdf
 
+        corrections = (
+            rcdf["fix_del1g_weight"].to_numpy().astype(float)
+            * rcdf["x_eta_uniform_weight"].to_numpy().astype(float)
+            * rcdf["rad_frac_x_eta"].to_numpy().astype(float)
+        )
+
+        # randomly assign one detailed_run_period per event, ∝ beam-on data POT
+        det_periods = list(data_pot_per_period.keys())
+        det_pots = np.array([data_pot_per_period[d] for d in det_periods], dtype=float)
         rng = np.random.default_rng(seed)
-        idx = rng.choice(len(nrps), size=rcdf.height, p=probs)
-        nrp_arr = [nrps[i] for i in idx]
-        det_arr = [rep_detailed[nrps[i]] for i in idx]
-        new_pot = pots[idx]
+        idx = rng.choice(len(det_periods), size=rcdf.height, p=det_pots / det_pots.sum())
+        det_arr = [det_periods[i] for i in idx]
 
-        # rescale: (corrected weight / native POT) * target_total == rate * POT_total
-        new_weight = rcdf["wc_net_weight"].to_numpy().astype(float) * target_total / native_pot
+        new_series = [pl.Series("detailed_run_period", det_arr, dtype=pl.String)]
+        for config in weight_configs:
+            name, wcol = config["name"], config["weight_col"]
+            src_w = rcdf[wcol].to_numpy().astype(float)             # parent del1g net weight in this config
+            src_goal = rcdf[f"norm_goal_pot_{name}"].to_numpy().astype(float)  # parent group goal POT
+            with np.errstate(divide="ignore", invalid="ignore"):
+                rate_per_pot = src_w / src_goal                    # base / denominator (period-independent)
+            weight = rate_per_pot * corrections * total_goal_pots[name]
+            weight = np.where(np.isfinite(weight), weight, np.nan)  # NaN -> null below
+            new_series.append(pl.Series(wcol, weight).cast(pl.Float32))
+            nrp_arr = [config["run_period_map"].get(d) for d in det_arr]
+            new_series.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr, dtype=pl.String))
+            # set norm_goal_pot_<name> to match the reassigned run period (not the
+            # stale value inherited from the del1g source event)
+            goal_dic = config_goal_pots[name]
+            goal_arr = [goal_dic.get(nrp) if nrp is not None else None for nrp in nrp_arr]
+            new_series.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64))
 
-        return rcdf.with_columns([
-            pl.Series("wc_net_weight", new_weight).cast(pl.Float32),
-            pl.Series("normalizing_run_period", nrp_arr, dtype=pl.String),
-            pl.Series("detailed_run_period", det_arr, dtype=pl.String),
-            pl.Series("norm_goal_pot", new_pot),
+        rcdf = rcdf.with_columns(new_series)
+        # turn NaN weights into nulls (events with no weight in a given config)
+        rcdf = rcdf.with_columns([
+            pl.when(pl.col(c["weight_col"]).is_nan()).then(None).otherwise(pl.col(c["weight_col"])).alias(c["weight_col"])
+            for c in weight_configs
         ])
+        return rcdf
 
     rad_corrected_lf = (
         lf.filter(
             (pl.col("filetype") == "delete_one_gamma_overlay") &
             (pl.col("wc_truth_muonMomentum_3") > 0.0)
         )
-        # inner join: events not in the weights parquet (invalid weights) are dropped.
-        # No suffix needed: wc_muon_gamma_opening_angle only exists in the weights parquet
-        # (we dropped it from the main df above if it was stale).
         .join(rad_weights_lf, on=["run", "subrun", "event"], how="inner")
         .with_columns([
-            (pl.col("wc_net_weight")
-             * pl.col("fix_del1g_weight")
-             * pl.col("x_eta_uniform_weight")
-             * pl.col("rad_frac_x_eta")
-            ).cast(pl.Float32).alias("wc_net_weight"),
             pl.lit("numuCC_rad_corrected").alias("filetype"),
             pl.col("wc_muon_gamma_opening_angle").cast(pl.Float32),
             pl.lit(False).alias("normal_overlay"),
             pl.lit(False).alias("del1g_overlay"),
             pl.lit(False).alias("iso1g_overlay"),
         ])
-        .drop(["fix_del1g_weight", "x_eta_uniform_weight", "rad_frac_x_eta"])
     )
 
+    print("  collecting rad_corrected rows...")
+    rad_corrected_df = rad_corrected_lf.collect()
+    rad_corrected_df = _weight_and_spread_rad_corr(rad_corrected_df)
+    rad_corrected_df = rad_corrected_df.drop(
+        [c for c in ["fix_del1g_weight", "x_eta_uniform_weight", "rad_frac_x_eta"]
+         if c in rad_corrected_df.columns]
+    )
+    print(f"  produced {rad_corrected_df.height} rad-corrected rows")
+
     if is_lazy:
-        # Collect only the small filtered sub-df (predicate pushdown reads only
-        # delete_one_gamma_overlay rows from the parquet scan).  Caller concats
-        # these new rows with the full df after reading it separately.
-        print("  collecting rad_corrected rows (lazy mode)...")
-        rad_corrected_df = rad_corrected_lf.collect()
-        rad_corrected_df = _spread_rad_corr_across_runs(rad_corrected_df)
-        print(f"  collected {rad_corrected_df.height} rad-corrected rows")
         return rad_corrected_df
 
-    # Eager path: concat immediately and return full df.
-    print("  starting concat...")
-    rad_corrected_df = rad_corrected_lf.collect()
-    rad_corrected_df = _spread_rad_corr_across_runs(rad_corrected_df)
     df = pl.concat([df, rad_corrected_df], how="diagonal_relaxed")
     del rad_corrected_df
     gc.collect()
     return df
 
-def apply_nc_coh_1g_reweighting(df, normalizing_POT):
+def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs):
     """Append NC_coherent_1g_reweighted events derived from isotropic_one_gamma_overlay.
 
     This is the *apply* half of the NC-coherent-1g reweighting: it reads the
     binned weights previously written by compute_nc_coh_1g_reweighting
     (coh_1g_reweighting.parquet) and applies them per-event.  Call
     compute_nc_coh_1g_reweighting first to (re)generate that parquet from the
-    central sample; this function only reads it, so the same precomputed
-    reweighting can be applied to other sets of files without recomputing the
-    binned weights.
+    central sample.
 
-    The saved weight is POT-independent (events per POT).  ``normalizing_POT`` is
-    the target POT the reweighted events should be normalized to; the final
-    per-event weight is coherent_1g_weight_per_pot * normalizing_POT.  Passing it
-    here (rather than baking it into the computed weights) lets the same computed
-    reweighting be applied at multiple POT normalizations (e.g. run-fractions).
+    The saved weight is POT-independent (events per POT).  For each weighting
+    config the final per-event net weight is coherent_1g_weight_per_pot times that
+    config's total goal POT, so each config's coherent contribution is normalized
+    to its own full exposure.  The appended events inherit the parent iso1g event's
+    normalizing_run_period_<config> grouping (iso1g exists only in runs 4-5).
 
     Accepts either an eager DataFrame or a LazyFrame.
 
@@ -3845,19 +3852,18 @@ def apply_nc_coh_1g_reweighting(df, normalizing_POT):
       responsible for concatenating these rows with the full df after calling
       pl.read_parquet separately.
     """
-    print(f"applying NC Coherent 1g reweighting to the dataframe (normalizing_POT={normalizing_POT:.6g})")
+    print("applying NC Coherent 1g reweighting to the dataframe")
+    print(f"  weight configs: {[c['name'] for c in weight_configs]}")
 
     is_lazy = isinstance(df, pl.LazyFrame)
 
-    # Weights are pre-computed by compute_nc_coh_1g_reweighting and saved to parquet.
-    # Columns: run, subrun, event, coherent_1g_weight_per_pot, coherent_1g_keep
-    # The weight is per-POT; multiply by normalizing_POT here to get the final weight.
-    # Only events with coherent_1g_weight_per_pot > 0 are present in the parquet.
-    # Use scan_parquet so the weights are read lazily as part of the same query plan.
     coherent_weights_lf = pl.scan_parquet(
         f"{intermediate_files_location}/coh_1g_reweighting.parquet"
     )
     print("  coherent_weights parquet queued for lazy scan")
+
+    total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
+    print(f"  coherent per-config total goal POT: {total_goal_pots}")
 
     lf = df if is_lazy else df.lazy()
 
@@ -3866,8 +3872,12 @@ def apply_nc_coh_1g_reweighting(df, normalizing_POT):
         # inner join: events in empty coherent bins are dropped
         .join(coherent_weights_lf, on=["run", "subrun", "event"], how="inner")
         .with_columns([
-            (pl.col("coherent_1g_weight_per_pot") * normalizing_POT)
-              .cast(pl.Float32).alias("wc_net_weight"),
+            # one net-weight column per config: per-POT weight * that config's total goal POT
+            (pl.col("coherent_1g_weight_per_pot") * total_goal_pots[c["name"]])
+              .cast(pl.Float32).alias(c["weight_col"])
+            for c in weight_configs
+        ])
+        .with_columns([
             pl.lit("NC_coherent_1g_reweighted").alias("filetype"),
             pl.lit(False).alias("normal_overlay"),
             pl.lit(False).alias("del1g_overlay"),
@@ -3877,22 +3887,11 @@ def apply_nc_coh_1g_reweighting(df, normalizing_POT):
     )
 
     if is_lazy:
-        # Collect only the small filtered sub-df (predicate pushdown reads only
-        # isotropic_one_gamma_overlay rows from the parquet scan).  Caller concats
-        # these new rows with the full df after reading it separately.
-        # coherent_1g_keep is preserved from the weights parquet via the join above.
         print("  collecting coherent_1g rows (lazy mode)...")
         coherent_1g_df = coherent_1g_lf.collect()
         print(f"  collected {coherent_1g_df.height} coherent-1g rows")
         return coherent_1g_df
 
-    # Eager path: concat immediately and return full df.
-    # Append reweighted events; original iso1g rows remain but are excluded
-    # downstream by the filter on "isotropic_one_gamma_overlay".
-    # coherent_1g_keep comes from the weights parquet via the join above.
-    # Use diagonal_relaxed so that the coherent_1g_keep column (only present in
-    # coherent_1g_df) is filled with null for all original df rows, avoiding a
-    # full df copy to add that column upfront.
     print("  starting concat...")
     coherent_1g_df = coherent_1g_lf.collect()
     df = pl.concat([df, coherent_1g_df], how="diagonal_relaxed")

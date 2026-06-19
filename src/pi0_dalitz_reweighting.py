@@ -260,10 +260,10 @@ def apply_pi0_dalitz_reweighting(df, make_plots=True):
 
     Unlike the rad-corr / coherent-1g reweightings (which APPEND new derived rows),
     this is a pure shape correction to events already in the df, so it adds no rows.
-    It:
-      - adds a standalone ``pi0_dalitz_reweight_weight`` column (1.0 for non-Dalitz
-        events), and
-      - multiplies the existing ``wc_net_weight`` by that factor.
+    It adds a standalone ``pi0_dalitz_reweight_weight`` column (1.0 for non-Dalitz
+    events).  The caller is responsible for folding that factor into each per-config
+    net-weight column (create_df multiplies it into every wc_net_weight_* column),
+    since there is no single canonical net-weight column anymore.
     The lookup is per-row from each event's own truth invariants -- no join -- so
     run/subrun/event colliding across the derived overlay copies is a non-issue.
 
@@ -298,11 +298,10 @@ def apply_pi0_dalitz_reweighting(df, make_plots=True):
     if make_plots and is_dalitz.any():
         _plot_application(df, is_dalitz, weight_of, mee_edges, cos_edges)
 
+    # add the standalone per-event factor; the caller folds it into each
+    # per-config net-weight column (there is no single canonical wc_net_weight).
     df = df.with_columns(
         pl.Series("pi0_dalitz_reweight_weight", weight).cast(pl.Float32)
-    ).with_columns(
-        (pl.col("wc_net_weight") * pl.col("pi0_dalitz_reweight_weight"))
-        .cast(pl.Float32).alias("wc_net_weight")
     )
 
     # Drop the transient lab four-vector columns now that the plots are made.

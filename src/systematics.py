@@ -129,7 +129,7 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
     return hists
 
 
-def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weight_var="wc_net_weight"):
+def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weight_var="wc_net_weight_open_data"):
 
     print("creating reweightable systematic covariance matrices...")
 
@@ -352,7 +352,7 @@ def _key_hash_detvar(sel, var, bins, use_detvar_bootstrapping, num_bootstrap_rou
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None, net_weight_var="wc_net_weight"):
+def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None, net_weight_var="wc_net_weight_open_data"):
 
     if not dont_load_rw_from_systematic_cache:
         key_h = _key_hash(selname, var, bins)

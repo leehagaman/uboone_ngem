@@ -155,9 +155,9 @@ if __name__ == "__main__":
     x_test = x_test.astype(np.float64)
     x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
 
-    w_train = presel_train_df.select("wc_net_weight").to_numpy()
+    w_train = presel_train_df.select("wc_net_weight_open_data").to_numpy()
     w_train = w_train.flatten() if w_train.ndim > 1 else w_train
-    w_test = presel_test_df.select("wc_net_weight").to_numpy()
+    w_test = presel_test_df.select("wc_net_weight_open_data").to_numpy()
     w_test = w_test.flatten() if w_test.ndim > 1 else w_test
 
     y_train = presel_train_df.select(signal_category_var).to_numpy()

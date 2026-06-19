@@ -104,6 +104,7 @@ del1g_detailed_categories = [
     ("numuCC_rad_corrected", "(pl.col('filetype') == 'numuCC_rad_corrected') & pl.col('wc_truth_inFV')", "xkcd:pink", None),
     ("NC_coherent_1g_reweighted", "(pl.col('filetype') == 'NC_coherent_1g_reweighted') & pl.col('wc_truth_inFV')", "xkcd:purple", None),
     ("data",         "pl.col('filetype') == 'data'",                                                                                                                                              "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
 ]
 del1g_detailed_category_queries = [cat[1] for cat in del1g_detailed_categories]
 del1g_detailed_category_labels = [cat[0] for cat in del1g_detailed_categories]
@@ -166,6 +167,7 @@ del1g_detailed_category_labels_latex = [
     r"$\nu_\mu$CC $1\gamma$ Rad. Corr.",
     r"NC Coherent $1\gamma$",
     r"data",
+    r"NuWro fake data",
 ]
 del1g_detailed_categories_dic = {del1g_detailed_category_labels[i]: i for i in range(len(del1g_detailed_category_labels))}
 
@@ -199,6 +201,7 @@ del1g_simple_categories = [
     ("numuCC_rad_corrected",    f"({get_cut_from_del1g('numuCC_rad_corrected')})",                                                                      "xkcd:pink", None),
     ("NC_coherent_1g_reweighted", f"({get_cut_from_del1g('NC_coherent_1g_reweighted')})",                                                               "xkcd:purple", None),
     ("data",                    get_cut_from_del1g('data'),                                                                                             "xkcd:black", None),
+    ("nuwro_fake_data",         get_cut_from_del1g('nuwro_fake_data'),                                                                                   "xkcd:magenta", None),
 ]
 del1g_simple_category_queries = [cat[1] for cat in del1g_simple_categories]
 del1g_simple_category_labels = [cat[0] for cat in del1g_simple_categories]
@@ -225,7 +228,10 @@ del1g_simple_category_labels_latex = [
     r"$\pi^0$ Dalitz decay",
     r"NC no $\gamma$",
     r"EXT",
+    r"$\nu_\mu$CC $1\gamma$ Rad. Corr.",
+    r"NC Coherent $1\gamma$",
     r"data",
+    r"NuWro fake data",
 ]
 del1g_simple_categories_dic = {del1g_simple_category_labels[i]: i for i in range(len(del1g_simple_category_labels))}
 
@@ -235,7 +241,7 @@ train_category_colors = []
 train_category_hatches = []
 train_category_labels_latex = []
 for i in range(len(del1g_simple_category_labels)):
-    if 'data' not in del1g_simple_category_labels[i] and 'numuCC_rad_corrected' not in del1g_simple_category_labels[i] and 'NC_coherent_1g_reweighted' not in del1g_simple_category_labels[i]:
+    if 'data' not in del1g_simple_category_labels[i] and 'numuCC_rad_corrected' not in del1g_simple_category_labels[i] and 'NC_coherent_1g_reweighted' not in del1g_simple_category_labels[i] and 'nuwro_fake_data' not in del1g_simple_category_labels[i]:
         train_category_queries.append(del1g_simple_category_queries[i])
         train_category_labels.append(del1g_simple_category_labels[i])
         train_category_colors.append(del1g_simple_category_colors[i])
@@ -261,6 +267,7 @@ topological_categories = [
     ("dirt",        "pl.col('filetype') == 'dirt_overlay'",                                                                           "xkcd:brown", None),
     ("ext",         "pl.col('filetype') == 'ext'",                                                                                    "xkcd:green", None),
     ("data",        "pl.col('filetype') == 'data'",                                                                                   "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
 ]
 topological_category_queries = [cat[1] for cat in topological_categories]
 topological_category_labels = [cat[0] for cat in topological_categories]
@@ -284,6 +291,7 @@ topological_category_labels_latex = [
     r"dirt",
     r"ext",
     r"data",
+    r"NuWro fake data",
 ]
 topological_categories_dic = {topological_category_labels[i]: i for i in range(len(topological_category_labels))}
 
@@ -297,6 +305,7 @@ filetype_categories = [
     ("del1g_overlay",  "pl.col('filetype') == 'delete_one_gamma_overlay'",       "xkcd:yellow", "++++"),
     ("iso1g_overlay",  "pl.col('filetype') == 'isotropic_one_gamma_overlay'",    "xkcd:turquoise", "++++"),
     ("data",           "pl.col('filetype') == 'data'",                           "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'",    "xkcd:magenta", None),
 ]
 filetype_category_queries = [cat[1] for cat in filetype_categories]
 filetype_category_labels = [cat[0] for cat in filetype_categories]
@@ -311,10 +320,11 @@ erin_categories = [
     ("numuCC1pi0_inFV_no1gsig",  "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal", None),
     ("nueCC_inFV_no1gsig",       "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
     ("other_inFV_no1gsig",       "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan", None),
-    ("1gsig",                    "(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                                                                  "xkcd:fuchsia", None),
+    ("1gsig",                    "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                                        "xkcd:fuchsia", None),
     ("del1g_overlay",            "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow", "++++"),
     ("iso1g_overlay",            "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise", "++++"),
     ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'",                                                                                                                        "xkcd:magenta", None),
 ]
 
 erin_category_queries = [cat[1] for cat in erin_categories]
@@ -332,6 +342,7 @@ erin_category_labels_latex = [
     "del1g overlay",
     "iso1g overlay",
     "data",
+    "NuWro fake data",
 ]
 
 erin_Np0p_categories = [
@@ -342,11 +353,12 @@ erin_Np0p_categories = [
     ("numuCC1pi0_inFV_no1gsig", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal", None),
     ("nueCC_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
     ("other_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan", None),
-    ("1gsig_Np",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np')",                                                                                          "xkcd:red", None),
-    ("1gsig_0p",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p')",                                                                                          "xkcd:pink", None),
+    ("1gsig_Np",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np')",                                                                                          "xkcd:red", None),
+    ("1gsig_0p",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p')",                                                                                          "xkcd:pink", None),
     ("del1g_overlay",           "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow", "++++"),
     ("iso1g_overlay",           "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise", "++++"),
     ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
 ]
 erin_Np0p_category_queries = [cat[1] for cat in erin_Np0p_categories]
 erin_Np0p_category_labels = [cat[0] for cat in erin_Np0p_categories]
@@ -365,6 +377,7 @@ erin_Np0p_category_labels_latex = [
     "del1g overlay",
     "iso1g overlay",
     "data",
+    "NuWro fake data",
 ]
 
 erin_Np0pNn0n_categories = [
@@ -375,13 +388,14 @@ erin_Np0pNn0n_categories = [
     ("numuCC1pi0_inFV_no1gsig", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal", None),
     ("nueCC_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
     ("other_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan", None),
-    ("1gsig_NpNn",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np') & pl.col('wc_truth_Nn')",                                                                "xkcd:red", None),
-    ("1gsig_0pNn",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p') & pl.col('wc_truth_Nn')",                                                                "xkcd:pink", None),
-    ("1gsig_Np0n",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np') & pl.col('wc_truth_0n')",                                                                "xkcd:hot pink", None),
-    ("1gsig_0p0n",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p') & pl.col('wc_truth_0n')",                                                                "xkcd:light pink", None),
+    ("1gsig_NpNn",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np') & pl.col('wc_truth_Nn')",                                                                "xkcd:red", None),
+    ("1gsig_0pNn",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p') & pl.col('wc_truth_Nn')",                                                                "xkcd:pink", None),
+    ("1gsig_Np0n",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_Np') & pl.col('wc_truth_0n')",                                                                "xkcd:hot pink", None),
+    ("1gsig_0p0n",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & pl.col('wc_truth_0p') & pl.col('wc_truth_0n')",                                                                "xkcd:light pink", None),
     ("del1g_overlay",           "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow", "++++"),
     ("iso1g_overlay",           "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise", "++++"),
     ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
 ]
 erin_Np0pNn0n_category_queries = [cat[1] for cat in erin_Np0pNn0n_categories]
 erin_Np0pNn0n_category_labels = [cat[0] for cat in erin_Np0pNn0n_categories]
@@ -402,6 +416,7 @@ erin_Np0pNn0n_category_labels_latex = [
     "del1g overlay",
     "iso1g overlay",
     "data",
+    "NuWro fake data",
 ]
 
 erin_Np0pNn0n_pi0_categories = [
@@ -414,10 +429,11 @@ erin_Np0pNn0n_pi0_categories = [
     ("numuCC1pi0_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                 "xkcd:light teal", None),
     ("nueCC_inFV_no1gsig",           "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                            "xkcd:bright green", None),
     ("other_inFV_no1gsig",           "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",                                                "xkcd:cyan", None),
-    ("1gsig",                        "(pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                                                                                                             "xkcd:fuchsia", None),
+    ("1gsig",                        "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1)",                                                                                                                                                             "xkcd:fuchsia", None),
     ("del1g_overlay",                "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                                                                        "xkcd:yellow", "++++"),
     ("iso1g_overlay",                "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                                                                     "xkcd:turquoise", "++++"),
     ("data",                         "pl.col('filetype') == 'data'",                                                                                                                                                                            "xkcd:black", None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
 ]
 erin_Np0pNn0n_pi0_category_queries = [cat[1] for cat in erin_Np0pNn0n_pi0_categories]
 erin_Np0pNn0n_pi0_category_labels = [cat[0] for cat in erin_Np0pNn0n_pi0_categories]
@@ -437,6 +453,7 @@ erin_Np0pNn0n_pi0_category_labels_latex = [
     "del1g overlay",
     "iso1g overlay",
     "data",
+    "NuWro fake data",
 ]
 
 erin_intmode_categories = [
@@ -447,15 +464,16 @@ erin_intmode_categories = [
     ("numuCC1pi0_inFV_no1gsig", "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_numuCC') & pl.col('wc_truth_1pi0') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",      "xkcd:light teal",   None),
     ("nueCC_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & pl.col('wc_truth_nueCC') & ~(pl.col('erin_inclusive_1g_true_sig') == 1)",                                 "xkcd:bright green", None),
     ("other_inFV_no1gsig",      "pl.col('normal_overlay') & pl.col('wc_truth_inFV') & ~(pl.col('erin_inclusive_1g_true_sig') == 1) & ~pl.col('wc_truth_nueCC') & ~pl.col('wc_truth_1pi0')",     "xkcd:cyan",         None),
-    ("1gsig_qe",                "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 1)",                                                                              "tab:blue",          None),
-    ("1gsig_res",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 4)",                                                                              "tab:orange",        None),
-    ("1gsig_dis",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 3)",                                                                              "tab:green",         None),
-    ("1gsig_mec",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 10)",                                                                             "tab:red",           None),
-    ("1gsig_coh",               "(pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 5)",                                                                              "tab:purple",        None),
-    ("1gsig_other",             "(pl.col('erin_inclusive_1g_true_sig') == 1) & ~(pl.col('wc_truth_nuScatType') == 1) & ~(pl.col('wc_truth_nuScatType') == 4) & ~(pl.col('wc_truth_nuScatType') == 3) & ~(pl.col('wc_truth_nuScatType') == 10) & ~(pl.col('wc_truth_nuScatType') == 5)", "xkcd:light grey", None),
+    ("1gsig_qe",                "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 1)",                                                                              "tab:blue",          None),
+    ("1gsig_res",               "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 4)",                                                                              "tab:orange",        None),
+    ("1gsig_dis",               "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 3)",                                                                              "tab:green",         None),
+    ("1gsig_mec",               "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 10)",                                                                             "tab:red",           None),
+    ("1gsig_coh",               "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & (pl.col('wc_truth_nuScatType') == 5)",                                                                              "tab:purple",        None),
+    ("1gsig_other",             "(pl.col('normal_overlay') | (pl.col('filetype') == 'dirt_overlay')) & (pl.col('erin_inclusive_1g_true_sig') == 1) & ~(pl.col('wc_truth_nuScatType') == 1) & ~(pl.col('wc_truth_nuScatType') == 4) & ~(pl.col('wc_truth_nuScatType') == 3) & ~(pl.col('wc_truth_nuScatType') == 10) & ~(pl.col('wc_truth_nuScatType') == 5)", "xkcd:light grey", None),
     ("del1g_overlay",           "pl.col('filetype') == 'delete_one_gamma_overlay'",                                                                                                             "xkcd:yellow",       "++++"),
     ("iso1g_overlay",           "pl.col('filetype') == 'isotropic_one_gamma_overlay'",                                                                                                          "xkcd:turquoise",    "++++"),
     ("data",                    "pl.col('filetype') == 'data'",                                                                                                                                  "xkcd:black",        None),
+    ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'",                                                                                                                        "xkcd:magenta",      None),
 ]
 erin_intmode_category_queries  = [cat[1] for cat in erin_intmode_categories]
 erin_intmode_category_labels   = [cat[0] for cat in erin_intmode_categories]
@@ -478,4 +496,5 @@ erin_intmode_category_labels_latex = [
     "del1g overlay",
     "iso1g overlay",
     "data",
+    "NuWro fake data",
 ]

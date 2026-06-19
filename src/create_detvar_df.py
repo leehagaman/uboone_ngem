@@ -404,10 +404,28 @@ if __name__ == "__main__":
     print("doing post-processing that doesn't require vector variables using polars...")
 
     all_df = do_combined_postprocessing(all_df)
-    #normalizing_POT = 1.11e21
-    normalizing_POT = 2.098e19 + 4.038e19 # for run 4a and run 4b open data
-    
-    all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
+
+    # DetVar has no beam-on data, so the weighting normalizes each group to its
+    # nu_overlay CV POT (the goal_pot_filetypes=["data"] sum is zero -> nu_overlay
+    # fallback inside _compute_config_pot_dics).  total_pot is therefore ignored.
+    # The detvar covariance is a fractional (CV - var)/CV difference, so the
+    # absolute normalization cancels; the single "wc_net_weight" column matches
+    # what create_detvar_frac_cov_matrices reads.
+    detvar_weight_configs = [
+        dict(
+            name="detvar",
+            weight_col="wc_net_weight",
+            run_period_map={
+                "1": "1", "2": "2", "3": "3", "4a": "4a",
+                "4b": "4nota", "4c": "4nota", "4d": "4nota", "4bcd": "4nota", "5": "5",
+            },
+            goal_pot=None,
+            goal_pot_filetypes=["data"],
+            total_pot=None,
+            exclude_filetypes=[],
+        ),
+    ]
+    all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, detvar_weight_configs)
 
     all_df = add_signal_categories(all_df)
 

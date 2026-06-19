@@ -13,6 +13,58 @@ from .df_helpers import get_vals
 from .file_locations import intermediate_files_location
 
 
+# Map a net-weight column to its weighting-config name.  The per-run-period goal
+# POT and run period live in the suffixed helper columns
+# norm_goal_pot_<name> / normalizing_run_period_<name> that
+# do_orthogonalization_and_POT_weighting adds, so the POT a prediction is
+# normalized to is read straight from the dataframe (no hardcoded numbers here).
+NET_WEIGHT_CONFIG_NAME = {
+    "wc_net_weight_full_pred": "full_pred",
+    "wc_net_weight_open_data": "open_data",
+    "wc_net_weight_nuwro": "nuwro",
+    "run4b_only_wc_net_weight": "run4b_only",
+    "wc_net_weight": "detvar",
+}
+
+
+def derive_normalizing_POT(pred_sel_df, net_weight_var):
+    """Total goal POT the prediction is normalized to, read from the dataframe.
+
+    Sums one ``norm_goal_pot_<config>`` value per normalizing run period present in
+    ``pred_sel_df``, so a df filtered to a single run period yields that period's POT
+    and a combined df yields the total.  The numbers ultimately come from
+    pot_and_trigger_numbers.py via the weighting, so nothing is hardcoded here.
+    Returns None if the helper columns are absent (e.g. an older dataframe) or the
+    config name is unknown.
+
+    For each run period the single per-group goal POT is taken as the value carried
+    by the most rows -- this is robust to the rare appended (rad-corr / coherent-1g)
+    rows that may carry a stale goal POT, which would otherwise inflate the sum.
+    """
+    name = NET_WEIGHT_CONFIG_NAME.get(net_weight_var)
+    if name is None:
+        return None
+    nrp_col = f"normalizing_run_period_{name}"
+    goal_col = f"norm_goal_pot_{name}"
+    cols = (pred_sel_df.collect_schema().names()
+            if isinstance(pred_sel_df, pl.LazyFrame) else pred_sel_df.columns)
+    if nrp_col not in cols or goal_col not in cols:
+        return None
+    sub = pred_sel_df.select([nrp_col, goal_col])
+    if isinstance(sub, pl.LazyFrame):
+        sub = sub.collect()
+    sub = sub.filter(pl.col(goal_col).is_not_null() & pl.col(nrp_col).is_not_null())
+    if sub.height == 0:
+        return None
+    # one goal POT per run period = the value carried by the most rows in that period
+    per_nrp = (
+        sub.group_by([nrp_col, goal_col]).len()
+        .sort("len", descending=True)
+        .unique(subset=[nrp_col], keep="first")
+    )
+    return float(per_nrp.get_column(goal_col).sum())
+
+
 def custom_step(bins, counts, ax=None, **kwargs):
     extra_counts = np.concatenate([counts, [counts[-1]]])
     extra_counts = np.nan_to_num(extra_counts, nan=0, posinf=0, neginf=0)
@@ -332,11 +384,12 @@ def make_histogram_plot(
         # core information for plot
         pred_sel_df=None, data_sel_df=None, pred_and_data_sel_df=None, 
         bins=None, include_overflow=True, include_underflow=False, log_x=False, log_y=False, 
-        var=None, display_var=None, breakdown_type="del1g_detailed", 
-        net_weight_var="wc_net_weight",
+        var=None, display_var=None, breakdown_type="del1g_detailed",
+        net_weight_var="wc_net_weight_open_data",
         title=None, savename=None,
-        iso1g_norm_factor=None, del1g_norm_factor=None, 
-        include_data=True, additional_scaling_factor=1.0, data_type="4a+4b open data",
+        iso1g_norm_factor=None, del1g_norm_factor=None,
+        include_data=True, additional_scaling_factor=1.0, data_type="Runs 1-5 Open Data",
+        pred_normalizing_POT=None,
         include_legend=True, show=True,
         page_num=None,
         include_ratio=True, include_decomposition=False,
@@ -380,9 +433,23 @@ def make_histogram_plot(
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
-        data_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") == "data")        
+        data_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") == "data")
     elif pred_sel_df is None:
-        raise ValueError("Either pred_sel_df and or pred_and_data_sel_df must be provided")    
+        raise ValueError("Either pred_sel_df and or pred_and_data_sel_df must be provided")
+
+    # POT the prediction is normalized to, read from the df's norm_goal_pot_<config>
+    # column (per-run-period when filtered to one period, total when combined).
+    # An explicitly-passed pred_normalizing_POT overrides this.  If it still can't be
+    # determined, raise rather than guess, to avoid showing a misleading POT.
+    if pred_normalizing_POT is None:
+        pred_normalizing_POT = derive_normalizing_POT(pred_sel_df, net_weight_var)
+    if pred_normalizing_POT is None:
+        raise ValueError(
+            f"Could not determine the prediction normalizing POT for net_weight_var={net_weight_var!r}. "
+            f"Either pass pred_normalizing_POT explicitly, or use a net-weight column whose "
+            f"norm_goal_pot_<config> / normalizing_run_period_<config> helper columns are present in the "
+            f"dataframe (see NET_WEIGHT_CONFIG_NAME)."
+        )
 
     if bins is None: # automatically calculate binning
         pred_vals = get_vals(pred_sel_df, var)
@@ -501,22 +568,19 @@ def make_histogram_plot(
     max_y = np.max(pred_counts)
     ax1.plot([], [], c="k", lw=0.5, label=f"Total Pred: {tot_pred:.1f} ({tot_unweighted_pred:.0f})")
 
+    # POT used for the prediction y-axis label; may be overridden by a known
+    # data_type below.  None -> the y-axis label omits the POT.
+    data_pot = pred_normalizing_POT
+
     # optionally including data points
     if include_data:
         data_counts = np.histogram(get_vals(data_sel_df, var), bins=bins)[0]
         max_y = max(max_y, np.max(data_counts))
 
-        if data_type == "4a+4b open data":
-            data_pot = 2.098e19+4.038e19
-            data_label = f"{data_pot:.2e} POT Run 4a+4b Open Data ({np.sum(data_counts)})"
-        elif data_type == "4a open data":
-            data_pot = 2.098e19
-            data_label = f"{data_pot:.2e} POT Run 4a Open Data ({np.sum(data_counts)})"
-        elif data_type == "4b open data":
-            data_pot = 4.038e19
-            data_label = f"{data_pot:.2e} POT Run 4b Open Data ({np.sum(data_counts)})"
-        else:
-            raise ValueError(f"Invalid data type: {data_type}")
+        # data_type is a free-form descriptive label (e.g. "Runs 1-5 Open Data");
+        # the POT is taken from data_pot (derived from the df above), so no POT
+        # numbers are hardcoded here.
+        data_label = f"{data_pot:.2e} POT {data_type} ({np.sum(data_counts)})"
 
         ax1.errorbar(display_bin_centers, data_counts, yerr=np.sqrt(data_counts), fmt="o", color="k", lw=0.5, 
                     capsize=2, capthick=1, markersize=2, label=data_label)

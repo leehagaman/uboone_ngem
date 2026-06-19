@@ -100,8 +100,8 @@ def build_matrices(train_df, val_df, training_vars, signal_category_var, is_nc_c
             (pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")
         ).to_numpy().flatten().astype(int)
     else:
-        w_train = train_df.select("wc_net_weight").to_numpy().flatten()
-        w_val = val_df.select("wc_net_weight").to_numpy().flatten()
+        w_train = train_df.select("wc_net_weight_open_data").to_numpy().flatten()
+        w_val = val_df.select("wc_net_weight_open_data").to_numpy().flatten()
         y_train = train_df.select(signal_category_var).to_numpy().flatten()
         y_val = val_df.select(signal_category_var).to_numpy().flatten()
 

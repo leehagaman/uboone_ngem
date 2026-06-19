@@ -79,15 +79,21 @@ def _load_nc_coherent_simulation():
     return np.array(nc_coherent_gamma_costheta), np.array(nc_coherent_gamma_energy)
 
 
-def compute_nc_coh_1g_reweighting(df, make_plots=True):
+def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_weight_open_data"):
     """Compute and save the binned NC-coherent-1g reweighting from the dataframe.
 
     Replicates ``coherent_1g_reweighting.ipynb``. Accepts an eager polars
     DataFrame or a LazyFrame. Writes ``coh_1g_reweighting.parquet``
     to ``intermediate_files_location`` and (if ``make_plots``) all diagnostic
     plots to ``plots/coherent_1g_reweighting/``.
+
+    ``net_weight_var`` is the per-config net-weight column used to weight the iso1g
+    events when building the iso1g->coherent shape ratio (defaults to the open-data
+    weighting).  The saved weight is per-POT (the absolute normalization is divided
+    out and re-applied per config in apply_nc_coh_1g_reweighting), so this choice
+    only sets the iso1g shape used to derive the bin-by-bin reweighting.
     """
-    print("computing NC coherent 1g reweighting weights from the dataframe")
+    print(f"computing NC coherent 1g reweighting weights from the dataframe (net_weight_var={net_weight_var})")
 
     lf = df if isinstance(df, pl.LazyFrame) else df.lazy()
 
@@ -104,7 +110,7 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True):
         .select(
             "run", "subrun", "event",
             "wc_true_leading_shower_energy", "wc_true_leading_shower_costheta",
-            "wc_net_weight", "wc_truth_inFV",
+            net_weight_var, "wc_truth_inFV",
             "wc_truth_vtxX", "wc_truth_vtxY", "wc_truth_vtxZ",
         )
         .collect()
@@ -113,7 +119,7 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True):
 
     iso1g_costheta = iso1g_df["wc_true_leading_shower_costheta"].to_numpy()
     iso1g_energy   = iso1g_df["wc_true_leading_shower_energy"].to_numpy()
-    iso1g_w        = iso1g_df["wc_net_weight"].to_numpy()
+    iso1g_w        = iso1g_df[net_weight_var].to_numpy()
 
     if make_plots:
         _plot_input_distributions(
@@ -305,7 +311,9 @@ def _plot_reweighting(H_iso1g, H_coherent, H_iso1g_after,
                       H_iso1g_after_unweighted, event_weights):
     """3-panel reweighting comparison + unweighted + weight histogram (cell 6)."""
     vmax = max(H_coherent.max(), H_iso1g.max())
-    vmin = vmax * 1e-3 if vmax > 0 else 1e-10
+    if not (vmax > 0):  # empty/all-zero/NaN histogram (e.g. small --frac_events): avoid invalid LogNorm
+        vmax = 1.0
+    vmin = vmax * 1e-3
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     for ax, H, title in [
@@ -329,7 +337,9 @@ def _plot_reweighting(H_iso1g, H_coherent, H_iso1g_after,
     plt.close(fig)
 
     vmax = H_iso1g_after_unweighted.max()
-    vmin = vmax * 1e-3 if vmax > 0 else 1e-10
+    if not (vmax > 0):  # empty/all-zero/NaN histogram (e.g. small --frac_events): avoid invalid LogNorm
+        vmax = 1.0
+    vmin = vmax * 1e-3
     fig = plt.figure()
     plt.pcolormesh(bins_costheta, bins_energy, H_iso1g_after_unweighted.T, cmap='plasma',
                    shading='flat', norm=mcolors.LogNorm(vmin=vmin, vmax=vmax))
@@ -366,7 +376,9 @@ def _plot_sampling(iso1g_costheta, iso1g_energy, keep_mask,
         (axes[2], H_sampled,                f"Iso 1g after random sampling\n(unweighted, {target_fraction:.0%} target)"),
     ]:
         H_plot = np.where(H > 0, H, np.nan)
-        vmax = np.nanmax(H_plot)
+        vmax = np.nanmax(H_plot) if np.isfinite(H_plot).any() else 0.0
+        if not (vmax > 0):  # empty/all-zero/all-nan histogram (e.g. small --frac_events)
+            vmax = 1.0
         vmin = vmax * 1e-3
         im = ax.pcolormesh(bins_costheta, bins_energy, H_plot.T,
                            cmap='plasma', shading='flat',

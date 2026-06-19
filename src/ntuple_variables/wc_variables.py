@@ -372,7 +372,7 @@ taggerBR1_var = [
     # these are new
     "shw_sp_br_filled", "shw_sp_br1_flag", "shw_sp_br1_1_flag", "shw_sp_br1_1_energy", "shw_sp_br1_1_flag_sg_topology", "shw_sp_br1_1_flag_sg_trajectory",
     "shw_sp_br1_2_flag", "shw_sp_br1_2_energy", "shw_sp_br1_2_vtx_n_segs", "shw_sp_br1_3_flag", "shw_sp_br1_3_energy", "shw_sp_br1_3_n_connected_p", 
-    "shw_sp_br1_3_n_shower_segs", "shw_sp_br1_3_flag_sg_topology", "shw_sp_br1_3_flag_sg_trajectory", "shw_sp_br1_3_sg_length"
+    "shw_sp_br1_3_n_shower_segs", "shw_sp_br1_3_flag_sg_topology", "shw_sp_br1_3_flag_sg_trajectory", "shw_sp_br1_3_sg_length",
     # these are equivalents as before
     "shw_sp_br1_1_shower_type", "shw_sp_br1_1_vtx_n_segs", "shw_sp_br1_1_n_segs", "shw_sp_br1_1_sg_length",
     "shw_sp_br1_2_n_connected", "shw_sp_br1_2_max_length", "shw_sp_br1_2_n_connected_1", "shw_sp_br1_2_n_shower_segs",
@@ -381,7 +381,7 @@ taggerBR3_var = [
     # these are new
     "shw_sp_br3_1_energy", "shw_sp_br3_1_sg_flag_trajectory", "shw_sp_br3_1_iso_angle", "shw_sp_br3_1_sg_flag_topology", "shw_sp_br3_1_flag", "shw_sp_br3_2_energy", 
     "shw_sp_br3_2_total_main_length", "shw_sp_br3_2_total_length", "shw_sp_br3_2_flag", "shw_sp_br3_4_energy", "shw_sp_br3_4_flag",
-    "shw_sp_br3_7_energy", "shw_sp_br3_7_min_angle","shw_sp_br3_7_sg_length","shw_sp_br3_7_shower_main_length","shw_sp_br3_7_flag",
+    "shw_sp_br3_7_energy", "shw_sp_br3_7_min_angle","shw_sp_br3_7_sg_length","shw_sp_br3_7_main_length","shw_sp_br3_7_flag",
     "shw_sp_br3_8_energy","shw_sp_br3_8_shower_main_length","shw_sp_br3_8_shower_length","shw_sp_br3_8_flag","shw_sp_br3_flag",
     # these are equivalents as before
     "shw_sp_br3_1_n_shower_segments", "shw_sp_br3_1_sg_direct_length", "shw_sp_br3_1_sg_length", "shw_sp_br3_1_total_main_length",
@@ -400,7 +400,7 @@ taggerTRO_var = ["tro_3_stem_length","tro_3_n_muon_segs"]
 
 taggerBR4_var = [
     # these are new
-    "shw_sp_br4_1_flag","shw_sp_br4_2_energy","shw_sp_br4_2_flag","shw_sp_br4_flag"
+    "shw_sp_br4_1_flag","shw_sp_br4_2_energy","shw_sp_br4_2_flag","shw_sp_br4_flag",
     # these are equivalents as before
     "shw_sp_br4_1_shower_main_length","shw_sp_br4_1_shower_total_length","shw_sp_br4_1_min_dis","shw_sp_br4_1_energy",
     "shw_sp_br4_1_flag_avoid_muon_check","shw_sp_br4_1_n_vtx_segs","shw_sp_br4_1_n_main_segs","shw_sp_br4_2_ratio_45",

@@ -17,14 +17,147 @@ from postprocessing import do_orthogonalization_and_POT_weighting, apply_rootino
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables, change_dtypes
-from postprocessing import compute_1g1mu_rad_corr_reweighting, apply_1g1mu_rad_corr_reweighting
-from postprocessing import compute_nc_coh_1g_reweighting, apply_nc_coh_1g_reweighting
+from postprocessing import apply_1g1mu_rad_corr_reweighting, apply_nc_coh_1g_reweighting
+from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
+from coh_1g_reweighting import compute_nc_coh_1g_reweighting
 from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dalitz_reweighting
 from pion_fsi_reweighting import compute_pion_fsi_weights_from_arrays
 
 from file_locations import data_files_location, intermediate_files_location
 
+from pot_and_trigger_numbers import (
+    open_data_POT, open_data_num_triggers, ext_num_triggers,
+    ext_pot_normalizing_period, expected_full_dataset_data_POT,
+)
+
 from memory_monitoring import start_memory_logger
+
+
+def get_weight_configs():
+    """The standard set of POT-weighting configs passed to
+    do_orthogonalization_and_POT_weighting.
+
+    Each produces its own net-weight column (and suffixed helper columns) so the
+    same dataframe can be histogrammed at several normalizations at once.  See the
+    do_orthogonalization_and_POT_weighting docstring for the config schema.  The
+    per-run-period POT/trigger numbers live in pot_and_trigger_numbers.py.
+
+    run_period_map maps the file run period to the normalizing run period (data run period).
+    POT weighting is done independently in each normalizing run period.
+    """
+    return [
+        # Runs 1-5 full prediction: overlays (+ EXT, dirt) normalized to the
+        # expected full-dataset data POT in each period.  Real data is excluded
+        # (only the small open-data subset exists); NuWro fake data is excluded.
+        # Run 4a is kept separate; runs 4b/4c/4d/4bcd are grouped as "4nota".
+        dict(
+            name="full_pred",
+            weight_col="wc_net_weight_full_pred",
+            run_period_map={
+                "1": "1", "2": "2", "3": "3", "4a": "4a",
+                "4b": "4nota", "4c": "4nota", "4d": "4nota", "4bcd": "4nota", "5": "5",
+            },
+            goal_pot=expected_full_dataset_data_POT,
+            goal_pot_filetypes=None,
+            total_pot=None,
+            exclude_filetypes=["data", "nuwro_fake_data"],
+        ),
+        # Runs 1-5 open data: overlays normalized per-group to the open data POT.
+        #   run 1 overlays      -> run 1 open data
+        #   runs 2-3 overlays    -> run 3 open data (run 2 has no open data)
+        #   run 4a overlays      -> run 4a open data
+        #   runs 4nota5 overlays   -> run 4b open data
+        dict(
+            name="open_data",
+            weight_col="wc_net_weight_open_data",
+            run_period_map={
+                "1": "1", "2": "23", "3": "23", "4a": "4a",
+                "4b": "4nota5", "4c": "4nota5", "4d": "4nota5", "4bcd": "4nota5", "5": "4nota5",
+            },
+            goal_pot=None,
+            goal_pot_filetypes=["data"],
+            total_pot=None,
+            exclude_filetypes=["nuwro_fake_data"],
+        ),
+        # NuWro fake data: overlays normalized per-group to the NuWro fake-data POT
+        # (NuWro plays the data role).  NuWro exists for periods 1, 2, 3, 4a, 4c, 5;
+        # runs 4b/4d/4bcd overlays are folded into the run 4c group to boost MC
+        # stats there.  EXT, dirt, and real data are excluded (not part of the
+        # fake-data study).
+        dict(
+            name="nuwro",
+            weight_col="wc_net_weight_nuwro",
+            run_period_map={
+                "1": "1", "2": "2", "3": "3", "4a": "4a",
+                "4b": "4c", "4c": "4c", "4d": "4c", "4bcd": "4c", "5": "5",
+            },
+            goal_pot=None,
+            goal_pot_filetypes=["nuwro_fake_data"],
+            total_pot=None,
+            exclude_filetypes=["data", "ext", "dirt_overlay"],
+        ),
+        # Legacy run-4b-only weighting (kept for notebooks that still use
+        # run4b_only_wc_net_weight): only run 4b events get a weight.
+        dict(
+            name="run4b_only",
+            weight_col="run4b_only_wc_net_weight",
+            run_period_map={"4b": "4b"},
+            goal_pot=None,
+            goal_pot_filetypes=["data"],
+            total_pot=None,
+            exclude_filetypes=[],
+        ),
+    ]
+
+
+def _detailed_run_period_from_filename(filename):
+    """Infer the detailed_run_period (e.g. "1", "4a", "4bcd") from a filename.
+
+    Checks explicit run-period filename suffixes first, then a few special open
+    data filenames, then falls back to substring matches on the lowercased name.
+    """
+    # special-case the runs 1-3 open data files, whose "..._N_<X>e19opendata.root"
+    # names contain misleading digits ("5e19", "1e19") that would trip the
+    # generic "<N>.root" suffix checks below.
+    if "_1_5e19opendata.root" in filename:
+        return "1"
+    if "_3_1e19opendata.root" in filename:
+        return "3"
+
+    if "1.root" in filename:
+        return "1"
+    elif "2.root" in filename:
+        return "2"
+    elif "3.root" in filename:
+        return "3"
+    elif "4a.root" in filename:
+        return "4a"
+    elif "4b.root" in filename:
+        return "4b"
+    elif "4c.root" in filename:
+        return "4c"
+    elif "4d.root" in filename:
+        return "4d"
+    elif "4bcd.root" in filename:
+        return "4bcd"
+    elif "5.root" in filename:
+        return "5"
+    # if the filename doesn't end with the run period, look for run strings
+    elif "4a" in filename.lower():
+        return "4a"
+    elif "run4b" in filename.lower():
+        return "4b"
+    elif "run4c" in filename.lower():
+        return "4c"
+    elif "run4d" in filename.lower():
+        return "4d"
+    elif "run4bcd" in filename.lower():
+        return "4bcd"
+    elif "run5" in filename.lower():
+        return "5"
+    else:
+        raise ValueError("Invalid detailed run period!", filename)
+
 
 def _filetype_from_filename(filename):
     fn = filename.lower()
@@ -78,84 +211,25 @@ def _get_file_metadata(filename, frac_events=1):
         print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
         curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
 
-    # data and EXT POT and trigger numbers from https://docs.google.com/spreadsheets/d/1RUiX2M6zoob9R0YWPLummHzmX5UeLLEtS-7ZU-x2gA4
-    # also from Karan's processing, https://docs.google.com/document/d/1SWZtfo9MIGpODVopGwWTM2LNEN-d7GmkWhYOmChK4kk/edit?tab=t.0
-
-    # using these numbers for now
-    # eventually can replace these with the full data statistics, to get a more accurate POT/trigger ratio in each run period
-    run4a_open_data_POT = 2.098e19
-    run4a_open_data_num_triggers = 4836758
-    run4a_pot_per_trigger = run4a_open_data_POT / run4a_open_data_num_triggers
-
-    run4b_open_data_POT = 4.038e19
-    run4b_open_data_num_triggers = 9218529
-    run4b_pot_per_trigger = run4b_open_data_POT / run4b_open_data_num_triggers
+    detailed_run_period = _detailed_run_period_from_filename(filename)
 
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     f.close()
 
+    # overwrite POT saved in the file for EXT and data, these need to instead use Zarko's tool
+    # see src/pot_and_trigger_numbers.py and ipynb_notebooks/pot_and_trigger_processing.ipynb for more details
     if filetype == "ext":
-        # TODO: add runs 1-3 num triggers here
-        if filename == "checkout_MCC9.10_Run4a_BNB_beam_off_data_surprise_reco2_hist.root": # run 4a
-            run4a_ext_num_triggers = 27940007
-            file_POT_total = run4a_ext_num_triggers * run4a_pot_per_trigger
-        elif filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root": # run 4b
-            run4b_ext_num_triggers = 89010180
-            file_POT_total = run4b_ext_num_triggers * run4b_pot_per_trigger
-        elif filename == "checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_4c.root": # run 4c
-            run4b_ext_num_triggers = 53659787
-            file_POT_total = run4b_ext_num_triggers * run4b_pot_per_trigger
-        elif filename == "checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_4d.root": # run 4d
-            run4b_ext_num_triggers = 76563108
-            file_POT_total = run4b_ext_num_triggers * run4b_pot_per_trigger
-        elif filename == "checkout_MCC9.10_Run4acd5_v10_04_07_14_BNB_beam_off_surprise_reco2_hist_5.root": # run 5
-            run4b_ext_num_triggers = 111457148
-            file_POT_total = run4b_ext_num_triggers * run4b_pot_per_trigger
-        else:
-            raise ValueError("Invalid EXT file, num triggers not found!")
+        if detailed_run_period not in ext_num_triggers:
+            raise ValueError("EXT file num triggers not found!", filename, detailed_run_period)
+        norm_period = ext_pot_normalizing_period[detailed_run_period]
+        data_pot_per_trigger = open_data_POT[norm_period] / open_data_num_triggers[norm_period]
+        file_POT_total = ext_num_triggers[detailed_run_period] * data_pot_per_trigger
     elif filetype == "data":
-        if filename == "checkout_MCC9.10_Run4a_BNB_beam_on_data_surprise_reco2_hist_opendata_19550.root": # run 4a open data
-            file_POT_total = run4a_open_data_POT
-        elif filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root": # run 4b open data
-            file_POT_total = run4b_open_data_POT
-        else:
-            raise ValueError("Invalid data file!")
+        if detailed_run_period not in open_data_POT:
+            raise ValueError("Beam-on data file POT not found!", filename, detailed_run_period)
+        file_POT_total = open_data_POT[detailed_run_period]
 
     file_POT = file_POT_total * frac_events
-
-    detailed_run_period = "?"
-    if "1.root" in filename:
-        detailed_run_period = "1"
-    elif "2.root" in filename:
-        detailed_run_period = "2"
-    elif "3.root" in filename:
-        detailed_run_period = "3"
-    elif "4a.root" in filename:
-        detailed_run_period = "4a"
-    elif "4b.root" in filename:
-        detailed_run_period = "4b"
-    elif "4c.root" in filename:
-        detailed_run_period = "4c"
-    elif "4d.root" in filename:
-        detailed_run_period = "4d"
-    elif "4bcd.root" in filename:
-        detailed_run_period = "4bcd"
-    elif "5.root" in filename:
-        detailed_run_period = "5"
-    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
-        detailed_run_period = "4a"
-    elif "run4b" in filename.lower():
-        detailed_run_period = "4b"
-    elif "run4c" in filename.lower():
-        detailed_run_period = "4c"
-    elif "run4d" in filename.lower():
-        detailed_run_period = "4d"
-    elif "run4bcd" in filename.lower():
-        detailed_run_period = "4bcd"
-    elif "run5" in filename.lower():
-        detailed_run_period = "5"
-    else:
-        raise ValueError("Invalid detailed run period!", filename)
 
     return {
         "filetype": filetype,
@@ -166,6 +240,29 @@ def _get_file_metadata(filename, frac_events=1):
         "curr_wc_T_BDT_including_training_vars": curr_wc_T_BDT_including_training_vars,
         "curr_wc_T_pf_vars": curr_wc_T_pf_vars,
     }
+
+
+def _arrays_filling_missing(tree, varlist, slice_kwargs, n_rows, filename, tree_label):
+    """Read varlist from an uproot tree, tolerating branches absent in this file.
+
+    Some files in the heterogeneous set (e.g. the Run123 run-1/run-2 ntuples) lack
+    branches that others have (e.g. the Pandora _closestNuCosmicDist).  Reading a
+    missing branch raises KeyInFileError, so instead we read only the branches that
+    exist and fill the missing ones with NaN, keeping the output column schema
+    consistent across all files.
+    """
+    available = set(tree.keys())
+    present = [v for v in varlist if v in available]
+    missing = [v for v in varlist if v not in available]
+    dic = {}
+    if present:
+        dic.update(tree.arrays(present, library="np", **slice_kwargs))
+    if missing:
+        print(f"    WARNING: {tree_label}: {len(missing)} branch(es) missing in {filename}, "
+              f"filling with NaN: {missing}")
+        for v in missing:
+            dic[v] = np.full(n_rows, np.nan)
+    return dic
 
 
 def _load_chunk(filename, filetype, detailed_run_period, file_POT,
@@ -194,17 +291,19 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
     del dic
     all_df["wc_file_POT"] = file_POT
 
+    n_rows = len(all_df)
+
     # loading blip variables (blip variables already have the "blip_" prefix)
-    dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["nuselection"]["NeutrinoSelectionFilter"], blip_vars,
+                                  slice_kwargs, n_rows, filename, "blip")
     blip_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
     del dic
     all_df = pd.concat([all_df, blip_df], axis=1)
     del blip_df
 
     # loading pandora variables
-    dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pandora_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["nuselection"]["NeutrinoSelectionFilter"], pandora_vars,
+                                  slice_kwargs, n_rows, filename, "pandora")
     pandora_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("pandora_")
     del dic
     all_df = pd.concat([all_df, pandora_df], axis=1)
@@ -236,18 +335,19 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
         del mcg
 
     # loading gLEE variables
-    dic = {}
-    dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["singlephotonana"]["vertex_tree"], glee_vars,
+                                  slice_kwargs, n_rows, filename, "glee vertex_tree")
     if filetype != "ext" and filetype != "data":
-        dic.update(f["singlephotonana"]["eventweight_tree"].arrays(glee_eventweight_vars, library="np", **slice_kwargs))
+        dic.update(_arrays_filling_missing(f["singlephotonana"]["eventweight_tree"], glee_eventweight_vars,
+                                           slice_kwargs, n_rows, filename, "glee eventweight_tree"))
     glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("glee_")
     del dic
     all_df = pd.concat([all_df, glee_df], axis=1)
     del glee_df
 
     # loading LANTERN variables
-    dic = {}
-    dic.update(f["lantern"]["EventTree"].arrays(lantern_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["lantern"]["EventTree"], lantern_vars,
+                                  slice_kwargs, n_rows, filename, "lantern")
     lantern_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("lantern_")
     del dic
     all_df = pd.concat([all_df, lantern_df], axis=1)
@@ -327,6 +427,9 @@ if __name__ == "__main__":
 
         filenames = []
         for filename in filenames_with_unused:
+            if not filename.endswith(".root"):  # skip .csv / .npz / other non-ROOT files in the directory
+                continue
+
             if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
                 continue
 
@@ -356,6 +459,12 @@ if __name__ == "__main__":
             file_POT = meta["file_POT"]
             n_events = meta["n_events"]
 
+            # each (filetype, detailed_run_period) should come from exactly one file
+            if (filetype, detailed_run_period) in pot_dic:
+                raise ValueError(
+                    f"Multiple files map to the same (filetype, detailed_run_period) "
+                    f"key ({filetype}, {detailed_run_period})! Latest file: {filename}"
+                )
             pot_dic[(filetype, detailed_run_period)] = file_POT
 
             n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
@@ -475,12 +584,23 @@ if __name__ == "__main__":
             if file.startswith("curr_df_pl_") and file.endswith(".parquet")
         ])
         print(f"Found {len(parquet_files)} parquet files")
-        all_df = pl.scan_parquet(parquet_files, missing_columns="insert", extra_columns="ignore").collect()
+
+        # Files have differing schemas (overlays carry the wc_truth_* / hA2025 /
+        # WCPMTInfo columns that data/EXT lack, while data/EXT carry wc_evtTimeNS
+        # that overlays lack), so no single file's schema is a superset.  Union all
+        # columns with a diagonal concat (missing entries filled with null) rather
+        # than scan_parquet + extra_columns="ignore", which keys off the first
+        # file's schema and would silently drop columns absent from it (e.g. all
+        # wc_truth_* when a Run123 EXT file happens to sort first).
+        all_df = pl.concat(
+            [pl.scan_parquet(p) for p in parquet_files],
+            how="diagonal_relaxed",
+        ).collect()
         print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
         
         # Validate filetype column immediately after concatenation
         known_filetypes = {
-            "ext", "data", "nu_overlay", "nue_overlay", "dirt_overlay",
+            "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
             "nc_pi0_overlay", "numucc_pi0_overlay",
             "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
         }
@@ -576,23 +696,9 @@ if __name__ == "__main__":
         print(f"Memory saved: {memory_before - memory_after:.4f} GB ({(memory_before - memory_after) / memory_before * 100:.1f}%)")
         gc.collect()
 
-        normalizing_POT = 0
-        for key, value in pot_dic.items():
-            if key[0] == "data":
-                normalizing_POT += value
-        if normalizing_POT == 0:
-            normalizing_POT = 1.11e21 # if we don't use a data file, assume we want full runs 1-5 data
-
-        run4b_normalizing_POT = 0
-        for key, value in pot_dic.items():
-            if key[0] == "data" and key[1] == "4b":
-                run4b_normalizing_POT += value
-        if run4b_normalizing_POT == 0:
-            run4b_normalizing_POT = normalizing_POT
-
-        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=normalizing_POT)
-        all_df = apply_rootino_correction(all_df, pot_dic, weight_col="wc_net_weight")
-        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, normalizing_POT=run4b_normalizing_POT, run4b_only=True)
+        weight_configs = get_weight_configs()
+        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, weight_configs)
+        all_df = apply_rootino_correction(all_df, pot_dic, weight_configs)
 
         # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
         new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
@@ -653,14 +759,13 @@ if __name__ == "__main__":
         # First compute the binned reweighting from the dataframe (replacing the
         # manual rad_corrections_reweighting.ipynb / coherent_1g_reweighting.ipynb
         # step), writing it to parquet, then apply it to produce the new rows.
+        # The compute step uses the open-data weighting to build the binned shapes
+        # (default net_weight_var); the apply step produces a weight column per
+        # config, each normalized to that config's full goal POT.
         compute_1g1mu_rad_corr_reweighting(all_lf)
-        # rad-corr: normalizing_POT left as default (derived from the df's per-run-period
-        # norm_goal_pot, currently run-4b only) to preserve the existing normalization.
-        rad_corrected_df = apply_1g1mu_rad_corr_reweighting(all_lf)
+        rad_corrected_df = apply_1g1mu_rad_corr_reweighting(all_lf, pot_dic, weight_configs)
         compute_nc_coh_1g_reweighting(all_lf)
-        # coherent: previously hardcoded current_normalizing_POT (run 4a+4b open data POT),
-        # which equals create_df's normalizing_POT, so passing it preserves behavior.
-        coherent_1g_df = apply_nc_coh_1g_reweighting(all_lf, normalizing_POT=normalizing_POT)
+        coherent_1g_df = apply_nc_coh_1g_reweighting(all_lf, pot_dic, weight_configs)
         del all_lf
 
         # pi0 Dalitz Geant4->EvtGen reweighting: build the bin-by-bin weight grid from
@@ -684,26 +789,31 @@ if __name__ == "__main__":
         gc.collect()
         print(f"  all_df has {all_df.height} rows after adding rad_corr and coherent events")
 
-        # Apply the pi0 Dalitz reweighting in-place to the full df: adds a
-        # standalone pi0_dalitz_reweight_weight column (1.0 for non-Dalitz events) and
-        # multiplies it into wc_net_weight.
+        # pi0 Dalitz reweighting: adds the standalone pi0_dalitz_reweight_weight
+        # column (1.0 for non-Dalitz events).
         all_df = apply_pi0_dalitz_reweighting(all_df)
 
         # hA2025 pion-FSI (charge-exchange etc.) reweighting.  Both per-event
         # columns are computed in _load_chunk for the GENIE overlays and absent
         # elsewhere (data/EXT/NuWro/isotropic-1g, and the derived rad-corr /
         # coherent-1g rows); default them to 1.0 wherever missing.  Only
-        # hA2025_pion_fsi_rw_weight is folded into wc_net_weight (the default);
+        # hA2025_pion_fsi_rw_weight is folded into the net weights;
         # additional_hA2025c_weight is kept standalone (multiply it onto
         # hA2025_pion_fsi_rw_weight to get the hA2025c variant).
         for _col in ("hA2025_pion_fsi_rw_weight", "additional_hA2025c_weight"):
             if _col not in all_df.columns:
                 all_df = all_df.with_columns(pl.lit(1.0).alias(_col))
             all_df = all_df.with_columns(pl.col(_col).fill_null(1.0).cast(pl.Float32))
-        all_df = all_df.with_columns(
-            (pl.col("wc_net_weight") * pl.col("hA2025_pion_fsi_rw_weight"))
-            .cast(pl.Float32).alias("wc_net_weight")
-        )
+
+        # Fold the per-event pi0-Dalitz and hA2025 pion-FSI factors into every
+        # per-config net-weight column.  Both are 1.0 where not applicable, and
+        # null weights (events excluded from a config) stay null.
+        weight_cols = [c["weight_col"] for c in weight_configs]
+        all_df = all_df.with_columns([
+            (pl.col(wcol) * pl.col("pi0_dalitz_reweight_weight") * pl.col("hA2025_pion_fsi_rw_weight"))
+            .cast(pl.Float32).alias(wcol)
+            for wcol in weight_cols
+        ])
 
         dup_mask = pl.struct("filetype", "run", "subrun", "event").is_duplicated()
         n_dups = all_df.select(dup_mask.sum()).item()

@@ -56,7 +56,6 @@ _RELEVANT_VARS = [
     "wc_true_leading_shower_costheta",
     "wc_true_leading_shower_phi",
     "wc_true_sum_prim_proton_energy",
-    "wc_net_weight",
 ]
 
 
@@ -190,7 +189,7 @@ def _reproduction_and_theory_plots():
     plt.close(fig)
 
 
-def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
+def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_net_weight_open_data"):
     """Compute and save the binned 1g1mu radiative-correction reweighting from the dataframe.
 
     Replicates ``rad_corrections_reweighting.ipynb``. Accepts an eager
@@ -198,8 +197,15 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
     ``numuCC_rad_corr_1g_reweighting.parquet`` to ``intermediate_files_location``
     and (if ``make_plots``) all diagnostic plots to
     ``plots/rad_corrections_reweighting/``.
+
+    ``net_weight_var`` is the per-config net-weight column used to weight events
+    when building the binned reweighting (defaults to the open-data weighting).
+    The saved binned weights are POT-independent (the x_eta and fix_del1g factors
+    carry canceling POT dependence), so this choice only affects the relative
+    weighting of events within each bin, not the final per-config normalization
+    (that is applied later by apply_1g1mu_rad_corr_reweighting).
     """
-    print("computing del1g radiative-correction weights from the dataframe")
+    print(f"computing del1g radiative-correction weights from the dataframe (net_weight_var={net_weight_var})")
 
     lf = df if isinstance(df, pl.LazyFrame) else df.lazy()
 
@@ -207,13 +213,15 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
     if make_plots:
         _reproduction_and_theory_plots()
 
+    select_vars = _RELEVANT_VARS + [net_weight_var]
+
     # ── Load del1g and normal numuCC events (cell 9) ──────────────────────────
     del1g_numuCC_df = (
         lf.filter(
             (pl.col("filetype") == "delete_one_gamma_overlay")
             & (pl.col("wc_truth_muonMomentum_3") > 0.0)
         )
-        .select(_RELEVANT_VARS)
+        .select(select_vars)
         .collect()
     )
     normal_numuCC_df = (
@@ -221,7 +229,7 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
             (pl.col("filetype") != "delete_one_gamma_overlay")
             & (pl.col("wc_truth_muonMomentum_3") > 0.0)
         )
-        .select(_RELEVANT_VARS)
+        .select(select_vars)
         .collect()
     )
     del1g_numuCC_df_input_count = del1g_numuCC_df.height
@@ -284,7 +292,7 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
     rad_corr_E_tree_arr = np.array(del1g_numuCC_df["rad_corr_E_tree"])
     rad_corr_x_arr      = np.array(del1g_numuCC_df["rad_corr_x"])
     rad_corr_eta_arr    = np.array(del1g_numuCC_df["rad_corr_eta"])
-    weights_arr         = np.array(del1g_numuCC_df["wc_net_weight"])
+    weights_arr         = np.array(del1g_numuCC_df[net_weight_var])
 
     x_eta_uniform_weight = np.zeros(len(rad_corr_E_tree_arr))
     for panel_idx in range(len(Etree_edges) - 1):
@@ -315,12 +323,12 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
     # ── fix_del1g_weight (cell 14) ────────────────────────────────────────────
     del1g_KE = np.array(del1g_numuCC_df["wc_truth_muonMomentum_3"]) * 1000.0 - m_mu
     del1g_proton_E = np.array(del1g_numuCC_df["wc_true_sum_prim_proton_energy"])
-    del1g_w = np.array(del1g_numuCC_df["wc_net_weight"])
+    del1g_w = np.array(del1g_numuCC_df[net_weight_var])
     del1g_xeta_w = np.array(del1g_numuCC_df["x_eta_uniform_weight"])
 
     normal_KE = np.array(normal_numuCC_df["wc_truth_muonMomentum_3"]) * 1000.0 - m_mu
     normal_proton_E = np.array(normal_numuCC_df["wc_true_sum_prim_proton_energy"])
-    normal_w = np.array(normal_numuCC_df["wc_net_weight"])
+    normal_w = np.array(normal_numuCC_df[net_weight_var])
 
     bins_mu_ke = np.concatenate([np.linspace(0, 2000, 41), [1e6]])
     bins_proton_e = np.concatenate([np.linspace(0, 1000, 41), [1e6]])
@@ -347,7 +355,7 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True):
             del1g_KE, del1g_proton_E, del1g_w, del1g_xeta_w, event_weight_ratios,
             normal_KE, normal_proton_E, normal_w, normal_numuCC_df["wc_true_muon_costheta"].to_numpy(),
             bins_mu_ke, bins_proton_e, H_del1g, H_normal)
-        _plot_muon_gamma_diagnostics(del1g_numuCC_df)
+        _plot_muon_gamma_diagnostics(del1g_numuCC_df, net_weight_var)
 
     # ── Save weights (cell 15) ────────────────────────────────────────────────
     weights_to_save = del1g_numuCC_df.filter(
@@ -418,8 +426,11 @@ def _plot_3d_x_eta(rad_corr_E_tree_arr, rad_corr_x_arr, rad_corr_eta_arr,
         x_edges   = np.linspace(0, 1, N_x + 1)
         eta_edges = np.linspace(0, np.max(eta_sel), N_eta + 1)
         H, _, _ = np.histogram2d(x_sel, eta_sel, bins=[x_edges, eta_edges], weights=w_sel)
-        vmax = H.max()
-        vmin = vmax * 1e-3 if vmax > 0 else 1e-10
+        # robust to empty / all-zero / NaN histograms (e.g. small --frac_events):
+        # use only finite positive bins so LogNorm always gets a valid vmin < vmax
+        finite_pos = H[np.isfinite(H) & (H > 0)]
+        vmax = float(finite_pos.max()) if finite_pos.size else 1.0
+        vmin = vmax * 1e-3
         H_plot = np.where(H > 0, H, np.nan)
         im = ax.pcolormesh(x_edges, eta_edges, H_plot.T, cmap='plasma', shading='flat',
                            norm=mcolors.LogNorm(vmin=vmin, vmax=vmax))
@@ -490,8 +501,11 @@ def _plot_energy_diagnostics(del1g_numuCC_df, normal_numuCC_df,
         (axes[1], H_normal,      "Normal overlay (target)"),
         (axes[2], H_del1g_after, "Del1g after fix_del1g_weight"),
     ]:
-        vmax = H.max()
-        vmin = vmax * 1e-3 if vmax > 0 else 1e-10
+        # robust to empty / all-zero / NaN histograms (e.g. small --frac_events):
+        # use only finite positive bins so LogNorm always gets a valid vmin < vmax
+        finite_pos = H[np.isfinite(H) & (H > 0)]
+        vmax = float(finite_pos.max()) if finite_pos.size else 1.0
+        vmin = vmax * 1e-3
         H_plot = np.where(H > 0, H, np.nan)
         im = ax.pcolormesh(bins_mu_ke, bins_proton_e, H_plot.T,
                            cmap='plasma', shading='flat',
@@ -575,9 +589,9 @@ def _plot_energy_diagnostics(del1g_numuCC_df, normal_numuCC_df,
     plt.close(fig)
 
 
-def _plot_muon_gamma_diagnostics(del1g_numuCC_df):
+def _plot_muon_gamma_diagnostics(del1g_numuCC_df, net_weight_var="wc_net_weight_open_data"):
     """x / eta / rad_frac_x_eta distributions for fully reweighted events (cell 17)."""
-    full_w = (del1g_numuCC_df["wc_net_weight"] * del1g_numuCC_df["x_eta_uniform_weight"]
+    full_w = (del1g_numuCC_df[net_weight_var] * del1g_numuCC_df["x_eta_uniform_weight"]
               * del1g_numuCC_df["fix_del1g_weight"] * del1g_numuCC_df["rad_frac_x_eta"])
 
     fig = plt.figure(figsize=(10, 6))
