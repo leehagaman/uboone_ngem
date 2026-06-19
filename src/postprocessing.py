@@ -934,12 +934,25 @@ def do_wc_postprocessing(df):
     shower_thetas = []
     shower_phis = []
     distances_to_boundary = []
+    nu_distances_to_boundary = []
     backwards_projected_dists = []
     reco_shower_momentum = df["wc_reco_showerMomentum"].to_numpy()
     reco_shw_vtx_x = df["wc_reco_showervtxX"].to_numpy()
     reco_shw_vtx_y = df["wc_reco_showervtxY"].to_numpy()
     reco_shw_vtx_z = df["wc_reco_showervtxZ"].to_numpy()
+    reco_nu_vtx_x = df["wc_reco_nuvtxX"].to_numpy()
+    reco_nu_vtx_y = df["wc_reco_nuvtxY"].to_numpy()
+    reco_nu_vtx_z = df["wc_reco_nuvtxZ"].to_numpy()
     for i in tqdm(range(df.shape[0]), desc="Adding WC shower position and angle variables", mininterval=10):
+
+        nu_distances_to_boundary.append(np.min([
+            abs(reco_nu_vtx_x[i] - (-1.)),
+            abs(reco_nu_vtx_x[i] - (254.3)),
+            abs(reco_nu_vtx_y[i] - (-115.)),
+            abs(reco_nu_vtx_y[i] - (117.)),
+            abs(reco_nu_vtx_z[i] - (0.6)),
+            abs(reco_nu_vtx_z[i] - (1036.4))
+        ]))
 
         if isinstance(reco_shower_momentum[i], float) and np.isnan(reco_shower_momentum[i]):
             shower_thetas.append(np.nan)
@@ -1020,6 +1033,7 @@ def do_wc_postprocessing(df):
     df["wc_reco_shower_theta"] = shower_thetas
     df["wc_reco_shower_phi"] = shower_phis
     df["wc_reco_distance_to_boundary"] = distances_to_boundary
+    df["wc_reco_nu_distance_to_boundary"] = nu_distances_to_boundary
     df["wc_reco_backwards_projected_dist"] = backwards_projected_dists
 
     max_prim_proton_energies = []
