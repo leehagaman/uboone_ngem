@@ -1556,13 +1556,17 @@ def do_spacepoint_postprocessing(df):
     return df
 
 
-def _add_signal_category(all_df, name, queries, labels, debug_columns=None):
-    """Assign a `<name>_signal_category` integer column and verify the
-    categories are exhaustive and mutually exclusive.
+def _add_signal_category(all_df, name, queries, labels, debug_columns=None, verify=True):
+    """Assign a `<name>_signal_category` integer column and (when ``verify``) confirm
+    the categories are exhaustive and mutually exclusive.
 
     The `pl.when(...).then(...)...otherwise(-1)` chain alone collapses any
     overlap onto whichever condition appears first, so a separate independent
     check (summing condition matches per event) is required to catch overlap.
+
+    With ``verify=False`` only the column is assigned (no printing, no exhaustive/
+    exclusive check) -- used when the df is one chunk of a batched build and the
+    diagnostics are run once globally afterward by ``verify_signal_categories``.
     """
     col_name = f"{name}_signal_category"
     print(f"Adding {name} signal categories...")
@@ -1574,6 +1578,9 @@ def _add_signal_category(all_df, name, queries, labels, debug_columns=None):
         expr = pl.when(cond).then(pl.lit(i)) if expr is None else expr.when(cond).then(pl.lit(i))
     expr = expr.otherwise(pl.lit(-1))
     all_df = all_df.with_columns(expr.alias(col_name))
+
+    if not verify:
+        return all_df
 
     # diagnostic per-category weighted yield: use whichever net-weight column is
     # present (the open-data weighting on the main df, or the detvar df's
@@ -1631,7 +1638,127 @@ def _add_signal_category(all_df, name, queries, labels, debug_columns=None):
     return all_df
 
 
-def add_signal_categories(all_df):
+# ── Signal-category specs (module-level so add_signal_categories and the global
+# verify_signal_categories below both drive off one definition) ──
+_topological_debug_cols = [
+    "filename", "filetype", "run", "subrun", "event",
+    "normal_overlay", "del1g_overlay", "iso1g_overlay",
+    "wc_truth_inFV", "wc_truth_0e", "wc_truth_1e",
+    "wc_truth_0g", "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
+    "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
+    "wc_truth_nuPdg", "wc_truth_isCC",
+]
+_del1g_truth_debug_cols = [
+    "filename", "filetype", "run", "subrun", "event",
+    "normal_overlay", "del1g_overlay", "iso1g_overlay",
+    "wc_truth_inFV", "wc_truth_Np", "wc_truth_0p", "wc_truth_0mu",
+    "wc_truth_isNC", "wc_truth_nueCC", "wc_truth_numuCC",
+    "wc_truth_NCDelta", "wc_truth_NCDeltaRad", "wc_truth_numuCCDeltaRad",
+    "wc_truth_0pi0", "wc_truth_1pi0", "wc_truth_multi_pi0",
+    "wc_true_has_pi0_dalitz_decay",
+    "true_num_prim_gamma",
+    "wc_true_has_photonuclear_absorption",
+    "true_num_gamma_pairconvert_in_FV",
+    "true_num_gamma_pairconvert_in_FV_20_MeV",
+    "wc_true_gamma_pairconversion_spacepoint_max_min_distance",
+]
+_filetype_debug_cols = [
+    "filename", "filetype", "run", "subrun", "event",
+    "wc_truth_inFV", "wc_truth_Np", "wc_truth_0mu",
+]
+
+_SIGNAL_CATEGORY_SPECS = [
+    ("topological", topological_category_queries, topological_category_labels, _topological_debug_cols),
+    ("del1g_detailed", del1g_detailed_category_queries, del1g_detailed_category_labels, _del1g_truth_debug_cols),
+    ("del1g_simple", del1g_simple_category_queries, del1g_simple_category_labels, _del1g_truth_debug_cols),
+    ("filetype", filetype_category_queries, filetype_category_labels, _filetype_debug_cols),
+    ("erin", erin_category_queries, erin_category_labels, _filetype_debug_cols),
+]
+
+
+def verify_signal_categories(lf):
+    """Print per-category weighted yields and verify every signal category is
+    exhaustive (no uncategorized events) and mutually exclusive (no event matching
+    multiple categories) over the WHOLE dataset at once.
+
+    Accepts an eager DataFrame or a LazyFrame.  All counts come from a single
+    streaming aggregation pass (scalar sums only), so a LazyFrame scan over the
+    per-batch parquets verifies globally without ever materializing the full df.
+    Raises AssertionError on any overlap or uncategorized events -- the same check
+    _add_signal_category does per-df, but applied once across all batches.
+    """
+    lf = lf.lazy() if isinstance(lf, pl.DataFrame) else lf
+    names = lf.collect_schema().names()
+    weight_col = next((c for c in ("wc_net_weight_open_data", "wc_net_weight") if c in names), None)
+
+    # One scalar aggregation covering every category: per-category no-match / multi-match
+    # counts (recomputed from the raw conditions, since the assigned column collapses
+    # overlap), plus per-(category, label) weighted yield + raw count.
+    conds_by_name = {}
+    agg = []
+    for name, queries, labels, _dbg in _SIGNAL_CATEGORY_SPECS:
+        conds = [eval(q, {'pl': pl, '__builtins__': {}}) for q in queries]
+        conds_by_name[name] = conds
+        mc = pl.sum_horizontal([pl.coalesce(c, pl.lit(False)).cast(pl.Int8) for c in conds])
+        agg.append((mc == 0).sum().alias(f"{name}__n_no"))
+        agg.append((mc > 1).sum().alias(f"{name}__n_multi"))
+        col = pl.col(f"{name}_signal_category")
+        for i in range(len(labels)):
+            agg.append((col == i).sum().alias(f"{name}__n_{i}"))
+            if weight_col is not None:
+                agg.append(
+                    pl.when(col == i).then(pl.col(weight_col)).otherwise(0.0).sum().alias(f"{name}__w_{i}")
+                )
+    res = lf.select(agg).collect(engine="streaming").row(0, named=True)
+
+    failures = []
+    for name, queries, labels, _dbg in _SIGNAL_CATEGORY_SPECS:
+        print(f"\n{name} signal categories (weighted by {weight_col or 'unweighted count'}):")
+        for i, label in enumerate(labels):
+            w = res[f"{name}__w_{i}"] if weight_col is not None else 0.0
+            print(f"    {label}: {w:.2f} ({res[f'{name}__n_{i}']})")
+        if res[f"{name}__n_multi"] > 0 or res[f"{name}__n_no"] > 0:
+            failures.append(name)
+
+    # Failure path only (rare + fatal): collect bounded diagnostics lazily, mirroring
+    # _add_signal_category's reporting without materializing the full offending set.
+    for name, queries, labels, dbg in _SIGNAL_CATEGORY_SPECS:
+        if name not in failures:
+            continue
+        conds = conds_by_name[name]
+        mc = pl.sum_horizontal([pl.coalesce(c, pl.lit(False)).cast(pl.Int8) for c in conds])
+        available_debug_cols = [c for c in dbg if c in names]
+        if res[f"{name}__n_multi"] > 0:
+            print(f"Error: {res[f'{name}__n_multi']} events match multiple {name} categories")
+            pair_aggs = [
+                (pl.coalesce(conds[i], pl.lit(False)) & pl.coalesce(conds[j], pl.lit(False))).sum().alias(f"_p_{i}_{j}")
+                for i in range(len(labels)) for j in range(i + 1, len(labels))
+            ]
+            if pair_aggs:
+                pr = lf.select(pair_aggs).collect(engine="streaming").row(0, named=True)
+                for i in range(len(labels)):
+                    for j in range(i + 1, len(labels)):
+                        if pr[f"_p_{i}_{j}"]:
+                            print(f"  {labels[i]} & {labels[j]}: {pr[f'_p_{i}_{j}']} events")
+            if available_debug_cols:
+                ex = lf.filter(mc > 1).select(available_debug_cols).head(5).collect(engine="streaming")
+                for row in ex.iter_rows(named=True):
+                    print(f"  Multi-match example: {row}")
+        if res[f"{name}__n_no"] > 0:
+            print(f"Uncategorized {name} signal categories ({res[f'{name}__n_no']} events)!")
+            ftc = lf.filter(mc == 0).group_by("filetype").agg(pl.len().alias("n")).collect(engine="streaming")
+            for r in ftc.iter_rows(named=True):
+                print(f"  {r['filetype']}: {r['n']} events")
+            if available_debug_cols:
+                ex = lf.filter(mc == 0).select(available_debug_cols).head(5).collect(engine="streaming")
+                for row in ex.iter_rows(named=True):
+                    print(f"  No-match example: {row}")
+        raise AssertionError
+
+    print("\nsignal category verification passed (exhaustive + mutually exclusive across all events)")
+
+
+def add_signal_categories(all_df, verify=True):
 
     print("Adding extra columns for truth categories...")
 
@@ -1727,58 +1854,10 @@ def add_signal_categories(all_df):
             )
     all_df = all_df.with_columns(_combined_exprs)
 
-    _topological_debug_cols = [
-        "filename", "filetype", "run", "subrun", "event",
-        "normal_overlay", "del1g_overlay", "iso1g_overlay",
-        "wc_truth_inFV", "wc_truth_0e", "wc_truth_1e",
-        "wc_truth_0g", "wc_truth_1g", "wc_truth_2g", "wc_truth_3plusg",
-        "wc_truth_0mu", "wc_truth_1mu", "wc_truth_Np", "wc_truth_0p",
-        "wc_truth_nuPdg", "wc_truth_isCC",
-    ]
-    _del1g_truth_debug_cols = [
-        "filename", "filetype", "run", "subrun", "event",
-        "normal_overlay", "del1g_overlay", "iso1g_overlay",
-        "wc_truth_inFV", "wc_truth_Np", "wc_truth_0p", "wc_truth_0mu",
-        "wc_truth_isNC", "wc_truth_nueCC", "wc_truth_numuCC",
-        "wc_truth_NCDelta", "wc_truth_NCDeltaRad", "wc_truth_numuCCDeltaRad",
-        "wc_truth_0pi0", "wc_truth_1pi0", "wc_truth_multi_pi0",
-        "wc_true_has_pi0_dalitz_decay",
-        "true_num_prim_gamma",
-        "wc_true_has_photonuclear_absorption",
-        "true_num_gamma_pairconvert_in_FV",
-        "true_num_gamma_pairconvert_in_FV_20_MeV",
-        "wc_true_gamma_pairconversion_spacepoint_max_min_distance",
-    ]
-    _filetype_debug_cols = [
-        "filename", "filetype", "run", "subrun", "event",
-        "wc_truth_inFV", "wc_truth_Np", "wc_truth_0mu",
-    ]
-
-    all_df = _add_signal_category(
-        all_df, "topological",
-        topological_category_queries, topological_category_labels,
-        debug_columns=_topological_debug_cols,
-    )
-    all_df = _add_signal_category(
-        all_df, "del1g_detailed",
-        del1g_detailed_category_queries, del1g_detailed_category_labels,
-        debug_columns=_del1g_truth_debug_cols,
-    )
-    all_df = _add_signal_category(
-        all_df, "del1g_simple",
-        del1g_simple_category_queries, del1g_simple_category_labels,
-        debug_columns=_del1g_truth_debug_cols,
-    )
-    all_df = _add_signal_category(
-        all_df, "filetype",
-        filetype_category_queries, filetype_category_labels,
-        debug_columns=_filetype_debug_cols,
-    )
-    all_df = _add_signal_category(
-        all_df, "erin",
-        erin_category_queries, erin_category_labels,
-        debug_columns=_filetype_debug_cols,
-    )
+    for _name, _queries, _labels, _dbg in _SIGNAL_CATEGORY_SPECS:
+        all_df = _add_signal_category(
+            all_df, _name, _queries, _labels, debug_columns=_dbg, verify=verify,
+        )
 
     print("finished adding signal categories")
 
@@ -3843,7 +3922,7 @@ def apply_1g1mu_rad_corr_reweighting(df, pot_dic, weight_configs, seed=12345):
     gc.collect()
     return df
 
-def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs):
+def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     """Append NC_coherent_1g_reweighted events derived from isotropic_one_gamma_overlay.
 
     This is the *apply* half of the NC-coherent-1g reweighting: it reads the
@@ -3855,8 +3934,13 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs):
     The saved weight is POT-independent (events per POT).  For each weighting
     config the final per-event net weight is coherent_1g_weight_per_pot times that
     config's total goal POT, so each config's coherent contribution is normalized
-    to its own full exposure.  The appended events inherit the parent iso1g event's
-    normalizing_run_period_<config> grouping (iso1g exists only in runs 4-5).
+    to its own full exposure.  Like the rad-corr events, each appended event is then
+    randomly assigned ONE detailed_run_period in proportion to the per-period beam-on
+    data POT -- rather than inheriting the parent iso1g run-4-5 period -- so the
+    coherent contribution is spread across runs 1-5 consistently with rad-corr.  The
+    weight is period-independent (it uses the full goal POT), so the runs-1-5 total is
+    exact and only the per-run split carries Monte-Carlo noise; norm_goal_pot_<config>
+    and normalizing_run_period_<config> are reset to match the reassigned period.
 
     Accepts either an eager DataFrame or a LazyFrame.
 
@@ -3877,7 +3961,13 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs):
     print("  coherent_weights parquet queued for lazy scan")
 
     total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
+    # per-config per-normalizing-run-period goal POT and per-detailed-period beam-on
+    # data POT, used to spread the appended events across run periods exactly like the
+    # rad-corr events (see _weight_and_spread_rad_corr in apply_1g1mu_rad_corr_reweighting).
+    config_goal_pots = {c["name"]: _compute_config_pot_dics(pot_dic, c)[1] for c in weight_configs}
+    data_pot_per_period = _data_pot_per_detailed_period(pot_dic)
     print(f"  coherent per-config total goal POT: {total_goal_pots}")
+    print(f"  coherent detailed-period data POT (for run-period spreading): {data_pot_per_period}")
 
     lf = df if is_lazy else df.lazy()
 
@@ -3900,14 +3990,38 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs):
         .drop("coherent_1g_weight_per_pot")
     )
 
+    def _spread_coherent_run_periods(cdf):
+        """Spread the appended coherent events across run periods like the rad-corr
+        events: each event keeps its already-computed full-goal-POT weight but is
+        randomly assigned ONE detailed_run_period ∝ beam-on data POT (instead of
+        inheriting the parent iso1g run-4-5 period).  The weight is period-independent
+        so the runs-1-5 total is unchanged; norm_goal_pot_<config> and
+        normalizing_run_period_<config> are reset to match the reassigned period."""
+        if cdf.height == 0:
+            return cdf
+        det_periods = list(data_pot_per_period.keys())
+        det_pots = np.array([data_pot_per_period[d] for d in det_periods], dtype=float)
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(det_periods), size=cdf.height, p=det_pots / det_pots.sum())
+        det_arr = [det_periods[i] for i in idx]
+
+        new_series = [pl.Series("detailed_run_period", det_arr, dtype=pl.String)]
+        for config in weight_configs:
+            name = config["name"]
+            nrp_arr = [config["run_period_map"].get(d) for d in det_arr]
+            new_series.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr, dtype=pl.String))
+            goal_dic = config_goal_pots[name]
+            goal_arr = [goal_dic.get(nrp) if nrp is not None else None for nrp in nrp_arr]
+            new_series.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64))
+        return cdf.with_columns(new_series)
+
+    print("  collecting coherent_1g rows...")
+    coherent_1g_df = _spread_coherent_run_periods(coherent_1g_lf.collect())
+    print(f"  produced {coherent_1g_df.height} coherent-1g rows")
+
     if is_lazy:
-        print("  collecting coherent_1g rows (lazy mode)...")
-        coherent_1g_df = coherent_1g_lf.collect()
-        print(f"  collected {coherent_1g_df.height} coherent-1g rows")
         return coherent_1g_df
 
-    print("  starting concat...")
-    coherent_1g_df = coherent_1g_lf.collect()
     df = pl.concat([df, coherent_1g_df], how="diagonal_relaxed")
     del coherent_1g_df
     gc.collect()

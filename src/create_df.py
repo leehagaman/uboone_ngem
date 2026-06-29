@@ -13,7 +13,7 @@ import argparse
 from ntuple_variables.variables import wc_T_BDT_including_training_vars, wc_T_KINEvars_including_training_vars, wc_training_only_vars
 from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc_T_pf_vars, wc_T_pf_data_vars, wc_T_eval_data_vars
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, glee_eventweight_vars, lantern_vars, vector_columns
-from postprocessing import do_orthogonalization_and_POT_weighting, apply_rootino_correction, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
+from postprocessing import do_orthogonalization_and_POT_weighting, apply_rootino_correction, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories, verify_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables, change_dtypes
@@ -587,264 +587,329 @@ if __name__ == "__main__":
 
         # Files have differing schemas (overlays carry the wc_truth_* / hA2025 /
         # WCPMTInfo columns that data/EXT lack, while data/EXT carry wc_evtTimeNS
-        # that overlays lack), so no single file's schema is a superset.  Union all
-        # columns with a diagonal concat (missing entries filled with null) rather
-        # than scan_parquet + extra_columns="ignore", which keys off the first
-        # file's schema and would silently drop columns absent from it (e.g. all
-        # wc_truth_* when a Run123 EXT file happens to sort first).
-        all_df = pl.concat(
-            [pl.scan_parquet(p) for p in parquet_files],
-            how="diagonal_relaxed",
-        ).collect()
-        print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
-        
-        # Validate filetype column immediately after concatenation
-        known_filetypes = {
-            "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
-            "nc_pi0_overlay", "numucc_pi0_overlay",
-            "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
-        }
-        if "filetype" in all_df.columns:
-            # Cast to String first so Categorical comparisons don't silently miss values
-            filetype_str = all_df.get_column("filetype").cast(pl.String)
-            null_count = filetype_str.is_null().sum()
-            empty_count = (filetype_str == "").sum()
-            unknown_vals = [v for v in filetype_str.unique().to_list() if v is not None and v not in known_filetypes]
-            if null_count > 0 or empty_count > 0 or unknown_vals:
-                print(f"ERROR after concat: filetype has {empty_count} empty strings, {null_count} nulls, unknown values: {unknown_vals}")
-                bad_mask = filetype_str.is_null() | (filetype_str == "")
-                for uv in unknown_vals:
-                    bad_mask = bad_mask | (filetype_str == uv)
-                bad_rows = all_df.filter(bad_mask)
-                for row in bad_rows.head(5).iter_rows(named=True):
-                    print(f"  Bad filetype row: filetype={row.get('filetype')!r}, filename={row.get('filename', 'N/A')}")
-                    print(f"    Stale parquet detected — delete intermediate parquets and re-run --create_file_dfs")
-                raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null, unknown: {unknown_vals}")
-
-        if all_df.is_empty():
-            raise ValueError("No events in the dataframe!")
-        
-        print(f"all_df.height={all_df.height}")
-
-        # Defrag immediately: scan_parquet over N files produces an N-chunk df and
-        # fragments the heap from many small allocations.  Write/reload once here
-        # so ALL downstream postprocessing (including add_signal_categories) runs on
-        # a fresh single-chunk df with a clean heap (~35 GB baseline instead of ~80 GB).
-        temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
-        print(f"Early defrag: writing {len(parquet_files)}-chunk df to {temp_defrag_path}...", end="", flush=True)
-        _t0 = time.time()
-        all_df.lazy().sink_parquet(temp_defrag_path)
-        del all_df
-        gc.collect()
-        try:
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
-        except Exception:
-            pass
-        all_df = pl.read_parquet(temp_defrag_path)
-        os.remove(temp_defrag_path)
-        gc.collect()
-        print(f" done in {time.time() - _t0:.1f}s")
-
-        # Polars sink_parquet can corrupt low-cardinality String columns (like filetype)
-        # via dictionary encoding. Detect and fix any rows where filetype became ''.
-        bad_filetype_mask = pl.col("filetype").is_null() | (pl.col("filetype") == "")
-        bad_count = all_df.filter(bad_filetype_mask).height
-        if bad_count > 0:
-            print(f"WARNING: {bad_count} rows have empty/null filetype after defrag — re-inferring from filename")
-            fixed_filetype = pl.Series(
-                "filetype",
-                [ft if (ft is not None and ft != "") else _filetype_from_filename(fn)
-                 for ft, fn in zip(all_df["filetype"].to_list(), all_df["filename"].to_list())]
-            )
-            all_df = all_df.with_columns(fixed_filetype)
-            still_bad = all_df.filter(bad_filetype_mask).height
-            if still_bad > 0:
-                raise ValueError(f"{still_bad} rows still have empty/null filetype after re-inference!")
-            print(f"  Fixed {bad_count} rows.")
-
-        print("doing post-processing that doesn't require vector variables using polars...")
-
-        all_df = do_combined_postprocessing(all_df)
-
-        # Convert dtypes early so all subsequent postprocessing works on smaller arrays.
-        # Float64→Float32 and Int64→Int32 are done in batches to avoid holding two full
-        # copies of the dataframe at once.
-        print("Converting dtypes to reduce memory usage (before heavy postprocessing)...")
-        memory_before = all_df.estimated_size() / (1024**3)
-        print(f"Estimated memory usage before conversion: {memory_before:.4f} GB")
-
-        float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
-        int64_cols   = [col for col, dtype in all_df.schema.items() if dtype == pl.Int64]
-        print(f"Converting {len(float64_cols)} Float64 columns to Float32")
-        print(f"Converting {len(int64_cols)} Int64 columns to Int32 (clipping to Int32 range)")
-
-        if float64_cols:
-            all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in float64_cols])
-            gc.collect()
-
-        int32_min, int32_max = -2147483648, 2147483647
-        batch_size = 50
-        for i in range(0, len(int64_cols), batch_size):
-            batch = int64_cols[i:i + batch_size]
-            all_df = all_df.with_columns([
-                pl.col(col).clip(int32_min, int32_max).cast(pl.Int32) for col in batch
-            ])
-            gc.collect()
-
-        memory_after = all_df.estimated_size() / (1024**3)
-        print(f"Estimated memory usage after conversion: {memory_after:.4f} GB")
-        print(f"Memory saved: {memory_before - memory_after:.4f} GB ({(memory_before - memory_after) / memory_before * 100:.1f}%)")
-        gc.collect()
-
+        # that overlays lack), so no single file's schema is a superset.  The old
+        # code concat'd ALL files into one in-memory df, but at ~17.9M rows x ~1600
+        # cols that df is ~110 GB even after Int64->Int32 downcasting and OOM-kills
+        # the machine (several steps below also transiently need ~2x).  Instead we
+        # process the files in row-count-bounded BATCHES, writing one processed
+        # parquet per batch (Phase 1), then run the few genuinely-global steps -- the
+        # rad-corr / coherent-1g / pi0-Dalitz reweightings, the duplicate check and
+        # the final writes -- over lazy scans of those per-batch parquets (Phases 2-3).
+        # Peak memory is then one batch (a few GB), never the whole dataset.
         weight_configs = get_weight_configs()
-        all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, weight_configs)
-        all_df = apply_rootino_correction(all_df, pot_dic, weight_configs)
 
-        # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
-        new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
-        if new_float64_cols:
-            print(f"Converting {len(new_float64_cols)} new Float64 columns added by postprocessing: {new_float64_cols}")
-            all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in new_float64_cols])
+        # Stale per-batch parts from a previous failed run would corrupt the scans below.
+        for _f in os.listdir(intermediate_files_location):
+            if _f.startswith("_chunk_proc_") or _f.startswith("_chunk_final_") or _f in ("_rad_part.parquet", "_coh_part.parquet"):
+                os.remove(f"{intermediate_files_location}/{_f}")
+
+        # Global union schema: a zero-row diagonal concat resolves the unified dtypes
+        # without reading data.  Every batch (and the derived rad/coh rows) is reindexed
+        # to it so the orthogonalization masks and distance math always see their
+        # wc_truth_* / lantern_* / pandora_* columns present (null-filled) -- exactly
+        # what the old single diagonal concat provided (the masks reference columns that
+        # some filetypes lack, so a data/EXT-only batch would otherwise error).
+        union_schema = pl.concat(
+            [pl.scan_parquet(p) for p in parquet_files], how="diagonal_relaxed"
+        ).collect_schema()
+        union_cols = list(union_schema.names())
+
+        def _reindex_to_union(df):
+            """Null-fill any union columns missing from df (correct dtype), order them
+            canonically, and keep any extra post-processing columns at the end."""
+            missing = [c for c in union_cols if c not in df.columns]
+            if missing:
+                df = df.with_columns([pl.lit(None).cast(union_schema[c]).alias(c) for c in missing])
+            extra = [c for c in df.columns if c not in union_cols]
+            return df.select(union_cols + extra)
+
+        # Bin files so each batch is <= MAX_ROWS_PER_BATCH rows (the full df is ~6 GB
+        # per 1M rows, so a 2M-row batch is ~12 GB before/after downcasting).
+        MAX_ROWS_PER_BATCH = 2_000_000
+        batches, _cur, _cur_rows = [], [], 0
+        for _p in parquet_files:
+            _n = pl.scan_parquet(_p).select(pl.len()).collect().item()
+            if _cur and _cur_rows + _n > MAX_ROWS_PER_BATCH:
+                batches.append(_cur); _cur, _cur_rows = [], 0
+            _cur.append(_p); _cur_rows += _n
+        if _cur:
+            batches.append(_cur)
+        print(f"Planned {len(batches)} batches (<= {MAX_ROWS_PER_BATCH:,} rows each) from {len(parquet_files)} files")
+
+        # ── Phase 1: per-batch processing -> one _chunk_proc_{k}.parquet each ──
+        # The per-row body below (filetype repair, do_combined_postprocessing, dtype
+        # conversion, orthogonalization + POT weighting, ROOTino, signal categories,
+        # train/test split) is unchanged from the old single-df flow -- it just runs
+        # on one batch at a time.  train_test hashing is per-row, so batch-invariant.
+        chunk_paths = []
+        for _k, _batch in enumerate(batches):
+            print(f"\n=== Phase 1 batch {_k + 1}/{len(batches)}: {len(_batch)} files ===")
+            _t0 = time.time()
+            all_df = pl.concat([pl.scan_parquet(p) for p in _batch], how="diagonal_relaxed").collect()
+            all_df = _reindex_to_union(all_df)
+
+            # Polars sink_parquet can corrupt low-cardinality String columns (like filetype)
+            # via dictionary encoding. Detect and fix any rows where filetype became '' before
+            # the strict validation below runs (otherwise sink corruption would trip it).
+            bad_filetype_mask = pl.col("filetype").is_null() | (pl.col("filetype") == "")
+            bad_count = all_df.filter(bad_filetype_mask).height
+            if bad_count > 0:
+                print(f"WARNING: {bad_count} rows have empty/null filetype after streaming concat — re-inferring from filename")
+                fixed_filetype = pl.Series(
+                    "filetype",
+                    [ft if (ft is not None and ft != "") else _filetype_from_filename(fn)
+                     for ft, fn in zip(all_df["filetype"].to_list(), all_df["filename"].to_list())]
+                )
+                all_df = all_df.with_columns(fixed_filetype)
+                still_bad = all_df.filter(bad_filetype_mask).height
+                if still_bad > 0:
+                    raise ValueError(f"{still_bad} rows still have empty/null filetype after re-inference!")
+                print(f"  Fixed {bad_count} rows.")
+
+            # Validate filetype column immediately after concatenation
+            known_filetypes = {
+                "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
+                "nc_pi0_overlay", "numucc_pi0_overlay",
+                "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
+            }
+            if "filetype" in all_df.columns:
+                # Cast to String first so Categorical comparisons don't silently miss values
+                filetype_str = all_df.get_column("filetype").cast(pl.String)
+                null_count = filetype_str.is_null().sum()
+                empty_count = (filetype_str == "").sum()
+                unknown_vals = [v for v in filetype_str.unique().to_list() if v is not None and v not in known_filetypes]
+                if null_count > 0 or empty_count > 0 or unknown_vals:
+                    print(f"ERROR after concat: filetype has {empty_count} empty strings, {null_count} nulls, unknown values: {unknown_vals}")
+                    bad_mask = filetype_str.is_null() | (filetype_str == "")
+                    for uv in unknown_vals:
+                        bad_mask = bad_mask | (filetype_str == uv)
+                    bad_rows = all_df.filter(bad_mask)
+                    for row in bad_rows.head(5).iter_rows(named=True):
+                        print(f"  Bad filetype row: filetype={row.get('filetype')!r}, filename={row.get('filename', 'N/A')}")
+                        print(f"    Stale parquet detected — delete intermediate parquets and re-run --create_file_dfs")
+                    raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null, unknown: {unknown_vals}")
+
+            if all_df.is_empty():
+                raise ValueError("No events in the dataframe!")
+
+            print(f"all_df.height={all_df.height}")
+
+            print("doing post-processing that doesn't require vector variables using polars...")
+
+            all_df = do_combined_postprocessing(all_df)
+
+            # Convert dtypes early so all subsequent postprocessing works on smaller arrays.
+            # Float64→Float32 and Int64→Int32 are done in batches to avoid holding two full
+            # copies of the dataframe at once.
+            print("Converting dtypes to reduce memory usage (before heavy postprocessing)...")
+            memory_before = all_df.estimated_size() / (1024**3)
+            print(f"Estimated memory usage before conversion: {memory_before:.4f} GB")
+
+            float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
+            int64_cols   = [col for col, dtype in all_df.schema.items() if dtype == pl.Int64]
+            print(f"Converting {len(float64_cols)} Float64 columns to Float32")
+            print(f"Converting {len(int64_cols)} Int64 columns to Int32 (clipping to Int32 range)")
+
+            if float64_cols:
+                all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in float64_cols])
+                gc.collect()
+
+            int32_min, int32_max = -2147483648, 2147483647
+            batch_size = 50
+            for i in range(0, len(int64_cols), batch_size):
+                batch = int64_cols[i:i + batch_size]
+                all_df = all_df.with_columns([
+                    pl.col(col).clip(int32_min, int32_max).cast(pl.Int32) for col in batch
+                ])
+                gc.collect()
+
+            memory_after = all_df.estimated_size() / (1024**3)
+            print(f"Estimated memory usage after conversion: {memory_after:.4f} GB")
+            print(f"Memory saved: {memory_before - memory_after:.4f} GB ({(memory_before - memory_after) / memory_before * 100:.1f}%)")
             gc.collect()
 
-        all_df = add_signal_categories(all_df)
-        gc.collect()
-        try:
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
-            print("malloc_trim successful")
-        except Exception:
-            print("malloc_trim failed")
+            all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, weight_configs)
+            all_df = apply_rootino_correction(all_df, pot_dic, weight_configs)
 
-        train_test_score_bytes = (
-            all_df.select(["filename", "run", "subrun", "event"])
-            .hash_rows(seed=0)
-            .to_numpy()
-            & np.uint64(0xFF)
-        ).astype(np.uint8)
-        train_test_score = train_test_score_bytes.astype(np.float32) / 256.0
-        train_mask = train_test_score < 0.5
-        all_df = all_df.with_columns(
-            pl.Series("train_test_score", train_test_score),
-            pl.Series("will_use_for_50_50_training", train_mask),
-        )
+            # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
+            new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
+            if new_float64_cols:
+                print(f"Converting {len(new_float64_cols)} new Float64 columns added by postprocessing: {new_float64_cols}")
+                all_df = all_df.with_columns([pl.col(col).cast(pl.Float32) for col in new_float64_cols])
+                gc.collect()
 
-        print(f"Total number of events in all_df: {all_df.height}")
-        print(f"Number of events in all_df with will_use_for_50_50_training == True: {all_df.select(pl.col('will_use_for_50_50_training').sum()).item()}")
+            # Assign the signal-category columns per batch, but defer the per-category
+            # yield printout + exhaustive/mutually-exclusive check to one global pass
+            # over all batches (verify_signal_categories, after this loop).
+            all_df = add_signal_categories(all_df, verify=False)
+            gc.collect()
+            try:
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+                print("malloc_trim successful")
+            except Exception:
+                print("malloc_trim failed")
 
-        # Write all_df (with signal categories + train_test_score) to a temp parquet
-        # so that apply_1g1mu_rad_corr_reweighting and apply_nc_coh_1g_reweighting
-        # can use scan_parquet with predicate pushdown to collect only the small filtered
-        # sub-dfs cheaply, then read the full df fresh from disk.
-        temp_defrag_path = f"{intermediate_files_location}/_temp_defrag_all_df.parquet"
-        print(f"Writing temp parquet to {temp_defrag_path}...", end="", flush=True)
-        start_time = time.time()
-        all_df.lazy().sink_parquet(temp_defrag_path)
-        del all_df
-        gc.collect()
-        try:
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
-            print("malloc_trim successful")
-        except Exception:
-            print("malloc_trim failed")
-            pass
-        # Use scan_parquet (lazy) to compute the two small filtered sub-dfs with
-        # predicate pushdown (reads only the relevant rows, not the full 35 GB).
-        # Both add_* functions, when given a LazyFrame, collect and return only
-        # the *new* rows to append as a small eager DataFrame.
-        # After both small dfs are collected we read the full df once and concat.
-        # Temp file is kept until after read_parquet then removed.
-        print(f" done in {time.time() - start_time:.1f}s")
-        all_lf = pl.scan_parquet(temp_defrag_path)
+            train_test_score_bytes = (
+                all_df.select(["filename", "run", "subrun", "event"])
+                .hash_rows(seed=0)
+                .to_numpy()
+                & np.uint64(0xFF)
+            ).astype(np.uint8)
+            train_test_score = train_test_score_bytes.astype(np.float32) / 256.0
+            train_mask = train_test_score < 0.5
+            all_df = all_df.with_columns(
+                pl.Series("train_test_score", train_test_score),
+                pl.Series("will_use_for_50_50_training", train_mask),
+            )
 
-        # First compute the binned reweighting from the dataframe (replacing the
-        # manual rad_corrections_reweighting.ipynb / coherent_1g_reweighting.ipynb
-        # step), writing it to parquet, then apply it to produce the new rows.
-        # The compute step uses the open-data weighting to build the binned shapes
-        # (default net_weight_var); the apply step produces a weight column per
-        # config, each normalized to that config's full goal POT.
+            _cp = f"{intermediate_files_location}/_chunk_proc_{_k}.parquet"
+            all_df.write_parquet(_cp)
+            chunk_paths.append(_cp)
+            print(f"  batch {_k + 1}/{len(batches)} -> {all_df.height} rows, {time.time() - _t0:.1f}s")
+            del all_df
+            gc.collect()
+            try:
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
+
+        # Signal-category yields + exhaustive/mutually-exclusive check over ALL events
+        # at once (a single streaming aggregation over the per-batch parquets, so it
+        # never materializes the full df).  Raises if any category is non-exhaustive
+        # or overlapping.
+        print("\n=== Verifying signal categories globally (all events) ===")
+        verify_signal_categories(pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed"))
+
+        # ── Phase 2: global reweightings over a lazy scan of all batch parquets ──
+        # Logic unchanged from the old single-df flow: the compute_* build their
+        # binned shapes from the global filtered subset (predicate pushdown reads only
+        # the relevant rows), and the apply_* return only the small derived rows to
+        # append.  They scan the per-batch parquets now instead of one monolithic temp
+        # parquet, so the full df is never materialized.
+        print("\n=== Phase 2: global reweightings ===")
+        all_lf = pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed")
         compute_1g1mu_rad_corr_reweighting(all_lf)
         rad_corrected_df = apply_1g1mu_rad_corr_reweighting(all_lf, pot_dic, weight_configs)
         compute_nc_coh_1g_reweighting(all_lf)
         coherent_1g_df = apply_nc_coh_1g_reweighting(all_lf, pot_dic, weight_configs)
         del all_lf
-
-        # pi0 Dalitz Geant4->EvtGen reweighting: build the bin-by-bin weight grid from
-        # the standalone-Geant4 and EvtGen pure-model samples (independent of the df).
-        # apply_pi0_dalitz_reweighting below then looks up each truth Dalitz decay's
-        # weight from the wc_true_pi0_dalitz_m_ee / _cos_theta_star columns already on
-        # the df.  Unlike the two reweightings above, this APPENDS no rows -- it is a
-        # shape correction applied in-place to existing Dalitz events below.
+        # pi0 Dalitz Geant4->EvtGen weight grid (independent of the df), applied per
+        # part in Phase 3.
         compute_pi0_dalitz_reweighting()
 
-        print("Reading full df from parquet...")
-        start_read = time.time()
-        all_df = pl.read_parquet(temp_defrag_path)
-        os.remove(temp_defrag_path)
+        # Regenerate the pi0-Dalitz monitoring plots once, globally: gather the (rare)
+        # truth-Dalitz events from every batch into one small df and run the reweighting
+        # with make_plots=True purely for the plot side-effect.  The Phase-3 per-part
+        # calls stay make_plots=False because no single part holds the whole Dalitz set;
+        # the plots depend only on the Dalitz events (+ their lab four-vector columns,
+        # still present here -- apply_pi0_dalitz_reweighting drops them afterward).
+        _dalitz_df = (
+            pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed")
+            .filter(pl.col("wc_true_has_pi0_dalitz_decay"))
+            .collect()
+        )
+        print(f"  pi0-Dalitz monitoring plots: {_dalitz_df.height} truth-Dalitz events")
+        if not _dalitz_df.is_empty():
+            apply_pi0_dalitz_reweighting(_dalitz_df, make_plots=True)
+        del _dalitz_df
         gc.collect()
-        print(f"  read done in {time.time() - start_read:.1f}s, all_df has {all_df.height} rows")
 
-        print("Concatenating full df with new rows...")
-        all_df = pl.concat([all_df, rad_corrected_df, coherent_1g_df], how="diagonal_relaxed")
+        # Persist the small derived-row sets (reindexed to the common schema) so they
+        # flow through Phase 3's per-part folds and the final concat just like the
+        # batch parquets.
+        _rad_path = f"{intermediate_files_location}/_rad_part.parquet"
+        _coh_path = f"{intermediate_files_location}/_coh_part.parquet"
+        _reindex_to_union(rad_corrected_df).write_parquet(_rad_path)
+        _reindex_to_union(coherent_1g_df).write_parquet(_coh_path)
+        print(f"  rad-corr rows: {rad_corrected_df.height}, coherent-1g rows: {coherent_1g_df.height}")
         del rad_corrected_df, coherent_1g_df
         gc.collect()
-        print(f"  all_df has {all_df.height} rows after adding rad_corr and coherent events")
 
-        # pi0 Dalitz reweighting: adds the standalone pi0_dalitz_reweight_weight
-        # column (1.0 for non-Dalitz events).
-        all_df = apply_pi0_dalitz_reweighting(all_df)
-
-        # hA2025 pion-FSI (charge-exchange etc.) reweighting.  Both per-event
-        # columns are computed in _load_chunk for the GENIE overlays and absent
-        # elsewhere (data/EXT/NuWro/isotropic-1g, and the derived rad-corr /
-        # coherent-1g rows); default them to 1.0 wherever missing.  Only
-        # hA2025_pion_fsi_rw_weight is folded into the net weights;
-        # additional_hA2025c_weight is kept standalone (multiply it onto
-        # hA2025_pion_fsi_rw_weight to get the hA2025c variant).
-        for _col in ("hA2025_pion_fsi_rw_weight", "additional_hA2025c_weight"):
-            if _col not in all_df.columns:
-                all_df = all_df.with_columns(pl.lit(1.0).alias(_col))
-            all_df = all_df.with_columns(pl.col(_col).fill_null(1.0).cast(pl.Float32))
-
-        # Fold the per-event pi0-Dalitz and hA2025 pion-FSI factors into every
-        # per-config net-weight column.  Both are 1.0 where not applicable, and
-        # null weights (events excluded from a config) stay null.
+        # ── Phase 3: per-part pi0-Dalitz + hA2025 folds, then streaming writes ──
+        # All remaining steps are per-row, so each part (a batch parquet or the rad/coh
+        # derived rows) is processed eagerly one at a time -- never the full df.
+        # make_plots=False here because the monitoring plots were already generated
+        # once, globally, over all Dalitz events in Phase 2.
+        print("\n=== Phase 3: pi0-Dalitz + hA2025 folds, streaming writes ===")
         weight_cols = [c["weight_col"] for c in weight_configs]
-        all_df = all_df.with_columns([
-            (pl.col(wcol) * pl.col("pi0_dalitz_reweight_weight") * pl.col("hA2025_pion_fsi_rw_weight"))
-            .cast(pl.Float32).alias(wcol)
-            for wcol in weight_cols
-        ])
+        final_parts = []
+        _phase3_parts = chunk_paths + [_rad_path, _coh_path]
+        for _k, _p in enumerate(_phase3_parts):
+            print(f"\n--- Phase 3 part {_k + 1}/{len(_phase3_parts)}: {os.path.basename(_p)} ---")
+            all_df = pl.read_parquet(_p)
+            if all_df.is_empty():
+                del all_df
+                continue
+            # hA2025 pion-FSI columns: present only on GENIE overlays; default to 1.0.
+            for _col in ("hA2025_pion_fsi_rw_weight", "additional_hA2025c_weight"):
+                if _col not in all_df.columns:
+                    all_df = all_df.with_columns(pl.lit(1.0).alias(_col))
+                all_df = all_df.with_columns(pl.col(_col).fill_null(1.0).cast(pl.Float32))
+            # pi0 Dalitz shape reweight: adds standalone pi0_dalitz_reweight_weight (1.0
+            # for non-Dalitz events).  Per-row lookup, so safe per part.
+            all_df = apply_pi0_dalitz_reweighting(all_df, make_plots=False)
+            # Fold the per-event pi0-Dalitz and hA2025 pion-FSI factors into every
+            # per-config net-weight column (1.0 where not applicable; null stays null).
+            all_df = all_df.with_columns([
+                (pl.col(wcol) * pl.col("pi0_dalitz_reweight_weight") * pl.col("hA2025_pion_fsi_rw_weight"))
+                .cast(pl.Float32).alias(wcol)
+                for wcol in weight_cols
+            ])
+            _fp = f"{intermediate_files_location}/_chunk_final_{_k}.parquet"
+            all_df.write_parquet(_fp)
+            final_parts.append(_fp)
+            del all_df
+            gc.collect()
 
+        # Global duplicate check over (filetype, run, subrun, event); reads only those
+        # key columns across all parts, so it is cheap in memory.
+        _keys = pl.concat(
+            [pl.scan_parquet(p).select(["filename", "filetype", "run", "subrun", "event"]) for p in final_parts],
+            how="diagonal_relaxed",
+        ).collect()
         dup_mask = pl.struct("filetype", "run", "subrun", "event").is_duplicated()
-        n_dups = all_df.select(dup_mask.sum()).item()
+        n_dups = _keys.select(dup_mask.sum()).item()
         if n_dups > 0:
-            dups = all_df.filter(dup_mask).select(["filename", "filetype", "run", "subrun", "event", "wc_truth_nuEnergy"])
+            dups = _keys.filter(dup_mask).select(["filename", "filetype", "run", "subrun", "event"])
             print(f"Found {n_dups} duplicate rows, first 10:\n{dups.head(10)}")
             raise ValueError("Duplicate filename/run/subrun/event!")
+        del _keys
+        gc.collect()
 
-        # Use sink_parquet via lazy API to stream the filtered data directly to disk
-        # without materializing a second full copy of all_df in memory.
+        # Global event counts via cheap scans, reported pre-reweighting to match the
+        # old printout (rad/coh rows are appended after these were historically shown).
+        _proc_lf = pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed")
+        print(f"Total number of events in all_df: {_proc_lf.select(pl.len()).collect().item()}")
+        print(f"Number of events in all_df with will_use_for_50_50_training == True: "
+              f"{_proc_lf.select(pl.col('will_use_for_50_50_training').sum()).collect().item()}")
+
+        # presel (Enu>0): stream-filter all parts straight to disk (no full df in RAM).
         print(f"saving {intermediate_files_location}/presel_df_train_vars.parquet...", end="", flush=True)
         start_time = time.time()
-        all_df.lazy().filter(pl.col("wc_kine_reco_Enu") > 0).sink_parquet(
-            f"{intermediate_files_location}/presel_df_train_vars.parquet"
-        )
-        end_time = time.time()
+        pl.concat([pl.scan_parquet(p) for p in final_parts], how="diagonal_relaxed") \
+            .filter(pl.col("wc_kine_reco_Enu") > 0) \
+            .sink_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
         file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.parquet") / 1024**3
-        print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
+        print(f"done, {file_size_gb:.2f} GB, {time.time() - start_time:.2f} seconds")
 
+        # all_df: drop the WC training-only vars and stream-combine all parts to disk.
         print(f"saving {intermediate_files_location}/all_df.parquet...", end="", flush=True)
         start_time = time.time()
-        # remove the large number of WC training-only-variables for a smaller file size
-
-        remove_columns = wc_training_only_vars
-
-        all_df = all_df.drop(remove_columns)
-
-        all_df.write_parquet(f"{intermediate_files_location}/all_df.parquet")
-        end_time = time.time()
+        _combined_cols = pl.concat(
+            [pl.scan_parquet(p) for p in final_parts], how="diagonal_relaxed"
+        ).collect_schema().names()
+        remove_columns = [c for c in wc_training_only_vars if c in _combined_cols]
+        pl.concat([pl.scan_parquet(p) for p in final_parts], how="diagonal_relaxed") \
+            .drop(remove_columns) \
+            .sink_parquet(f"{intermediate_files_location}/all_df.parquet")
         file_size_gb = os.path.getsize(f"{intermediate_files_location}/all_df.parquet") / 1024**3
-        print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
+        print(f"done, {file_size_gb:.2f} GB, {time.time() - start_time:.2f} seconds")
+
+        # Clean up per-batch intermediates.
+        for _p in chunk_paths + [_rad_path, _coh_path] + final_parts:
+            if os.path.exists(_p):
+                os.remove(_p)
+
         main_end_time = time.time()
         print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
 

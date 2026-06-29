@@ -216,6 +216,14 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
     select_vars = _RELEVANT_VARS + [net_weight_var]
 
     # ── Load del1g and normal numuCC events (cell 9) ──────────────────────────
+    # The "normal numuCC" sample is the nominal-MC numuCC distribution that defines the
+    # target shape (H_normal) below.  After orthogonalization that prediction is exactly
+    # nu_overlay (all numuCC except numuCC-1pi0) plus numucc_pi0_overlay (the numuCC-1pi0
+    # events split out into the dedicated sample), so we select those two filetypes
+    # explicitly.  This also keeps real data, nuwro_fake_data, dirt and EXT out of the
+    # shape -- in particular nuwro_fake_data is excluded from the open-data weighting and
+    # carries a null wc_net_weight_open_data, which (cast to NaN in numpy) would turn
+    # every np.histogram2d bin it lands in into NaN and make fix_del1g_weight NaN.
     del1g_numuCC_df = (
         lf.filter(
             (pl.col("filetype") == "delete_one_gamma_overlay")
@@ -226,7 +234,7 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
     )
     normal_numuCC_df = (
         lf.filter(
-            (pl.col("filetype") != "delete_one_gamma_overlay")
+            pl.col("filetype").is_in(["nu_overlay", "numucc_pi0_overlay"])
             & (pl.col("wc_truth_muonMomentum_3") > 0.0)
         )
         .select(select_vars)
