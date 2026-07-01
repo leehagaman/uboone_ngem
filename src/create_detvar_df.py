@@ -363,21 +363,25 @@ if __name__ == "__main__":
 
     print("loading polars dataframes from parquet files...")
 
-    pl_dfs = []
-    for file in os.listdir(intermediate_files_location):
+    detvar_parts = sorted([
+        f"{intermediate_files_location}/{file}"
+        for file in os.listdir(intermediate_files_location)
+        if file.startswith("curr_detvar_df_pl_") and file.endswith(".parquet")
+    ])
+    print(f"Found {len(detvar_parts)} per-file detvar parquets")
 
-        if file.startswith("curr_detvar_df_pl_") and file.endswith(".parquet"):
-            print(f"Reading {file}")
-            curr_df = pl.read_parquet(f"{intermediate_files_location}/{file}")
-            # Validate filetype column after reading from parquet - should never be empty
-            if 'filetype' in curr_df.columns:
-                empty_count = curr_df.filter(pl.col("filetype") == '').height
-                if empty_count > 0:
-                    raise ValueError(f"filetype column has {empty_count} empty string values after reading parquet file {file}. This should never happen!")
-            pl_dfs.append(curr_df)
-            print(f"Read {file}, estimated size: {pl_dfs[-1].estimated_size() / 1e9:.2f} GB")
-    all_df = pl.concat(align_columns_for_concat(pl_dfs), how="vertical")
-    del pl_dfs
+    # Stream the union concat to disk instead of reading every per-file df into a list
+    # and pl.concat()-ing them (which holds the whole dataset twice -- once in the list,
+    # once in the concat result).  diagonal_relaxed unions differing schemas with
+    # null-fill (replacing align_columns_for_concat), and reading the single combined
+    # parquet back gives one defragged df at ~1x peak.  The filetype validation below
+    # (after concat) still catches any empty/null filetype.
+    _temp_detvar_path = f"{intermediate_files_location}/_temp_detvar_all_df.parquet"
+    pl.concat([pl.scan_parquet(p) for p in detvar_parts], how="diagonal_relaxed").sink_parquet(_temp_detvar_path)
+    gc.collect()
+    all_df = pl.read_parquet(_temp_detvar_path)
+    os.remove(_temp_detvar_path)
+    gc.collect()
     print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
     
     # Validate filetype column immediately after concatenation
@@ -405,6 +409,23 @@ if __name__ == "__main__":
 
     all_df = do_combined_postprocessing(all_df)
 
+    # Downcast Float64->Float32 and Int64->Int32 (as create_df.py does).  DetVar carries
+    # the full WC training vars, so at ~3.7M events the Float64 df is ~80 GB; halving it
+    # keeps the resident df (and the final write) well under memory, and matches the
+    # nominal all_df dtypes that the detvar covariance compares against.  Converted in
+    # column batches so we never hold a full second copy of the df at once.
+    print("Converting dtypes to reduce memory usage...")
+    int32_min, int32_max = -2147483648, 2147483647
+    float64_cols = [c for c, dt in all_df.schema.items() if dt == pl.Float64]
+    int64_cols   = [c for c, dt in all_df.schema.items() if dt == pl.Int64]
+    print(f"  converting {len(float64_cols)} Float64->Float32, {len(int64_cols)} Int64->Int32")
+    for i in range(0, len(float64_cols), 50):
+        all_df = all_df.with_columns([pl.col(c).cast(pl.Float32) for c in float64_cols[i:i + 50]])
+        gc.collect()
+    for i in range(0, len(int64_cols), 50):
+        all_df = all_df.with_columns([pl.col(c).clip(int32_min, int32_max).cast(pl.Int32) for c in int64_cols[i:i + 50]])
+        gc.collect()
+
     # DetVar has no beam-on data, so the weighting normalizes each group to its
     # nu_overlay CV POT (the goal_pot_filetypes=["data"] sum is zero -> nu_overlay
     # fallback inside _compute_config_pot_dics).  total_pot is therefore ignored.
@@ -427,22 +448,31 @@ if __name__ == "__main__":
     ]
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, detvar_weight_configs)
 
+    # the weighting adds new Float64 columns; downcast them too
+    new_float64_cols = [c for c, dt in all_df.schema.items() if dt == pl.Float64]
+    if new_float64_cols:
+        all_df = all_df.with_columns([pl.col(c).cast(pl.Float32) for c in new_float64_cols])
+        gc.collect()
+
     all_df = add_signal_categories(all_df)
 
     # Not applying NC Coherent 1g or numuCC rad corr 1g for DetVar since we currently
     # have limited DetVar files available (no delete_one_gamma / isotropic_one_gamma
     # detector variations), so there are no events for these reweightings to act on.
 
-    file_RSEs = []
-    for filetype, vartype, run, subrun, event in zip(all_df["filetype"].to_numpy(), all_df["vartype"].to_numpy(), all_df["run"].to_numpy(), all_df["subrun"].to_numpy(), all_df["event"].to_numpy()):
-        file_RSE = f"{filetype}_{vartype}_{run:06d}_{subrun:06d}_{event:06d}"
-        file_RSEs.append(file_RSE)
-    assert len(file_RSEs) == len(set(file_RSEs)), "Duplicate filetype/vartype/run/subrun/event!"
+    # duplicate (filetype, vartype, run, subrun, event) check, done in polars to avoid
+    # materializing a multi-million-row Python string list
+    n_dups = all_df.select(pl.struct("filetype", "vartype", "run", "subrun", "event").is_duplicated().sum()).item()
+    if n_dups > 0:
+        raise ValueError(f"Duplicate filetype/vartype/run/subrun/event! ({n_dups} rows)")
 
     print(f"saving {intermediate_files_location}/detvar_presel_df_train_vars.parquet...", end="", flush=True)
     start_time = time.time()
-    presel_df = all_df.filter(pl.col("wc_kine_reco_Enu") > 0)
-    presel_df.write_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
+    # stream the filtered write straight to disk: no separate presel_df copy and no
+    # write-buffer spike on top of the full df (that spike was OOM-ing during write_parquet)
+    all_df.lazy().filter(pl.col("wc_kine_reco_Enu") > 0).sink_parquet(
+        f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet"
+    )
     end_time = time.time()
     file_size_gb = os.path.getsize(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet") / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")

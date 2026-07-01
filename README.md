@@ -8,7 +8,7 @@ Some overview slides are available on the MicroBooNE DocDB [here](https://microb
 # kinit -f {YOUR_USERNAME}@FNAL.GOV
 
 source download_input_files.sh {YOUR_USERNAME} {LOCATION_WHERE_YOU_WANT_DATA_FILES}
-nohup bash download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/ngem/data_files > download_nohup.out &
+nohup bash download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/ngem/data_files_new_download > download_nohup.out &
 ```
 
 
@@ -49,9 +49,11 @@ nohup python -u src/create_rw_syst_df.py -m > weights_nohup.out 2>&1 &
 
 python src/create_detvar_df.py -f 0.01
 nohup python -u src/create_detvar_df.py -m > detvar_nohup.out 2>&1 &
-
-python src/create_splines_df.py
 ```
+
+`create_rw_syst_df.py` also writes `spline_weights_df.parquet` (the per-knob spline
+weights), read in the same pass from each overlay file's `spline_weights` tree -- this
+replaces the old standalone `create_splines_df.py`.
 
 
 ## Training Multi-Class BDT

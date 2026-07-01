@@ -28,6 +28,8 @@ def _get_file_metadata(filename, frac_events=1):
     """
     if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
         filetype = "ext"
+    elif "nuwro" in filename.lower():
+        filetype = "nuwro_fake_data"
     elif "nu_overlay" in filename.lower():
         filetype = "nu_overlay"
     elif "nue_overlay" in filename.lower():
@@ -47,8 +49,8 @@ def _get_file_metadata(filename, frac_events=1):
     else:
         raise ValueError("Unknown filetype!", filename)
 
-    if filetype == "data" or filetype == "ext" or filetype == "isotropic_one_gamma_overlay" or filetype == "delete_one_gamma_overlay":
-        raise ValueError("Data, EXT, and 1g overlay files don't have systematics variables!")
+    if filetype in ("data", "ext", "nuwro_fake_data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"):
+        raise ValueError(f"{filetype} files are treated like data and have no GENIE systematics variables!", filename)
 
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -105,7 +107,18 @@ def _get_file_metadata(filename, frac_events=1):
 
 
 def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop, **_):
-    """Load events [entry_start, entry_stop) and return a polars DataFrame.
+    """Load events [entry_start, entry_stop) and return (syst_df, spline_df).
+
+    syst_df : run/subrun/event + CV weights + the GENIE/flux/reint multisim systematic
+              weights (the `weights` map), preselected to wc_kine_reco_Enu > 0.
+    spline_df : run/subrun/event + the per-knob spline weights (the file's
+              spline_weights tree) + weightsReint, preselected identically.
+
+    The spline loading used to live in the standalone create_splines_df.py and read a
+    handful of special run-4b spline files; it is folded in here now that every overlay
+    file carries a spline_weights tree, so each ROOT file is opened once and splines are
+    produced for all run periods.  spline_df is written to the separate
+    spline_weights_df.parquet (consumed by save_PROfit_rootfiles).
 
     **_ absorbs unused metadata keys (n_events, root_file_size_gb) so callers can
     pass the full _get_file_metadata dict via **meta.
@@ -125,10 +138,16 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     print("  loading wc_kine_reco_Enu for preselection using uproot...")
     dic = f["wcpselection"]["T_KINEvars"].arrays(["kine_reco_Enu"], library="np", **slice_kwargs)
     curr_weights_df = curr_weights_df.with_columns(pl.Series(name="wc_kine_reco_Enu", values=dic["kine_reco_Enu"]))
-    del f
-    del dic
 
-    print("  loading systematic weights using PyROOT...")
+    # Int32 ids shared by both output dfs (the spline_weights tree is entry-aligned with
+    # nuselection, so reusing these ids keeps the two parquets' join keys consistent).
+    ids_df = curr_weights_df.select([
+        pl.col("run").cast(pl.Int32),
+        pl.col("subrun").cast(pl.Int32),
+        pl.col("event").cast(pl.Int32),
+    ])
+
+    print("  loading systematic (multisim) weights using PyROOT...")
     all_event_weights = get_rw_sys_weights_dic(
         f"{data_files_location}/{filename}",
         max_entries=chunk_size,
@@ -142,25 +161,50 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
             weight_lists = [event_dict[k] for event_dict in all_event_weights]
             curr_weights_df = curr_weights_df.with_columns(pl.Series(name=k, values=weight_lists, dtype=pl.List(pl.Float32)))
 
+    print("  loading per-knob spline weights (spline_weights tree) + weightsReint...")
+    spline_tree = f["spline_weights"]
+    spline_id_cols = {"run", "subrun", "event", "entry", "samdef"}
+    spline_knob_cols = [c for c in spline_tree.keys() if c not in spline_id_cols]
+    spline_data = spline_tree.arrays(spline_knob_cols, library="np", **slice_kwargs)
+    reint_data = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["weightsReint"], library="np", **slice_kwargs)
+    spline_dict = {
+        "run": ids_df["run"].to_numpy(),
+        "subrun": ids_df["subrun"].to_numpy(),
+        "event": ids_df["event"].to_numpy(),
+    }
+    for col in spline_knob_cols:
+        spline_dict[col] = [row.tolist() for row in spline_data[col]]
+    spline_dict["weightsReint"] = [(row.astype(np.float64) / 1000.0).tolist() for row in reint_data["weightsReint"]]
+    spline_df = pl.DataFrame(spline_dict)
+
+    del f, dic, all_event_weights, spline_data, reint_data
+
+    # identical preselection on both dfs (same entry slice -> same row order, so the
+    # boolean mask from one applies to the other).
+    keep_mask = curr_weights_df.select(pl.col("wc_kine_reco_Enu") > 0).to_series()
     previous_num_events = curr_weights_df.height
-    curr_weights_df = curr_weights_df.filter(pl.col("wc_kine_reco_Enu") > 0)
+    curr_weights_df = curr_weights_df.filter(keep_mask)
+    spline_df = spline_df.filter(keep_mask)
     print(f"  kept {curr_weights_df.height}/{previous_num_events} events after preselection wc_kine_reco_Enu > 0")
 
-    curr_weights_df = curr_weights_df.with_columns([
+    meta_cols = [
         pl.lit(detailed_run_period).alias("detailed_run_period"),
         pl.lit(filename).alias("filename"),
         pl.lit(filetype).alias("filetype"),
-    ])
+    ]
+    curr_weights_df = curr_weights_df.with_columns(meta_cols)
+    spline_df = spline_df.with_columns(meta_cols)
 
-    return curr_weights_df
+    return curr_weights_df, spline_df
 
 
 def process_rw_sys_root_file(filename, frac_events=1):
-    """Load an entire ROOT file as a single DataFrame. Thin wrapper around _get_file_metadata + _load_chunk."""
+    """Load an entire ROOT file as (syst_df, spline_df). Thin wrapper around
+    _get_file_metadata + _load_chunk."""
     start_time = time.time()
     print(f"loading {filename}...")
     meta = _get_file_metadata(filename, frac_events)
-    curr_weights_df = _load_chunk(filename, entry_start=0, entry_stop=meta["n_events"], **meta)
+    curr_weights_df, curr_spline_df = _load_chunk(filename, entry_start=0, entry_stop=meta["n_events"], **meta)
     end_time = time.time()
     progress_str = (
         f"\nloaded {meta['filetype']:<30}   Run {meta['detailed_run_period']:<4} "
@@ -170,7 +214,7 @@ def process_rw_sys_root_file(filename, frac_events=1):
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
     print(progress_str)
-    return meta["filetype"], curr_weights_df
+    return meta["filetype"], curr_weights_df, curr_spline_df
 
 
 if __name__ == "__main__":
@@ -196,37 +240,43 @@ if __name__ == "__main__":
         print(f"Loading {args.frac_events} fraction of events from each file")
 
     for file in os.listdir(intermediate_files_location):
-        if (file.startswith("presel_weights_df") and file.endswith(".parquet")) or \
-           (file.startswith("chunk_weights_") and file.endswith(".parquet")):
+        if file.endswith(".parquet") and (
+            file.startswith("presel_weights_df") or file.startswith("chunk_weights_")
+            or file.startswith("spline_weights_df") or file.startswith("chunk_splines_")
+            or file == "_derived_weights.parquet"
+        ):
             os.remove(f"{intermediate_files_location}/{file}")
-    print("Deleted intermediate presel_weights_df*.parquet files")
+    print("Deleted intermediate weight/spline parquet files")
 
     print(f"Starting loop over root files (chunk_size={args.chunk_size:,})...")
 
-    filenames = os.listdir(data_files_location)
-    filenames.sort()
+    def _is_systematics_root_file(fn):
+        """Overlay ROOT files that carry GENIE systematics.  Skips non-.root inputs (the
+        directory also holds e.g. evtgen_pi0_dalitz.csv), auxiliary/unused files, and the
+        samples treated like data -- real data, EXT, NuWro fake data, and the 1g overlays
+        -- as well as detvar files.  NuWro is a different generator (no GENIE multisim
+        `weights` map and no spline_weights tree), so it is the "data" role in the nuwro
+        config and gets no systematic bands."""
+        if not fn.endswith(".root"):
+            return False
+        if "UNUSED" in fn or "older_downloads" in fn or "nfs000000150070ba7d00000751" in fn:
+            return False
+        low = fn.lower()
+        return not (
+            "beam_on" in low or "beamon" in low
+            or "beam_off" in low or "beamoff" in low or "ext" in low
+            or "one_gamma" in low or "nuwro" in low or "detvar" in low
+        )
+
+    filenames = [f for f in sorted(os.listdir(data_files_location)) if _is_systematics_root_file(f)]
+    if args.just_one_file:
+        target = "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root"
+        filenames = [f for f in filenames if target in f]
+    print(f"Processing {len(filenames)} systematics ROOT files...")
 
     for file_num, filename in enumerate(filenames):
 
-        if args.just_one_file and "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root" not in filename:
-            continue
-        if "UNUSED" in filename or "older_downloads" in filename:
-            continue
-
-        if "nfs000000150070ba7d00000751" in filename: # TEMPORARY: weird file in directory now
-            continue
-
-        if "beam_on" in filename.lower() or "beamon" in filename.lower():
-            continue
-        if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
-            continue
-        if "one_gamma" in filename.lower():
-            continue
-
-        if "detvar" in filename.lower():
-            continue
-
-        print(f"loading {filename}...")
+        print(f"\n=== file {file_num + 1}/{len(filenames)}: {filename} ===")
         file_start_time = time.time()
 
         meta = _get_file_metadata(filename, frac_events=args.frac_events)
@@ -236,31 +286,36 @@ if __name__ == "__main__":
 
         n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
         chunk_parquet_paths = []
+        spline_chunk_parquet_paths = []
 
         for chunk_idx, chunk_start in enumerate(range(0, n_events, args.chunk_size)):
             chunk_stop = min(chunk_start + args.chunk_size, n_events)
             print(f"  chunk {chunk_idx + 1}/{n_chunks}: events {chunk_start}-{chunk_stop}...")
 
-            curr_chunk_df = _load_chunk(filename, entry_start=chunk_start, entry_stop=chunk_stop, **meta)
+            curr_chunk_df, curr_spline_chunk_df = _load_chunk(
+                filename, entry_start=chunk_start, entry_stop=chunk_stop, **meta)
 
             chunk_path = f"{intermediate_files_location}/chunk_weights_{file_num}_{chunk_idx}.parquet"
+            spline_chunk_path = f"{intermediate_files_location}/chunk_splines_{file_num}_{chunk_idx}.parquet"
             curr_chunk_df.write_parquet(chunk_path)
+            curr_spline_chunk_df.write_parquet(spline_chunk_path)
             chunk_parquet_paths.append(chunk_path)
-            del curr_chunk_df
+            spline_chunk_parquet_paths.append(spline_chunk_path)
+            del curr_chunk_df, curr_spline_chunk_df
 
-        # combine chunks into the per-file parquet
+        # combine each chunk set into its per-file parquet (stream via sink so the chunks
+        # are never all held in memory at once)
         parquet_path = f"{intermediate_files_location}/presel_weights_df_{file_num}.parquet"
-        if len(chunk_parquet_paths) == 1:
-            os.rename(chunk_parquet_paths[0], parquet_path)
-            print("single chunk, renamed to final parquet")
-        else:
-            print(f"  combining {len(chunk_parquet_paths)} chunks into {parquet_path}...")
-            pl.concat(
-                [pl.read_parquet(p) for p in chunk_parquet_paths],
-                how="diagonal_relaxed",
-            ).write_parquet(parquet_path)
-            for p in chunk_parquet_paths:
-                os.remove(p)
+        spline_parquet_path = f"{intermediate_files_location}/spline_weights_df_{file_num}.parquet"
+        for _paths, _out in ((chunk_parquet_paths, parquet_path),
+                             (spline_chunk_parquet_paths, spline_parquet_path)):
+            if len(_paths) == 1:
+                os.rename(_paths[0], _out)
+            else:
+                print(f"  combining {len(_paths)} chunks into {_out}...")
+                pl.concat([pl.scan_parquet(p) for p in _paths], how="diagonal_relaxed").sink_parquet(_out)
+                for p in _paths:
+                    os.remove(p)
 
         file_end_time = time.time()
         print(f"  saved {os.path.getsize(parquet_path) / 1e9:.2f} GB (on disk)")
@@ -276,68 +331,83 @@ if __name__ == "__main__":
         if args.just_one_file:
             break
 
-    print("loading polars dataframes from parquet files...")
+    print("merging per-file parquets into the final dataframes...")
 
-    presel_weights_dfs = []
-    for file in os.listdir(intermediate_files_location):
-        if file.startswith("presel_weights_df_") and file.endswith(".parquet"):
-            presel_weights_dfs.append(pl.read_parquet(f"{intermediate_files_location}/{file}"))
-    presel_weights_df = pl.concat(presel_weights_dfs, how="vertical")
-    del presel_weights_dfs
-
-    for file in os.listdir(intermediate_files_location):
-        if file.startswith("presel_weights_df_") and file.endswith(".parquet"):
-            os.remove(f"{intermediate_files_location}/{file}")
-    print("Deleted intermediate presel_weights_df*.parquet files")
-
-    if presel_weights_df.is_empty():
+    weight_parts = sorted([
+        f"{intermediate_files_location}/{file}"
+        for file in os.listdir(intermediate_files_location)
+        if file.startswith("presel_weights_df_") and file.endswith(".parquet")
+    ])
+    spline_parts = sorted([
+        f"{intermediate_files_location}/{file}"
+        for file in os.listdir(intermediate_files_location)
+        if file.startswith("spline_weights_df_") and file.endswith(".parquet")
+    ])
+    if not weight_parts:
         raise ValueError("No events in the dataframe!")
-    
-    print(f"presel_weights_df.height={presel_weights_df.height}")
+    print(f"  {len(weight_parts)} weight parts, {len(spline_parts)} spline parts")
 
-    # Extend presel_weights_df with derived event types that have no GENIE systematics.
-    # numuCC_rad_corrected comes from delete_one_gamma_overlay files, and
-    # NC_coherent_1g_reweighted comes from isotropic_one_gamma_overlay files.
-    # Neither source file has GENIE weight trees, so we assign unit CV weights and
-    # unit systematic weights (all-ones lists matching the shape of existing columns).
-    print("Adding derived event types (rad_corrected, coherent_1g) with unit systematic weights...")
+    # ── spline_weights_df.parquet: stream-concat the per-file spline parts ──
+    spline_out = f"{intermediate_files_location}/spline_weights_df.parquet"
+    print(f"saving {spline_out}...", end="", flush=True)
+    pl.concat([pl.scan_parquet(p) for p in spline_parts], how="diagonal_relaxed").sink_parquet(spline_out)
+    for p in spline_parts:
+        os.remove(p)
+    print(f"done, {os.path.getsize(spline_out) / 1024**3:.2f} GB")
+
+    # ── presel_weights_df.parquet: derived rad/coherent rows + stream-concat ──
+    # numuCC_rad_corrected (from delete_one_gamma_overlay) and NC_coherent_1g_reweighted
+    # (from isotropic_one_gamma_overlay) have no GENIE weight trees, so they get unit CV
+    # weights and unit systematic-weight lists (matching the existing list columns'
+    # shapes).  Written to their own small parquet and streamed in alongside the rest, so
+    # the full weights dataframe is never materialized in memory.
+    derived_part = None
     presel_df_path = f"{intermediate_files_location}/presel_df_train_vars.parquet"
     if os.path.exists(presel_df_path):
         derived_events = pl.scan_parquet(presel_df_path).filter(
             pl.col("filetype").is_in(["numuCC_rad_corrected", "NC_coherent_1g_reweighted"])
         ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu"]).collect()
-
-        print(f"  found {derived_events.height} derived events in presel_df_train_vars.parquet")
+        print(f"Adding {derived_events.height} derived events (rad_corrected, coherent_1g) with unit systematic weights...")
 
         if derived_events.height > 0:
-            # Build unit CV weights
+            # Union of list (systematic) columns across all weight parts, with one example
+            # list length each (parts can in principle differ in which knobs they carry).
+            list_col_len = {}
+            for wp in weight_parts:
+                sch = pl.scan_parquet(wp).collect_schema()
+                need = [c for c, t in sch.items() if isinstance(t, pl.List) and c not in list_col_len]
+                if need:
+                    first = pl.scan_parquet(wp).select(need).head(1).collect()
+                    for c in need:
+                        list_col_len[c] = len(first[c][0])
+
             derived_events = derived_events.with_columns([
                 pl.lit(1.0).cast(pl.Float32).alias("weightSpline"),
                 pl.lit(1.0).cast(pl.Float32).alias("weightTune"),
                 pl.lit(1.0).cast(pl.Float32).alias("weightSplineTimesTune"),
             ])
-
-            # Build unit systematic list columns matching shape of existing presel_weights_df
-            sys_list_cols = [c for c, t in presel_weights_df.schema.items() if isinstance(t, pl.List)]
             n = derived_events.height
-            for col in sys_list_cols:
-                list_len = len(presel_weights_df[col][0])
+            for col, list_len in list_col_len.items():
                 derived_events = derived_events.with_columns(
                     pl.Series(col, [[1.0] * list_len] * n, dtype=pl.List(pl.Float32))
                 )
 
-            presel_weights_df = pl.concat([presel_weights_df, derived_events], how="diagonal_relaxed")
-            print(f"  presel_weights_df now has {presel_weights_df.height} rows after adding derived events")
+            derived_part = f"{intermediate_files_location}/_derived_weights.parquet"
+            derived_events.write_parquet(derived_part)
         else:
             print("  WARNING: no derived events found; skipping extension")
     else:
         print(f"  WARNING: {presel_df_path} not found; skipping derived event extension")
 
-    print(f"saving {intermediate_files_location}/presel_weights_df.parquet...", end="", flush=True)
+    presel_out = f"{intermediate_files_location}/presel_weights_df.parquet"
+    all_weight_parts = weight_parts + ([derived_part] if derived_part else [])
+    print(f"saving {presel_out}...", end="", flush=True)
     start_time = time.time()
-    presel_weights_df.write_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
+    pl.concat([pl.scan_parquet(p) for p in all_weight_parts], how="diagonal_relaxed").sink_parquet(presel_out)
+    for p in all_weight_parts:
+        os.remove(p)
     end_time = time.time()
-    file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_weights_df.parquet") / 1024**3
+    file_size_gb = os.path.getsize(presel_out) / 1024**3
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
     main_end_time = time.time()
     print(f"Total time to create weights dataframe: {main_end_time - main_start_time:.2f} seconds")

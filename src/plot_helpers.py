@@ -605,7 +605,9 @@ def make_histogram_plot(
         for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
             combined_rw_sys_frac_cov += rw_sys_frac_cov
         combined_rw_sys_cov = combined_rw_sys_frac_cov * np.outer(mc_pred_counts, mc_pred_counts) # fractional uncertainty on the MC pred, not including EXT
-        data_stat_cov = get_data_stat_cov(data_counts, pred_counts)
+        # prediction-only plots (include_data=False) have no data, hence no data
+        # statistical term -- data_counts is undefined there, so use a zero matrix
+        data_stat_cov = get_data_stat_cov(data_counts, pred_counts) if include_data else np.zeros_like(combined_rw_sys_cov)
         pred_stat_cov = get_pred_stat_cov(get_vals(pred_sel_df, var), get_vals(pred_sel_df, net_weight_var), bins)
         nodetvar_sys_cov = combined_rw_sys_cov + data_stat_cov + pred_stat_cov
         denom = np.outer(pred_counts, pred_counts)
