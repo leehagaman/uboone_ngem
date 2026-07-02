@@ -67,6 +67,12 @@ python src/train.py --name all_vars_small
 nohup python -u src/hyperparameter_tuning.py --study_name first_test_xgb_hp --n_trials 10 > hyperparameter_tuning_nohup.out 2>&1 &
 ```
 
+## Creating PROfit root file
+```
+python src/save_PROfit_rootfiles.py
+```
+
+
 ## Creating Many Plots
 
 ```

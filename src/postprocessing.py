@@ -1676,6 +1676,41 @@ _SIGNAL_CATEGORY_SPECS = [
 ]
 
 
+def _collect_scalar_aggs_verified(lf, agg, max_tries=4, rtol=1e-6):
+    """Collect a wide scalar-aggregation select, running it TWICE and requiring the two
+    passes to agree before trusting the numbers.
+
+    polars 1.34's streaming engine has a race that can silently return wrong values for
+    selects with many aggregation expressions under concurrent machine load (observed in
+    save_PROfit_rootfiles._spline_list_lengths: a 144-aggregation select returned a
+    chunk's flattened element count instead of a per-row list length).  The corruption
+    is nondeterministic garbage tied to racing chunk sizes, so two independent passes
+    agreeing on every value is decisive.  Integers must match exactly; floats within
+    rtol, since streaming summation order can legitimately differ between passes."""
+    prev = None
+    for attempt in range(max_tries):
+        res = lf.select(agg).collect(engine="streaming").row(0, named=True)
+        if prev is not None:
+            ok = True
+            for k, v in res.items():
+                p = prev[k]
+                if isinstance(v, float) and isinstance(p, float):
+                    if v != p and abs(v - p) > rtol * max(abs(v), abs(p), 1.0):
+                        ok = False
+                        break
+                elif v != p:
+                    ok = False
+                    break
+            if ok:
+                return res
+            print(f"  WARNING: streaming aggregation gave inconsistent results on pass {attempt + 1} "
+                  f"(polars wide-multi-agg race); retrying...", flush=True)
+        prev = res
+    raise RuntimeError(
+        f"streaming aggregation results did not stabilize in {max_tries} passes; "
+        "machine may be under extreme load -- rerun, or see the polars wide-multi-agg race note above")
+
+
 def verify_signal_categories(lf):
     """Print per-category weighted yields and verify every signal category is
     exhaustive (no uncategorized events) and mutually exclusive (no event matching
@@ -1684,8 +1719,10 @@ def verify_signal_categories(lf):
     Accepts an eager DataFrame or a LazyFrame.  All counts come from a single
     streaming aggregation pass (scalar sums only), so a LazyFrame scan over the
     per-batch parquets verifies globally without ever materializing the full df.
-    Raises AssertionError on any overlap or uncategorized events -- the same check
-    _add_signal_category does per-df, but applied once across all batches.
+    (The pass is run twice via _collect_scalar_aggs_verified to guard against the
+    polars streaming wide-multi-agg race.)  Raises AssertionError on any overlap or
+    uncategorized events -- the same check _add_signal_category does per-df, but
+    applied once across all batches.
     """
     lf = lf.lazy() if isinstance(lf, pl.DataFrame) else lf
     names = lf.collect_schema().names()
@@ -1709,7 +1746,7 @@ def verify_signal_categories(lf):
                 agg.append(
                     pl.when(col == i).then(pl.col(weight_col)).otherwise(0.0).sum().alias(f"{name}__w_{i}")
                 )
-    res = lf.select(agg).collect(engine="streaming").row(0, named=True)
+    res = _collect_scalar_aggs_verified(lf, agg)
 
     failures = []
     for name, queries, labels, _dbg in _SIGNAL_CATEGORY_SPECS:
@@ -1735,7 +1772,7 @@ def verify_signal_categories(lf):
                 for i in range(len(labels)) for j in range(i + 1, len(labels))
             ]
             if pair_aggs:
-                pr = lf.select(pair_aggs).collect(engine="streaming").row(0, named=True)
+                pr = _collect_scalar_aggs_verified(lf, pair_aggs)
                 for i in range(len(labels)):
                     for j in range(i + 1, len(labels)):
                         if pr[f"_p_{i}_{j}"]:
