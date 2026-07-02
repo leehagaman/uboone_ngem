@@ -653,7 +653,11 @@ wc_training_vars = [f"wc_{var}" for var in wc_training_vars]
 wc_training_vars += wc_reco_particle_multiplicity_vars
 
 wc_prefix_kine_scalar_vars = [f"wc_{var}" for var in kine_scalar_vars]
-wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC"] + wc_prefix_kine_scalar_vars + wc_reco_particle_multiplicity_vars]
+# Keep the higher-level analysis vars (wc_T_bdt_vars, e.g. numu_cc_flag, shw_sp_n_20br1_showers)
+# in all_df even though they're also BDT training inputs -- they're used for selections/plotting,
+# so they must not be treated as training-only and dropped.
+wc_prefix_bdt_vars = [f"wc_{var}" for var in wc_T_bdt_vars]
+wc_training_only_vars = [var for var in wc_training_vars if var not in ["wc_kine_reco_Enu", "wc_match_isFC"] + wc_prefix_kine_scalar_vars + wc_reco_particle_multiplicity_vars + wc_prefix_bdt_vars]
 
 wc_T_BDT_including_training_vars = list(set(wc_T_bdt_vars + wc_T_BDT_training_vars))
 wc_T_KINEvars_including_training_vars = list(set(wc_T_kine_vars + wc_T_KINEvars_training_vars))

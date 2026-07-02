@@ -92,28 +92,26 @@ if __name__ == "__main__":
 
     all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
 
-    # splitting into train and test, then re-making all_df
-    no_data_df = all_df.filter(pl.col("filetype") != "data")
-    data_df = all_df.filter(pl.col("filetype") == "data")
-    
+    # Real data and NuWro fake data are data stand-ins: never train/test on them (their
+    # used_for_training/used_for_testing flags stay False), but predictions are still produced
+    # for them from all_df below.
+    non_training_filetypes = ["data", "nuwro_fake_data"]
+
+    # Assign train/test flags in place (avoids duplicating the full dataframe with pl.concat).
+    # For non_training_filetypes, `~is_in(...)` is False, so both flags are False regardless of
+    # train_test_score (Kleene: False & anything == False).
     train_fraction = 0.5
-    no_data_df = no_data_df.with_columns([
-        (pl.col("train_test_score") < train_fraction).alias("used_for_training"),
-        (pl.col("train_test_score") >= train_fraction).alias("used_for_testing")
+    all_df = all_df.with_columns([
+        (~pl.col("filetype").is_in(non_training_filetypes) & (pl.col("train_test_score") < train_fraction)).alias("used_for_training"),
+        (~pl.col("filetype").is_in(non_training_filetypes) & (pl.col("train_test_score") >= train_fraction)).alias("used_for_testing"),
     ])
-    
-    data_df = data_df.with_columns([
-        pl.lit(False).alias("used_for_training"),
-        pl.lit(False).alias("used_for_testing")
-    ])
-    
-    all_df = pl.concat([no_data_df, data_df])
 
     # Preselection: WC generic neutrino selection
     # (should already be applied in the presel_df_train_vars.pkl file)
-    original_num_events = no_data_df.height
+    trainable_df = all_df.filter(~pl.col("filetype").is_in(non_training_filetypes))
+    original_num_events = trainable_df.height
 
-    presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0) # not necessary, already applied in presel_df_train_vars.parquet
+    presel_df = trainable_df.filter(pl.col("wc_kine_reco_Enu") > 0) # not necessary, already applied in presel_df_train_vars.parquet
 
     if args.signal_categories == "nc_coh_1g_vs_bkg":
         # don't use Iso1g or Del1g events for training/testing
@@ -186,8 +184,12 @@ if __name__ == "__main__":
     #print(f"Categories in test data: {unique_categories_test}")
     #print(f"Expected categories: {list(range(num_categories))}")
 
+    print("creating eval_set and eval_weights...")
+
     eval_set = [(x_train, y_train), (x_test, y_test)]
     eval_weights = [w_train, w_test]
+
+    print("creating model...")
 
     # Configure model and metrics for binary vs multi-class
     if num_categories == 2:
@@ -206,6 +208,8 @@ if __name__ == "__main__":
             early_stopping_rounds=args.early_stopping_rounds,
         )
 
+    print("fitting model...")
+
     model.fit(
         x_train, y_train, 
         sample_weight=w_train,
@@ -216,6 +220,10 @@ if __name__ == "__main__":
 
     if model.best_iteration is not None:
         print(f"Early stopping: best_iteration={model.best_iteration}")
+
+    # x_train (~12 GB) is no longer needed after fitting; eval_set/eval_weights also hold
+    # references to it, so drop them too to actually free the memory.
+    del eval_set, eval_weights, x_train, y_train, w_train
 
     print("Saving model...")
     model.get_booster().save_model(output_dir / "bdt.json")
@@ -325,6 +333,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(20, 12))
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
+    del x_test  # (~12 GB) no longer needed; y_pred/y_proba/y_test/w_test carry the rest
     n_categories = num_categories
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
@@ -404,12 +413,21 @@ if __name__ == "__main__":
     plt.close()
 
     print("Creating prediction dataframe...")
-    # Get predictions for all data (not just test set, not just presel)
-    x = all_df.select(training_vars).to_numpy()
-    x = x.astype(np.float64)
-    x[np.isinf(x)] = np.nan
-    all_probabilities = model.predict_proba(x)
-    
+    # Get predictions for all data (not just test set, not just presel).
+    # Predict in chunks with float32 to bound peak memory: the full matrix would be
+    # ~3.8M x 991 floats, and to_numpy/astype/predict_proba would each copy it.
+    # XGBoost casts inputs to float32 internally, so float32 here gives identical predictions.
+    prediction_chunk_size = 200_000
+    n_prediction_rows = all_df.height
+    prob_chunks = []
+    for start in range(0, n_prediction_rows, prediction_chunk_size):
+        x_chunk = all_df.slice(start, prediction_chunk_size).select(training_vars).to_numpy().astype(np.float32)
+        x_chunk[np.isinf(x_chunk)] = np.nan
+        prob_chunks.append(model.predict_proba(x_chunk))
+        del x_chunk
+    all_probabilities = np.concatenate(prob_chunks, axis=0)
+    del prob_chunks
+
     # Build prediction dataframe columns
     prediction_cols = [
         all_df.select("filename"),

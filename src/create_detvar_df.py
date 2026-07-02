@@ -22,6 +22,49 @@ from file_locations import data_files_location, intermediate_files_location
 from df_helpers import align_columns_for_concat
 from memory_monitoring import start_memory_logger
 
+
+def _filetype_from_filename(filename):
+    """Infer the detvar filetype from a filename (string-only, no ROOT open)."""
+    fn = filename.lower()
+    if "nu_overlay" in fn:
+        return "nu_overlay"
+    if "nue_overlay" in fn:
+        return "nue_overlay"
+    if "dirt" in fn:
+        return "dirt_overlay"
+    if "nc_pi0" in fn or "ncpi0" in fn or "nc_pio" in fn or "ncpio" in fn:
+        return "nc_pi0_overlay"
+    if "ccpi0" in fn:
+        return "numucc_pi0_overlay"
+    if "delete_one_gamma" in fn:
+        return "delete_one_gamma_overlay"
+    if "isotropic_one_gamma" in fn:
+        return "isotropic_one_gamma_overlay"
+    raise ValueError("Unknown filetype!", filename)
+
+
+def _vartype_from_filename(filename):
+    """Infer the detector-variation type from a filename (string-only, no ROOT open)."""
+    fn = filename.lower()
+    if "lya" in fn:
+        return "LYAtt"
+    if "lyd" in fn:
+        return "LYDown"
+    if "lyr" in fn:
+        return "LYRayleigh"
+    if "wmx" in fn:
+        return "WireModX"
+    if "wmyz" in fn:
+        return "WireModYZ"
+    if "recomb2" in fn:
+        return "Recomb2"
+    if "sce" in fn:
+        return "SCE"
+    if "cv" in fn:
+        return "CV"
+    raise ValueError("Unknown vartype!", filename)
+
+
 def _get_file_metadata(filename, frac_events=1):
     """Open a ROOT file briefly to collect per-file metadata without reading branch data.
 
@@ -384,16 +427,23 @@ if __name__ == "__main__":
     gc.collect()
     print(f"all_df size: {all_df.estimated_size() / 1e9:.2f} GB")
     
-    # Validate filetype column immediately after concatenation
-    if "filetype" in all_df.columns:
-        empty_count = all_df.filter(pl.col("filetype") == '').height
-        null_count = all_df.filter(pl.col("filetype").is_null()).height
-        if empty_count > 0 or null_count > 0:
-            print(f"ERROR after concat: filetype has {empty_count} empty strings and {null_count} nulls")
-            if empty_count > 0:
-                problem_row = all_df.filter(pl.col("filetype") == '').head(1).row(0, named=True)
-                print(f"Example empty filetype row: filename={problem_row.get('filename', 'N/A')}")
-            raise ValueError(f"filetype column corrupted after concatenation: {empty_count} empty, {null_count} null")
+    # Repair filetype/vartype after the streaming concat.  sink_parquet can corrupt
+    # low-cardinality String columns via dictionary encoding, turning some values into
+    # '' (the same issue create_df.py repairs for filetype -- here it also hit vartype,
+    # which was previously unchecked and silently produced empty-vartype events).  Both
+    # are derivable from the filename, so re-infer any '' / null values from it.
+    for _col, _infer in (("filetype", _filetype_from_filename), ("vartype", _vartype_from_filename)):
+        _bad_mask = pl.col(_col).is_null() | (pl.col(_col) == "")
+        _bad = all_df.filter(_bad_mask).height
+        if _bad > 0:
+            print(f"WARNING: {_bad} rows have empty/null {_col} after streaming concat -- re-inferring from filename")
+            _fixed = pl.Series(_col, [
+                v if (v is not None and v != "") else _infer(fn)
+                for v, fn in zip(all_df[_col].to_list(), all_df["filename"].to_list())
+            ])
+            all_df = all_df.with_columns(_fixed)
+            if all_df.filter(_bad_mask).height > 0:
+                raise ValueError(f"{_col} still has empty/null values after re-inference!")
 
     for file in os.listdir(intermediate_files_location):
         if file.startswith("curr_detvar_df_pl_") and file.endswith(".parquet"):

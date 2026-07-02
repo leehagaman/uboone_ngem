@@ -213,7 +213,14 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
     if make_plots:
         _reproduction_and_theory_plots()
 
-    select_vars = _RELEVANT_VARS + [net_weight_var]
+    # fix_del1g_weight is normalized per-POT below (so it stays a POT-independent rate
+    # ratio even though del1g spans only runs 4-5 while the normal numuCC spans runs
+    # 1-5); that needs each sample's total goal POT, read from the config's
+    # norm_goal_pot / normalizing_run_period columns.
+    config_name = net_weight_var.replace("wc_net_weight_", "")
+    goal_col = f"norm_goal_pot_{config_name}"
+    nrp_col = f"normalizing_run_period_{config_name}"
+    select_vars = _RELEVANT_VARS + [net_weight_var, goal_col, nrp_col]
 
     # ── Load del1g and normal numuCC events (cell 9) ──────────────────────────
     # The "normal numuCC" sample is the nominal-MC numuCC distribution that defines the
@@ -348,7 +355,21 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
         normal_KE, normal_proton_E, bins=[bins_mu_ke, bins_proton_e],
         weights=normal_w)
 
-    weight_ratios_2d = np.where(H_del1g > 0, H_normal / H_del1g, 0.0)
+    # Per-POT normalization: divide each histogram by the total goal POT its open-data
+    # weights are normalized to (= sum of the distinct normalizing groups' goal POT the
+    # sample covers), so fix_del1g_weight is a POT-independent per-POT-rate ratio.  del1g
+    # only exists in runs 4-5 while the normal numuCC covers runs 1-5, so without this the
+    # ratio would carry a spurious P_normal/P_del1g (~1.6x) POT factor and over-normalize
+    # the rad-corr events.  The absolute full-POT scaling is applied later in
+    # apply_1g1mu_rad_corr_reweighting via rate_per_pot * total_goal_pots.
+    def _coverage_goal_pot(df_):
+        return df_.select([nrp_col, goal_col]).unique().select(pl.col(goal_col).sum()).item()
+    P_del1g = _coverage_goal_pot(del1g_numuCC_df)
+    P_normal = _coverage_goal_pot(normal_numuCC_df)
+    print(f"  per-POT norm: del1g coverage goal POT={P_del1g:.3e}, normal coverage goal POT={P_normal:.3e} "
+          f"(fix_del1g scaled by P_del1g/P_normal={P_del1g / P_normal:.3f})")
+
+    weight_ratios_2d = np.where(H_del1g > 0, (H_normal / H_del1g) * (P_del1g / P_normal), 0.0)
     i_mu = np.clip(np.digitize(del1g_KE, bins_mu_ke) - 1, 0, len(bins_mu_ke) - 2)
     i_proton = np.clip(np.digitize(del1g_proton_E, bins_proton_e) - 1, 0, len(bins_proton_e) - 2)
     event_weight_ratios = weight_ratios_2d[i_mu, i_proton]
