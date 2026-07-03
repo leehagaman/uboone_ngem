@@ -69,21 +69,8 @@ python src/train.py --name all_vars_small
 nohup python -u src/hyperparameter_tuning.py --study_name first_test_xgb_hp --n_trials 10 > hyperparameter_tuning_nohup.out 2>&1 &
 ```
 
-## Writing PROfit Input ROOT Files
-
-Command-line, plot-free version of `ipynb_notebooks/save_PROfit_rootfiles.ipynb`.  Writes
-the nominal MC+data-with-splines tree (runs 1-5 open-data weighting) and one detector-
-variation tree per vartype.  The non-spline output variables are a clear editable list
-(`OUTPUT_SCALAR_COLUMNS`) at the top of the script, and the reco-category cuts are in
-`RECO_CATEGORY_THRESHOLDS`.
-
+## Creating PROfit root file
 ```
-python src/save_PROfit_rootfiles.py --training all_vars_r15
-
-nohup python -u src/save_PROfit_rootfiles.py > save_PROfit_nohup.out 2>&1 &
-
-python src/save_PROfit_rootfiles.py --no-detvar   # nominal only
-
 python src/save_PROfit_rootfiles.py
 ```
 
