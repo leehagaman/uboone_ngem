@@ -17,6 +17,10 @@ from file_locations import intermediate_files_location
 
 from pi0_dalitz_reweighting import get_dalitz_rest_frame_observables
 
+from afro_1mu1p_selection import REQUIRED_RECO_SELECTION_COLUMNS, REQUIRED_TRUE_1MU1P_COLUMNS, STV_COLUMN_NAMES
+from afro_1mu1p_selection import evaluate_reco_event as evaluate_afro_1mu1p_reco_event
+from afro_1mu1p_selection import evaluate_true_1mu1p_event as evaluate_afro_true_1mu1p_event
+
 def change_dtypes(df):
     """
     Convert Float64 to Float32 and Int64 to Int32 to reduce memory usage.
@@ -1944,6 +1948,51 @@ def do_pandora_postprocessing(df):
             processed_var_dic[processed_var].append(curr_event_processed_var_dic[processed_var])
 
     return pd.concat([df, pd.DataFrame(processed_var_dic)], axis=1)
+
+
+def add_afro_1mu1p_sel(df):
+    """Append the Afro 1mu1p reco-selection column."""
+    missing_columns = [col for col in REQUIRED_RECO_SELECTION_COLUMNS if col not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns needed for add_afro_1mu1p_sel: {missing_columns}")
+
+    columns = REQUIRED_RECO_SELECTION_COLUMNS.copy()
+    column_arrays = {col: df[col].to_numpy() for col in columns}
+    has_truth_columns = all(col in df.columns for col in REQUIRED_TRUE_1MU1P_COLUMNS)
+    truth_column_arrays = (
+        {col: df[col].to_numpy() for col in REQUIRED_TRUE_1MU1P_COLUMNS}
+        if has_truth_columns else {}
+    )
+
+    selected = []
+    true_1mu1p = []
+    stv_columns = {column_name: [] for column_name in STV_COLUMN_NAMES.values()}
+    for event_idx in tqdm(range(len(df)), desc="Adding one muon one proton selection", mininterval=10):
+        event_data = {col: values[event_idx] for col, values in column_arrays.items()}
+        passes_selection, stv_values = evaluate_afro_1mu1p_reco_event(event_data)
+        selected.append(passes_selection)
+        if has_truth_columns:
+            truth_event_data = {col: values[event_idx] for col, values in truth_column_arrays.items()}
+            true_1mu1p.append(evaluate_afro_true_1mu1p_event(truth_event_data))
+        else:
+            true_1mu1p.append(0)
+        for column_name in stv_columns:
+            stv_columns[column_name].append(stv_values[column_name])
+
+    if isinstance(df, pl.DataFrame):
+        return df.with_columns(
+            [
+                pl.Series("afro_1mu1p_sel", selected),
+                pl.Series("afro_1mu1p_true", true_1mu1p),
+            ]
+            + [pl.Series(column_name, values) for column_name, values in stv_columns.items()]
+        )
+
+    df["afro_1mu1p_sel"] = selected
+    df["afro_1mu1p_true"] = true_1mu1p
+    for column_name, values in stv_columns.items():
+        df[column_name] = values
+    return df
 
 
 def do_glee_postprocessing(df):

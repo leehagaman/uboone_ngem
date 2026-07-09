@@ -14,6 +14,7 @@ from ntuple_variables.variables import wc_T_spacepoints_vars, wc_T_eval_vars, wc
 from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lantern_vars, vector_columns
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
+from postprocessing import add_afro_1mu1p_sel
 from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables
 
@@ -353,6 +354,7 @@ if __name__ == "__main__":
             curr_df = do_blip_postprocessing(curr_df)
             curr_df = do_lantern_postprocessing(curr_df)
             curr_df = do_glee_postprocessing(curr_df)
+            curr_df = add_afro_1mu1p_sel(curr_df)
 
             curr_df = remove_vector_variables(curr_df)
 
@@ -529,4 +531,3 @@ if __name__ == "__main__":
 
     main_end_time = time.time()
     print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
-    

@@ -81,6 +81,12 @@ OUTPUT_SCALAR_COLUMNS = [
     "event",
     "reco_category",
     "wc_kine_reco_Enu",
+    "afro_1mu1p_sel",
+    "afro_1mu1p_true",
+    "afro_1mu1p_PMiss",
+    "afro_1mu1p_Pn",
+    "afro_1mu1p_Pt",
+    "afro_1mu1p_Q2"
 ]
 
 # reco_category selection.  For each category:  (prob threshold on prob_<category>,

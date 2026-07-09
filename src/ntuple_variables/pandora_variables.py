@@ -48,6 +48,7 @@ pandora_non_BDT_vars = [
 pandora_scalar_vars = [
     # general variables
     "reco_e",
+    "n_pfps",
     "nslice",
     "slice_orig_pass_id",
     "slice_orig_topo_score",
@@ -308,6 +309,7 @@ pandora_vector_vars = [
     "pfng2dfsavrg",
     #"pfng2bkgavrg",
     "trk_pfp_id_v",
+    "trk_theta_v",
     "trk_phi_v",
     # removing chi variables, advice from Giuseppe, https://microboone.slack.com/archives/C04PSEK91FZ/p1765482781972259
     #"trk_pid_chika_u_v",
@@ -329,9 +331,18 @@ pandora_vector_vars = [
     "trk_llr_pid_score_v",
     "trk_len_v",
     "trk_distance_v",
+    "trk_sce_start_x_v",
+    "trk_sce_start_y_v",
+    "trk_sce_start_z_v",
+    "trk_sce_end_x_v",
+    "trk_sce_end_y_v",
+    "trk_sce_end_z_v",
+    "trk_mcs_muon_mom_v",
+    "trk_range_muon_mom_v",
     "trk_score_v",
     "trk_energy_muon_v",
     "trk_energy_proton_v",
+    "pfpdg",
     # "MCS quality", # doesn't exist in file!
 ]
 
