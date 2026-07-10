@@ -19,6 +19,7 @@ from src.file_locations import data_files_location, intermediate_files_location
 from src.memory_monitoring import start_memory_logger
 
 from src.pyroot_loading import get_rw_sys_weights_dic
+from src.zexp_reweighting import ZEXP_MINERVA_FA_BRANCH, ZEXP_PCA_BRANCHES, compute_minerva_zexp_weights
 
 def _get_file_metadata(filename, frac_events=1):
     """Collect per-file metadata without reading any weight data.
@@ -167,6 +168,7 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     spline_knob_cols = [c for c in spline_tree.keys() if c not in spline_id_cols]
     spline_data = spline_tree.arrays(spline_knob_cols, library="np", **slice_kwargs)
     reint_data = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["weightsReint"], library="np", **slice_kwargs)
+    q2_data = f["singlephotonana"]["eventweight_tree"].arrays(["GTruth_gQ2"], library="np", **slice_kwargs)
     spline_dict = {
         "run": ids_df["run"].to_numpy(),
         "subrun": ids_df["subrun"].to_numpy(),
@@ -175,9 +177,15 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     for col in spline_knob_cols:
         spline_dict[col] = [row.tolist() for row in spline_data[col]]
     spline_dict["weightsReint"] = [(row.astype(np.float64) / 1000.0).tolist() for row in reint_data["weightsReint"]]
+
+    print("  computing MINERvA z-expansion axial form-factor weights...")
+    zexp_weights = compute_minerva_zexp_weights(q2_data["GTruth_gQ2"], spline_data["MaCCQE_UBGenie"])
+    spline_dict[ZEXP_MINERVA_FA_BRANCH] = zexp_weights[ZEXP_MINERVA_FA_BRANCH]
+    for col in ZEXP_PCA_BRANCHES:
+        spline_dict[col] = [row.tolist() for row in zexp_weights[col]]
     spline_df = pl.DataFrame(spline_dict)
 
-    del f, dic, all_event_weights, spline_data, reint_data
+    del f, dic, all_event_weights, spline_data, reint_data, q2_data, zexp_weights
 
     # identical preselection on both dfs (same entry slice -> same row order, so the
     # boolean mask from one applies to the other).
@@ -229,6 +237,9 @@ if __name__ == "__main__":
                         help="Comma-separated list of weight types to load. Default: genie,flux,reint")
     parser.add_argument("--just_one_file", action="store_true", default=False,
                         help="Only process one file for debugging purposes")
+    parser.add_argument("--just_one_file_target", type=str,
+                        default="checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_1.root",
+                        help="Filename substring to use with --just_one_file. Default: a BNB nu_overlay file with CCQE-capable MaCCQE splines")
     parser.add_argument("--chunk_size", type=int, default=100_000,
                         help="Number of events per chunk when reading ROOT files. Default: 100000")
     args = parser.parse_args()
@@ -270,8 +281,12 @@ if __name__ == "__main__":
 
     filenames = [f for f in sorted(os.listdir(data_files_location)) if _is_systematics_root_file(f)]
     if args.just_one_file:
-        target = "checkout_MCC9.10_Run4c4d5_v10_04_07_13_BNB_NCpi0_overlay_surprise_reco2_hist_4c.root"
+        target = args.just_one_file_target
         filenames = [f for f in filenames if target in f]
+        if not filenames:
+            raise ValueError(f"--just_one_file_target matched no systematics ROOT files: {target}")
+        filenames = filenames[:1]
+        print(f"  --just_one_file target: {target}")
     print(f"Processing {len(filenames)} systematics ROOT files...")
 
     for file_num, filename in enumerate(filenames):
