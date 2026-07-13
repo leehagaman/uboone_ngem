@@ -23,6 +23,11 @@ To avoid making ipynb plots visible on github:
 git config --global filter.strip-notebook-output.clean 'jupyter nbconvert --ClearOutputPreprocessor.enabled=True --to=notebook --stdin --stdout --log-level=ERROR'
 ```
 
+To set up your input and output paths, edit this file to point towards your own directories. If you're using Nevis servers, you can leave the read-only data_files_location as it is.
+```
+src/file_locations.py
+```
+
 
 ## Creating Dataframes
 You can add --frac_events (-f) 0.01 to load only 1% of the events from each file, making this faster (and less RAM consuming) for small tests. You can also add --just_one_file to only process one file for small tests.
