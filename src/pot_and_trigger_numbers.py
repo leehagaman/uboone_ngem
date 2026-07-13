@@ -17,14 +17,14 @@ and to build the weighting configs in get_weight_configs.
 open_data_POT = {
     "1":  2.807e19,
     "3":  9.471e18,
-    "4a": 2.098e19,
-    "4b": 4.038e19,
+    "4a": 2.082e19,
+    "4b": 3.731e19,
 }
 open_data_num_triggers = {
     "1":  6247112,
     "3":  2301101,
-    "4a": 4836758,
-    "4b": 9218529,
+    "4a": 4801880,
+    "4b": 8523291,
 }
 
 # beam-off (EXT) trigger counts, by detailed_run_period
@@ -32,11 +32,11 @@ ext_num_triggers = {
     "1":  49551151,
     "2":  152116269,
     "3":  143426455,
-    "4a": 27940007,
-    "4b": 89010180,
-    "4c": 53659787,
-    "4d": 76563108,
-    "5":  111457148,
+    "4a": 27734396,
+    "4b": 84966908,
+    "4c": 53405830,
+    "4d": 76274342,
+    "5":  109124930,
 }
 
 # Which beam-on data period's POT/trigger ratio to use to convert each EXT

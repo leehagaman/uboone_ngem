@@ -40,3 +40,5 @@ BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/*
 !BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_abs_frac/
 !BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_inelas_frac/
 !BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_pipro_frac/
+
+ipynb_notebooks/run_subrun_lists/*
