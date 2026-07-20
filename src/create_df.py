@@ -29,6 +29,7 @@ from file_locations import data_files_location, intermediate_files_location
 from pot_and_trigger_numbers import (
     open_data_POT, open_data_num_triggers, ext_num_triggers,
     ext_pot_normalizing_period, expected_full_dataset_data_POT,
+    fullosc_sample_POT,
 )
 
 from memory_monitoring import start_memory_logger
@@ -162,6 +163,8 @@ def _detailed_run_period_from_filename(filename):
 
 def _filetype_from_filename(filename):
     fn = filename.lower()
+    if "fullosc" in fn:
+        return "fullosc_overlay"
     if "beam_off" in fn or "beamoff" in fn or "ext" in fn:
         return "ext"
     if "nuwro" in fn:
@@ -229,6 +232,12 @@ def _get_file_metadata(filename, frac_events=1):
         if detailed_run_period not in open_data_POT:
             raise ValueError("Beam-on data file POT not found!", filename, detailed_run_period)
         file_POT_total = open_data_POT[detailed_run_period]
+    elif filetype == "fullosc_overlay":
+        # the fullosc file's T_pot tree is wrong (events matched from separate
+        # numu and nue files), so its POT is hardcoded
+        if detailed_run_period not in fullosc_sample_POT:
+            raise ValueError("Fullosc sample POT not found!", filename, detailed_run_period)
+        file_POT_total = fullosc_sample_POT[detailed_run_period]
 
     file_POT = file_POT_total * frac_events
 
@@ -283,11 +292,17 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
     dic.update(f["wcpselection"]["T_KINEvars"].arrays(wc_T_KINEvars_including_training_vars, library="np", **slice_kwargs))
     dic.update(f["wcpselection"]["T_spacepoints"].arrays(wc_T_spacepoints_vars, library="np", **slice_kwargs))
     if filetype == "ext" or filetype == "data":
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(wc_T_pf_data_vars, library="np", **slice_kwargs))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_data_vars, library="np", **slice_kwargs))
+        curr_wc_T_pf_vars = wc_T_pf_data_vars
+        curr_wc_T_eval_vars = wc_T_eval_data_vars
+    elif filetype == "fullosc_overlay":
+            # matching flag + per-event numu-flux CV weight, only present in the fullosc file
+            curr_wc_T_pf_vars = curr_wc_T_pf_vars
+            curr_wc_T_eval_vars = wc_T_eval_vars + ["fullosc", "fullosc_cv_weight"]
     else:
-        dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
-        dic.update(f["wcpselection"]["T_eval"].arrays(wc_T_eval_vars, library="np", **slice_kwargs))
+        curr_wc_T_pf_vars = curr_wc_T_pf_vars
+        curr_wc_T_eval_vars = wc_T_eval_vars
+    dic.update(f["wcpselection"]["T_PFeval"].arrays(curr_wc_T_pf_vars, library="np", **slice_kwargs))
+    dic.update(f["wcpselection"]["T_eval"].arrays(curr_wc_T_eval_vars, library="np", **slice_kwargs))
     all_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("wc_")
     del dic
     all_df["wc_file_POT"] = file_POT
@@ -355,6 +370,14 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
     del lantern_df
 
     del f
+
+    # fullosc sample: keep only events where the numu<->nue matching succeeded;
+    # unmatched events (fullosc==0) have fullosc_cv_weight==0 and are not part of
+    # the oscillated prediction
+    if filetype == "fullosc_overlay":
+        n_before = len(all_df)
+        all_df = all_df[all_df["wc_fullosc"] == 1].reset_index(drop=True)
+        print(f"    fullosc matching cut: kept {len(all_df)}/{n_before} events with fullosc==1")
 
     # remove some of these prefixes, for things that should be universal
     all_df.rename(columns={"wc_run": "run", "wc_subrun": "subrun", "wc_event": "event"}, inplace=True)
@@ -551,8 +574,6 @@ if __name__ == "__main__":
                 progress_str += f" (f={args.frac_events})"
             print(progress_str)
 
-                # TODO: When we have more files, do weighting to make each set of run fractions match the run fractions in data
-
 
         print("saving pot_dic to csv file...")
         if os.path.exists(f"{intermediate_files_location}/pot_dic.csv"):
@@ -673,6 +694,7 @@ if __name__ == "__main__":
                 "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
                 "nc_pi0_overlay", "numucc_pi0_overlay",
                 "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
+                "fullosc_overlay",
             }
             if "filetype" in all_df.columns:
                 # Cast to String first so Categorical comparisons don't silently miss values

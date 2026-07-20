@@ -27,7 +27,9 @@ def _get_file_metadata(filename, frac_events=1):
     Returns a dict with keys:
         filetype, detailed_run_period, n_events, root_file_size_gb
     """
-    if "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
+    if "fullosc" in filename.lower():
+        filetype = "fullosc_overlay"
+    elif "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
         filetype = "ext"
     elif "nuwro" in filename.lower():
         filetype = "nuwro_fake_data"
@@ -140,6 +142,12 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     dic = f["wcpselection"]["T_KINEvars"].arrays(["kine_reco_Enu"], library="np", **slice_kwargs)
     curr_weights_df = curr_weights_df.with_columns(pl.Series(name="wc_kine_reco_Enu", values=dic["kine_reco_Enu"]))
 
+    if filetype == "fullosc_overlay":
+        # matching flag, only present in the fullosc file: fullosc==1 marks events
+        # where the numu<->nue matching succeeded (same cut as in create_df.py)
+        fo_dic = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["fullosc"], library="np", **slice_kwargs)
+        curr_weights_df = curr_weights_df.with_columns(pl.Series(name="fullosc", values=fo_dic["fullosc"]))
+
     # Int32 ids shared by both output dfs (the spline_weights tree is entry-aligned with
     # nuselection, so reusing these ids keeps the two parquets' join keys consistent).
     ids_df = curr_weights_df.select([
@@ -164,7 +172,11 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
 
     print("  loading per-knob spline weights (spline_weights tree) + weightsReint...")
     spline_tree = f["spline_weights"]
-    spline_id_cols = {"run", "subrun", "event", "entry", "samdef"}
+    # the fullosc_* branches (matching bookkeeping + CV weight, fullosc file only)
+    # are per-event scalars, not spline knobs, so they are excluded here
+    spline_id_cols = {"run", "subrun", "event", "entry", "samdef",
+                      "fullosc", "fullosc_numu_entry", "fullosc_numu_run",
+                      "fullosc_numu_subrun", "fullosc_numu_event", "fullosc_cv_weight"}
     spline_knob_cols = [c for c in spline_tree.keys() if c not in spline_id_cols]
     spline_data = spline_tree.arrays(spline_knob_cols, library="np", **slice_kwargs)
     reint_data = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["weightsReint"], library="np", **slice_kwargs)
@@ -189,11 +201,17 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
 
     # identical preselection on both dfs (same entry slice -> same row order, so the
     # boolean mask from one applies to the other).
-    keep_mask = curr_weights_df.select(pl.col("wc_kine_reco_Enu") > 0).to_series()
+    keep_expr = pl.col("wc_kine_reco_Enu") > 0
+    if filetype == "fullosc_overlay":
+        keep_expr = keep_expr & (pl.col("fullosc") == 1)
+    keep_mask = curr_weights_df.select(keep_expr).to_series()
     previous_num_events = curr_weights_df.height
     curr_weights_df = curr_weights_df.filter(keep_mask)
     spline_df = spline_df.filter(keep_mask)
-    print(f"  kept {curr_weights_df.height}/{previous_num_events} events after preselection wc_kine_reco_Enu > 0")
+    if filetype == "fullosc_overlay":
+        curr_weights_df = curr_weights_df.drop("fullosc")
+    print(f"  kept {curr_weights_df.height}/{previous_num_events} events after preselection"
+          + (" wc_kine_reco_Enu > 0 & fullosc == 1" if filetype == "fullosc_overlay" else " wc_kine_reco_Enu > 0"))
 
     meta_cols = [
         pl.lit(detailed_run_period).alias("detailed_run_period"),

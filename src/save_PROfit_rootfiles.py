@@ -38,7 +38,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Configuration
 # ============================================================================
 
-DEFAULT_TRAINING = "all_vars_r15"
+DEFAULT_TRAINING = "all_vars_r15_test2"
 
 # Runs 1-5 open-data POT weighting (all run periods) for the nominal prediction.
 NET_WEIGHT_COL = "wc_net_weight_open_data"
@@ -623,6 +623,22 @@ def save_detvar(training, output_dir):
     print("Building DetVar minimal dfs...")
     prob_cols = _prob_cols()
 
+    model = xgb.XGBClassifier()
+    model.load_model(f"{PROJECT_ROOT}/training_outputs/{training}/bdt.json")
+
+    # The BDT was trained on the combined_training_vars of its time; if the variable
+    # lists in src/ntuple_variables/ have changed since, positional inference would be
+    # silently wrong (numpy input carries no feature names), so check the count first.
+    n_model_features = model.get_booster().num_features()
+    if len(TRAINING_VARS) != n_model_features:
+        raise ValueError(
+            f"Training variable mismatch for training '{training}': the BDT was trained with "
+            f"{n_model_features} features but the current combined_training_vars has "
+            f"{len(TRAINING_VARS)}. The variable lists in src/ntuple_variables/ have changed "
+            f"since this BDT was trained -- retrain with src/train.py (and rerun so "
+            f"predictions.parquet matches too)."
+        )
+
     # Collect only the columns we need (ids + weight + inference vars), so the BDT
     # scores can be attached by position and we never hold the full detvar df.
     # dict.fromkeys dedups columns that are both an explicit id/weight and a training var
@@ -636,9 +652,6 @@ def save_detvar(training, output_dir):
         .collect()
     )
     print(f"  {presel.height} detvar events")
-
-    model = xgb.XGBClassifier()
-    model.load_model(f"{PROJECT_ROOT}/training_outputs/{training}/bdt.json")
 
     # batched inference over the training variables
     probs = []

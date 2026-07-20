@@ -157,7 +157,6 @@ def _(mo, sampled_df, widget):
             ]
         )
     out
-    # TODO: replace this table with per-event displays (image of the event) later.
     return
 
 

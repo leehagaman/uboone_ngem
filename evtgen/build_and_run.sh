@@ -8,7 +8,7 @@ ENV_PREFIX="/nevis/riverside/data/leehagaman/ngem/evtgen_env"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 N_EVENTS="${1:-1000000}"
-OUT_CSV="${2:-/nevis/riverside/data/leehagaman/ngem/data_files/evtgen_pi0_dalitz.csv}"
+OUT_CSV="${2:-/nevis/riverside/data/leehagaman/ngem/other_files/evtgen_pi0_dalitz.csv}"
 
 # locate EvtGen data files (DECAY.DEC, evt.pdl) inside the env
 DECAY_DEC="$(find "$ENV_PREFIX/share" -name DECAY.DEC 2>/dev/null | head -1)"

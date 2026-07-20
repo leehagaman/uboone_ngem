@@ -27,7 +27,7 @@ conda create -y -p /nevis/riverside/data/leehagaman/ngem/evtgen_env -c conda-for
 ## Run
 
 ```bash
-./build_and_run.sh 1000000 /nevis/riverside/data/leehagaman/ngem/data_files/evtgen_pi0_dalitz.csv
+./build_and_run.sh 1000000 /nevis/riverside/data/leehagaman/ngem/other_files/evtgen_pi0_dalitz.csv
 ```
 
 ## Compare with Geant4

@@ -11,8 +11,6 @@ create_df.py imports these dicts to assign each file's POT in _get_file_metadata
 and to build the weighting configs in get_weight_configs.
 """
 
-# TODO: Update all of this when we have full data files
-
 # beam-on (open data) POT and trigger counts, by detailed_run_period
 open_data_POT = {
     "1":  2.807e19,
@@ -68,4 +66,12 @@ expected_full_dataset_data_POT = {
     "4a": 4.50e19,
     "4nota": 1.36e20+8.95e19+4.93e19, # run 4b, run 4c, run 4d
     "5":  1.48e20,
+}
+
+# Fullosc (numu->nue full-oscillation) sample POT, by detailed_run_period.  This
+# sample was created by matching numu and nue events from different files, so its
+# T_pot tree does not reflect the effective POT and cannot be used; the number
+# below is provided externally with the sample.
+fullosc_sample_POT = {
+    "4c": 7.6704e20,
 }

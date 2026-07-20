@@ -8,7 +8,7 @@ Some overview slides are available on the MicroBooNE DocDB [here](https://microb
 # kinit -f {YOUR_USERNAME}@FNAL.GOV
 
 source download_input_files.sh {YOUR_USERNAME} {LOCATION_WHERE_YOU_WANT_DATA_FILES}
-nohup bash download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/ngem/data_files_new_download > download_nohup.out &
+nohup bash download_input_files.sh lhagaman /nevis/riverside/data/leehagaman/ngem/data_files > download_nohup.out &
 ```
 
 

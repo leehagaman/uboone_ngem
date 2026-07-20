@@ -28,7 +28,7 @@ conda create -y -p /nevis/riverside/data/leehagaman/ngem/geant4_env -c conda-for
 ## Run
 
 ```bash
-./build_and_run.sh 1000000 /nevis/riverside/data/leehagaman/ngem/data_files/geant4_pi0_dalitz.csv
+./build_and_run.sh 1000000 /nevis/riverside/data/leehagaman/ngem/other_files/geant4_pi0_dalitz.csv
 ```
 
 ## Validation

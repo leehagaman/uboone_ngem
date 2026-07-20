@@ -128,6 +128,7 @@ def _orthogonalization_masks():
     masks["nuwro"] = pl.col("filetype") == 'nuwro_fake_data'
     masks["del1g"] = pl.col("filetype") == 'delete_one_gamma_overlay'
     masks["iso1g"] = pl.col("filetype") == 'isotropic_one_gamma_overlay'
+    masks["fullosc"] = pl.col("filetype") == 'fullosc_overlay'
     masks["data"] = pl.col("filetype") == 'data'
     return masks
 
@@ -355,7 +356,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
         | masks["numucc_pi0_overlay_true_numucc_pi0"] | masks["nu_overlay_true_numucc_pi0"]
         | masks["nue_overlay_true_nue_cc"] | masks["nu_overlay_true_nue_cc"]
         | masks["nu_overlay_other"]
-        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["del1g"] | masks["iso1g"] | masks["data"]
+        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["del1g"] | masks["iso1g"] | masks["fullosc"] | masks["data"]
     )
     df = df.filter(combined_mask)
     gc.collect()
@@ -373,6 +374,17 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
         .then(pl.lit(1.0))
         .otherwise(weight_temp)
     )
+    # fullosc appearance sample: fold in fullosc_cv_weight (the per-event weight
+    # recovering the numu-parent flux for the matched nue event).  Applied after
+    # the validity clamp above because fullosc_cv_weight legitimately ranges well
+    # past the 30.0 cv*spline sanity cap.
+    if "wc_fullosc_cv_weight" in df.columns:
+        weight_temp = (
+            pl.when(pl.col("filetype") == "fullosc_overlay")
+            .then(weight_temp * pl.col("wc_fullosc_cv_weight"))
+            .otherwise(weight_temp)
+        )
+        # TODO: Add extra weighting for total nue/numu energy-dependent cross section here
     df = df.with_columns([weight_temp.alias("weight_cv_weight_spline")])
 
     if df["weight_cv_weight_spline"].is_null().any() or df["weight_cv_weight_spline"].is_nan().any() or df["weight_cv_weight_spline"].is_infinite().any():

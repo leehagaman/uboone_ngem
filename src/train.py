@@ -92,10 +92,8 @@ if __name__ == "__main__":
 
     all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
 
-    # Real data and NuWro fake data are data stand-ins: never train/test on them (their
-    # used_for_training/used_for_testing flags stay False), but predictions are still produced
-    # for them from all_df below.
-    non_training_filetypes = ["data", "nuwro_fake_data"]
+    # These events are not used for BDT training
+    non_training_filetypes = ["data", "nuwro_fake_data", "fullosc_overlay"]
 
     # Assign train/test flags in place (avoids duplicating the full dataframe with pl.concat).
     # For non_training_filetypes, `~is_in(...)` is False, so both flags are False regardless of

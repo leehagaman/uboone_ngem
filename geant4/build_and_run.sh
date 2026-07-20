@@ -9,7 +9,7 @@ ENV_PREFIX="/nevis/riverside/data/leehagaman/ngem/geant4_env"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 N_EVENTS="${1:-1000000}"
-OUT_CSV="${2:-/nevis/riverside/data/leehagaman/ngem/data_files/geant4_pi0_dalitz.csv}"
+OUT_CSV="${2:-/nevis/riverside/data/leehagaman/ngem/other_files/geant4_pi0_dalitz.csv}"
 SEED="${3:-12345}"
 
 G4CONFIG="$ENV_PREFIX/bin/geant4-config"
