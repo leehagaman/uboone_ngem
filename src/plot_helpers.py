@@ -550,6 +550,8 @@ def make_histogram_plot(
             breakdown_count = breakdown_count * del1g_norm_factor
         elif "data" in breakdown_label:
             continue
+        elif "fullosc" in breakdown_label:
+            continue
         curr_breakdown_label = f"{breakdown_label_latex}, {np.sum(breakdown_count):.1f} ({np.sum(unweighted_breakdown_count):.0f})"
         n, _, _ = ax1.hist(display_bin_centers, weights=breakdown_count, bins=display_bins, bottom=bottom if breakdown_i > 0 else None, 
                             color=breakdown_color, hatch=breakdown_hatch, label=curr_breakdown_label)

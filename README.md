@@ -64,7 +64,7 @@ replaces the old standalone `create_splines_df.py`.
 ## Training Multi-Class BDT
 
 ```
-nohup python -u src/train.py --name all_vars_r15 > train_nohup.out 2>&1 &
+nohup python -u src/train.py --name all_vars_r15_jul202026 > train_nohup.out 2>&1 &
 
 nohup python -u src/train.py --name nc_coh_1g_vs_bkg --signal_categories nc_coh_1g_vs_bkg > nc_coh_1g_vs_bkg_train_nohup.out 2>&1 &
 

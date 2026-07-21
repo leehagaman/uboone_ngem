@@ -419,14 +419,17 @@ if __name__ == "__main__":
     n_prediction_rows = all_df.height
     prob_chunks = []
     for start in range(0, n_prediction_rows, prediction_chunk_size):
+        print(f"predicting chunk starting at {start}...")
         x_chunk = all_df.slice(start, prediction_chunk_size).select(training_vars).to_numpy().astype(np.float32)
         x_chunk[np.isinf(x_chunk)] = np.nan
         prob_chunks.append(model.predict_proba(x_chunk))
         del x_chunk
+    print("concatenating chunks...")
     all_probabilities = np.concatenate(prob_chunks, axis=0)
     del prob_chunks
 
     # Build prediction dataframe columns
+    print("making prediction_cols...")
     prediction_cols = [
         all_df.select("filename"),
         all_df.select("filetype"),
@@ -437,12 +440,15 @@ if __name__ == "__main__":
         all_df.select("used_for_testing")
     ]
     for i in range(n_categories):
+        print(f"adding prediction column {i}...")
         prediction_cols.append(pl.DataFrame({
             f'prob_{signal_category_labels[i]}': all_probabilities[:, i]
         }))
     
+    print("making prediction_df...")
     prediction_df = pl.concat(prediction_cols, how="horizontal")
 
+    print("checking for duplicates...")
     dup_mask = pl.struct("filename", "filetype", "run", "subrun", "event").is_duplicated()
     n_dups = prediction_df.select(dup_mask.sum()).item()
     if n_dups > 0:
