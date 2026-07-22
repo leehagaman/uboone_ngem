@@ -531,8 +531,9 @@ def build_minimal_df(training):
     )
 
     # prediction (drop raw 1g overlays, kept as their reweighted filetypes) vs real data
+    # If you want fullosc overlay in your PROfit rootfile, remove fullosc_overlay from this list!
     pred = merged.filter(~pl.col("filetype").is_in(
-        ["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"]))
+        ["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay", "fullosc_overlay"]))
     data = merged.filter(pl.col("filetype") == "data")
 
     # generic preselection + only events with a valid open-data weight
