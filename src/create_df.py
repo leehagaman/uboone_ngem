@@ -797,13 +797,6 @@ if __name__ == "__main__":
             except Exception:
                 pass
 
-        # Signal-category yields + exhaustive/mutually-exclusive check over ALL events
-        # at once (a single streaming aggregation over the per-batch parquets, so it
-        # never materializes the full df).  Raises if any category is non-exhaustive
-        # or overlapping.
-        print("\n=== Verifying signal categories globally (all events) ===")
-        verify_signal_categories(pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed"))
-
         # ── Phase 2: global reweightings over a lazy scan of all batch parquets ──
         # Logic unchanged from the old single-df flow: the compute_* build their
         # binned shapes from the global filtered subset (predicate pushdown reads only
@@ -884,6 +877,13 @@ if __name__ == "__main__":
             final_parts.append(_fp)
             del all_df
             gc.collect()
+
+        # Signal-category yields + exhaustive/mutually-exclusive check over ALL events
+        # at once (a single streaming aggregation over the per-batch parquets, so it
+        # never materializes the full df).  Raises if any category is non-exhaustive
+        # or overlapping.
+        print("\n=== Verifying signal categories globally (all events) ===")
+        verify_signal_categories(pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed"))
 
         # Global duplicate check over (filetype, run, subrun, event); reads only those
         # key columns across all parts, so it is cheap in memory.
