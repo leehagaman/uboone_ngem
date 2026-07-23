@@ -541,7 +541,12 @@ def build_minimal_df(training):
 
     # Use only test events (the BDT trained on the train half), weighted up by
     # 1/frac_test so the total normalization is preserved.  Both counts in one pass.
-    counts = pred.select([
+    # fullosc is evaluation-only: train.py never puts it in the train/test split
+    # (both flags False), but nothing was trained on it either, so every event is
+    # usable here.  Keep the whole sample, leave it out of the frac_test counts,
+    # and don't apply the test-half upweight to it.
+    filetype_used_for_training = pl.col("filetype") != "fullosc_overlay"
+    counts = pred.filter(filetype_used_for_training).select([
         pl.col("used_for_training").sum().alias("n_train"),
         pl.col("used_for_testing").sum().alias("n_test"),
     ]).collect()
@@ -549,11 +554,11 @@ def build_minimal_df(training):
     frac_test = num_test / (num_train + num_test)
     print(f"  train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}")
     pred = pred.with_columns(
-        pl.when(pl.col("used_for_testing"))
+        pl.when(pl.col("used_for_testing") & filetype_used_for_training)
         .then(pl.col(NET_WEIGHT_COL) / frac_test)
         .otherwise(pl.col(NET_WEIGHT_COL))
         .alias(NET_WEIGHT_COL)
-    ).filter(pl.col("used_for_testing"))
+    ).filter(pl.col("used_for_testing") | ~filetype_used_for_training)
 
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
@@ -565,6 +570,13 @@ def build_minimal_df(training):
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
     ])
+    # all_df.parquet made before postprocessing.py zero-filled
+    # the fullosc-only branches: null here becomes NaN in ROOT, where wc_fullosc==0 is
+    # always false.
+    fullosc_cols = [c for c in ("wc_fullosc", "wc_fullosc_cv_weight")
+                    if c in minimal.collect_schema().names()]
+    if fullosc_cols:
+        minimal = minimal.with_columns([pl.col(c).fill_null(0.0) for c in fullosc_cols])
     return minimal
 
 

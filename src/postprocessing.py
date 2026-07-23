@@ -379,6 +379,13 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
     # the validity clamp above because fullosc_cv_weight legitimately ranges well
     # past the 30.0 cv*spline sanity cap.
     if "wc_fullosc_cv_weight" in df.columns:
+        # Only the fullosc sample carries these branches, so the diagonal concat
+        # leaves them null for every other filetype -- which becomes NaN in ROOT,
+        # where a wc_fullosc==0 selection is always false.  Make them real zeros.
+        df = df.with_columns([
+            pl.col(c).fill_null(0.0)
+            for c in ("wc_fullosc", "wc_fullosc_cv_weight") if c in df.columns
+        ])
         weight_temp = (
             pl.when(pl.col("filetype") == "fullosc_overlay")
             .then(weight_temp * pl.col("wc_fullosc_cv_weight"))

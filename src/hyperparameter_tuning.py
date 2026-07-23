@@ -35,7 +35,10 @@ def load_data(args):
     print("Loading dataframe...")
     all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
 
-    no_data_df = all_df.filter(pl.col("filetype") != "data")
+    # These events are not used for BDT training (keep in sync with train.py's
+    # non_training_filetypes)
+    non_training_filetypes = ["data", "nuwro_fake_data", "fullosc_overlay"]
+    no_data_df = all_df.filter(~pl.col("filetype").is_in(non_training_filetypes))
 
     # 40% train | 10% validation | 50% test (test not used here)
     no_data_df = no_data_df.with_columns([
