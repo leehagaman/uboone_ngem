@@ -176,7 +176,8 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     # are per-event scalars, not spline knobs, so they are excluded here
     spline_id_cols = {"run", "subrun", "event", "entry", "samdef",
                       "fullosc", "fullosc_numu_entry", "fullosc_numu_run",
-                      "fullosc_numu_subrun", "fullosc_numu_event", "fullosc_cv_weight"}
+                      "fullosc_numu_subrun", "fullosc_numu_event", "fullosc_cv_weight",
+                      "numu_nue_xs_ratio_weight", "numu_nue_xs_ratio_weight_bar"}
     spline_knob_cols = [c for c in spline_tree.keys() if c not in spline_id_cols]
     spline_data = spline_tree.arrays(spline_knob_cols, library="np", **slice_kwargs)
     reint_data = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["weightsReint"], library="np", **slice_kwargs)

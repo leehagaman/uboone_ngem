@@ -384,14 +384,30 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
         # where a wc_fullosc==0 selection is always false.  Make them real zeros.
         df = df.with_columns([
             pl.col(c).fill_null(0.0)
-            for c in ("wc_fullosc", "wc_fullosc_cv_weight") if c in df.columns
+            for c in ("wc_fullosc", "wc_fullosc_cv_weight",
+                      "wc_numu_nue_xs_ratio_weight", "wc_numu_nue_xs_ratio_weight_bar")
+            if c in df.columns
         ])
         weight_temp = (
             pl.when(pl.col("filetype") == "fullosc_overlay")
             .then(weight_temp * pl.col("wc_fullosc_cv_weight"))
             .otherwise(weight_temp)
         )
-        # TODO: Add extra weighting for total nue/numu energy-dependent cross section here
+        # total nue/numu energy-dependent cross-section ratio: the fullosc event was
+        # simulated as a nue but should carry the numu-flux normalization, so reweight
+        # by sigma_nue/sigma_numu at the event energy.  The nu and nubar ratios are
+        # separate branches; pick by the sign of the matched nue's truth PDG.
+        if "wc_numu_nue_xs_ratio_weight" in df.columns:
+            xs_ratio_temp = (
+                pl.when(pl.col("wc_truth_nuPdg") > 0)
+                .then(pl.col("wc_numu_nue_xs_ratio_weight"))
+                .otherwise(pl.col("wc_numu_nue_xs_ratio_weight_bar"))
+            )
+            weight_temp = (
+                pl.when(pl.col("filetype") == "fullosc_overlay")
+                .then(weight_temp * xs_ratio_temp)
+                .otherwise(weight_temp)
+            )
     df = df.with_columns([weight_temp.alias("weight_cv_weight_spline")])
 
     if df["weight_cv_weight_spline"].is_null().any() or df["weight_cv_weight_spline"].is_nan().any() or df["weight_cv_weight_spline"].is_infinite().any():

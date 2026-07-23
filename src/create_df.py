@@ -295,9 +295,11 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
         curr_wc_T_pf_vars = wc_T_pf_data_vars
         curr_wc_T_eval_vars = wc_T_eval_data_vars
     elif filetype == "fullosc_overlay":
-            # matching flag + per-event numu-flux CV weight, only present in the fullosc file
+            # matching flag, per-event numu-flux CV weight, and nue/numu total
+            # cross-section ratio weights (nu and nubar), only present in the fullosc file
             curr_wc_T_pf_vars = curr_wc_T_pf_vars
-            curr_wc_T_eval_vars = wc_T_eval_vars + ["fullosc", "fullosc_cv_weight"]
+            curr_wc_T_eval_vars = wc_T_eval_vars + ["fullosc", "fullosc_cv_weight",
+                                                    "numu_nue_xs_ratio_weight", "numu_nue_xs_ratio_weight_bar"]
     else:
         curr_wc_T_pf_vars = curr_wc_T_pf_vars
         curr_wc_T_eval_vars = wc_T_eval_vars
