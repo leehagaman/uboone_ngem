@@ -22,7 +22,6 @@ from file_locations import data_files_location, intermediate_files_location
 
 from df_helpers import align_columns_for_concat
 from memory_monitoring import start_memory_logger
-from zexp_reweighting import ZEXP_CV_BRANCHES, compute_zexp_cv_weights
 
 
 def _filetype_from_filename(filename):
@@ -229,24 +228,6 @@ def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
     del dic
     all_df = pd.concat([all_df, glee_df], axis=1)
     del glee_df
-
-    # Produce every prior-specific axial CV from the full MaCCQE product.
-    try:
-        ma_spline_weights = f["spline_weights"].arrays(
-            ["MaCCQE_UBGenie"], library="np", **slice_kwargs
-        )["MaCCQE_UBGenie"]
-    except (KeyError, uproot.exceptions.KeyInFileError) as exc:
-        raise RuntimeError(
-            f"{filename} does not contain spline_weights/MaCCQE_UBGenie. "
-            "Full DetVar cross-section products are required to evaluate each "
-            "prior's CV; regenerate the DetVar input with spline products."
-        ) from exc
-    zexp_cv_weights = compute_zexp_cv_weights(
-        all_df["glee_GTruth_gQ2"].to_numpy(), ma_spline_weights
-    )
-    for branch in ZEXP_CV_BRANCHES:
-        all_df[branch] = zexp_cv_weights[branch]
-    del ma_spline_weights, zexp_cv_weights
 
     # loading LANTERN variables
     dic = {}
@@ -519,28 +500,6 @@ if __name__ == "__main__":
         ),
     ]
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, detvar_weight_configs)
-
-    # Strip the GENIE CV factor from the DetVar normalization so each XML can
-    # replace it with its own prior-specific CV branch.  This mirrors nominal
-    # production, including the rule that an invalid cv*spline product was clamped
-    # to one and therefore must not be divided out.
-    raw_genie_base = pl.col("wc_weight_cv") * pl.col("wc_weight_spline")
-    valid_genie_base = (
-        raw_genie_base.is_not_null()
-        & raw_genie_base.is_finite()
-        & (raw_genie_base > 0.0)
-        & (raw_genie_base <= 30.0)
-        & pl.col("wc_weight_cv").is_not_null()
-        & pl.col("wc_weight_cv").is_finite()
-        & (pl.col("wc_weight_cv") > 0.0)
-    )
-    finite_net_weight = pl.col("wc_net_weight").fill_null(0.0).fill_nan(0.0)
-    all_df = all_df.with_columns(
-        pl.when(valid_genie_base)
-        .then(finite_net_weight / pl.col("wc_weight_cv"))
-        .otherwise(finite_net_weight)
-        .alias("non_genie_net_weight")
-    )
 
     # the weighting adds new Float64 columns; downcast them too
     new_float64_cols = [c for c, dt in all_df.schema.items() if dt == pl.Float64]

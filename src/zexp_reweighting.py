@@ -664,19 +664,3 @@ def compute_zexp_weights(true_q2_gev2, ma_spline_weights):
             )
         )
     return result
-
-
-def compute_zexp_cv_weights(true_q2_gev2, ma_spline_weights):
-    """Compute only the central weight for every configured z-expansion prior."""
-    q2 = np.asarray(true_q2_gev2, dtype=float)
-    weights = _clean_ma_spline_weights(ma_spline_weights)
-    if len(q2) != weights.shape[0]:
-        raise ValueError("true_q2_gev2 and ma_spline_weights must have same length")
-    quadratic_model = _prepare_quadratic_fa_splines(q2, weights)
-    return {
-        prior.cv_branch: _weights_for_a_values(
-            q2, weights, prior.full_a_values, prior.t0_gev2,
-            prior.t_cut_gev2, quadratic_model,
-        ).astype(np.float32)
-        for prior in ZEXP_PRIORS
-    }

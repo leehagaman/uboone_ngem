@@ -31,7 +31,6 @@ from tqdm import tqdm
 from file_locations import intermediate_files_location
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
-from zexp_reweighting import ZEXP_CV_BRANCHES
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,9 +50,9 @@ NON_GENIE_NET_WEIGHT_COL = "non_genie_net_weight"
 # factor is explicitly replaced by one there.
 UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
 
-# DetVar carries both its GENIE-CV net weight and the corresponding weight with
-# GENIE CV removed.  The latter can be multiplied by any ZEXP_CV_BRANCHES member
-# to evaluate the detector response around that prior's central cross section.
+# DetVar has its own single weighting config (create_detvar_df.py) whose column is
+# "wc_net_weight"; the detvar covariance is a fractional (CV-var)/CV difference so the
+# absolute normalization cancels.
 DETVAR_NET_WEIGHT_COL = "wc_net_weight"
 
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the
@@ -731,8 +730,6 @@ def save_detvar(training, output_dir):
         "event",
         "wc_kine_reco_Enu",
         DETVAR_NET_WEIGHT_COL,
-        NON_GENIE_NET_WEIGHT_COL,
-        *ZEXP_CV_BRANCHES,
     ] + detvar_analysis_source_columns + TRAINING_VARS))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -768,8 +765,7 @@ def save_detvar(training, output_dir):
 
     detvar_minimal = presel.select(
         OUTPUT_SCALAR_COLUMNS[:1] + ["vartype"] + OUTPUT_SCALAR_COLUMNS[1:]
-        + ["isdata", "isext", "isdirt", "isnuwro", "net_weight",
-           NON_GENIE_NET_WEIGHT_COL, *ZEXP_CV_BRANCHES] + prob_cols
+        + ["isdata", "isext", "isdirt", "isnuwro", "net_weight"] + prob_cols
     )
 
     present = detvar_minimal["vartype"].unique().to_list()
