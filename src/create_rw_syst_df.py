@@ -19,7 +19,11 @@ from src.file_locations import data_files_location, intermediate_files_location
 from src.memory_monitoring import start_memory_logger
 
 from src.pyroot_loading import get_rw_sys_weights_dic
-from src.zexp_reweighting import ZEXP_MINERVA_FA_BRANCH, ZEXP_PCA_BRANCHES, compute_minerva_zexp_weights
+from src.zexp_reweighting import (
+    ZEXP_CV_BRANCHES,
+    ZEXP_VARIATION_BRANCHES,
+    compute_zexp_weights,
+)
 
 def _get_file_metadata(filename, frac_events=1):
     """Collect per-file metadata without reading any weight data.
@@ -191,10 +195,12 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
         spline_dict[col] = [row.tolist() for row in spline_data[col]]
     spline_dict["weightsReint"] = [(row.astype(np.float64) / 1000.0).tolist() for row in reint_data["weightsReint"]]
 
-    print("  computing MINERvA z-expansion axial form-factor weights...")
-    zexp_weights = compute_minerva_zexp_weights(q2_data["GTruth_gQ2"], spline_data["MaCCQE_UBGenie"])
-    spline_dict[ZEXP_MINERVA_FA_BRANCH] = zexp_weights[ZEXP_MINERVA_FA_BRANCH]
-    for col in ZEXP_PCA_BRANCHES:
+    print("  computing z-expansion axial-form-factor weights...")
+    zexp_weights = compute_zexp_weights(q2_data["GTruth_gQ2"], spline_data["MaCCQE_UBGenie"])
+    for col in (*ZEXP_CV_BRANCHES, *ZEXP_VARIATION_BRANCHES):
+        if col in ZEXP_CV_BRANCHES:
+            spline_dict[col] = zexp_weights[col]
+            continue
         spline_dict[col] = [row.tolist() for row in zexp_weights[col]]
     spline_df = pl.DataFrame(spline_dict)
 
@@ -445,4 +451,3 @@ if __name__ == "__main__":
     print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
     main_end_time = time.time()
     print(f"Total time to create weights dataframe: {main_end_time - main_start_time:.2f} seconds")
-    

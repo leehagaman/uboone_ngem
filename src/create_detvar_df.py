@@ -223,6 +223,7 @@ def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
     # loading gLEE variables
     dic = {}
     dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
+    dic.update(f["singlephotonana"]["eventweight_tree"].arrays(["GTruth_gQ2"], library="np", **slice_kwargs))
     glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("glee_")
     del dic
     all_df = pd.concat([all_df, glee_df], axis=1)
