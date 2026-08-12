@@ -374,6 +374,22 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
         .then(pl.lit(1.0))
         .otherwise(weight_temp)
     )
+    # nue_overlay: fold in the flux-sampling reweight
+    # (create_df.add_nue_flux_sampling_weight), the target/sample ratio of the
+    # cv*spline-weighted events/POT spectrum, on top of cv*spline (so the product
+    # reproduces the target spectrum exactly).  Applied after the
+    # validity clamp above (like the fullosc weight below) because it is
+    # legitimately 0 (zero-target bins, energies past the table's range), which
+    # the <=0 clamp would otherwise turn into 1.
+    if (df["filetype"] == "nue_overlay").any():
+        if "nue_flux_sampling_weight" not in df.columns:
+            raise ValueError("nue_overlay events present but the nue_flux_sampling_weight column is missing "
+                             "(recreate the per-file dataframes with create_df.py)!")
+        weight_temp = (
+            pl.when(pl.col("filetype") == "nue_overlay")
+            .then(weight_temp * pl.col("nue_flux_sampling_weight"))
+            .otherwise(weight_temp)
+        )
     # fullosc appearance sample: fold in fullosc_cv_weight (the per-event weight
     # recovering the numu-parent flux for the matched nue event).  Applied after
     # the validity clamp above because fullosc_cv_weight legitimately ranges well

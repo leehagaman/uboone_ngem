@@ -411,6 +411,141 @@ def process_root_file(filename, frac_events=1):
     return meta["filetype"], meta["detailed_run_period"], all_df, meta["file_POT"]
 
 
+nue_flux_sampling_csv = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "..", "small_data_files", "enu_reweighted_run4b4d_50MeV.csv")
+
+# save a diagnostic plot of the pre/post-reweighting events/POT spectra
+# for each nue_overlay file, in plots/nue_flux_sampling_reweighting/
+save_nue_flux_sampling_plots = True
+
+
+def add_nue_flux_sampling_weight(df, file_POT, filename=None, detailed_run_period=None):
+    """Add the flux-sampling reweight column to a nue_overlay file's dataframe.
+
+    Histograms the file's events in true neutrino energy on the target table's own
+    binning (contiguous uniform 50 MeV bins starting at 0), weighted by
+    weight_cv*weight_spline (invalid null/nan/inf/<1e-3/>30 products forced to 1:
+    the validity clamp postprocessing applies, plus a lower bound used only here
+    because cv*spline enters a denominator), converts to a rate per 1e17
+    POT, and takes per bin
+        target_xs_cv_weight_per_1e17pot / (file cv*spline-weighted events per 1e17 POT)
+    as the per-event nue_flux_sampling_weight.  Downstream (postprocessing's
+    weight_cv_weight_spline) this column is folded into the net weights as an
+    additional factor on top of weight_cv*weight_spline, which stay applied -- so
+    the cv*spline-weighted spectrum times this weight matches the target exactly.
+    wc_weight_cv/wc_weight_spline are untouched here, so e.g. GENIE universe
+    weights formed relative to weight_cv still work.  Events outside the table's
+    energy range get weight 0, matching the table's own zero edge bins.  Needs the
+    whole file at once (the histogram), so it runs on the combined per-file
+    dataframe, not per chunk.
+
+    If save_nue_flux_sampling_plots is set, also saves a pre/post reweighting
+    spectra comparison plot named after ``filename`` in
+    plots/nue_flux_sampling_reweighting/.
+
+    Run 4a had a different flux that this reweighting does not consider (the
+    target table is a run 4b/4d flux sampling), so its file gets unit weights
+    with no histogram or plot.
+    """
+    if detailed_run_period == "4a":
+        print("    nue flux sampling weight: run 4a had a different flux, skipping reweighting (all weights set to 1)")
+        return df.with_columns(pl.lit(1.0).cast(pl.Float32).alias("nue_flux_sampling_weight"))
+
+    table = pd.read_csv(nue_flux_sampling_csv)
+    bin_lo_mev = table["bin_lo_gev"].to_numpy() * 1000.0
+    bin_hi_mev = table["bin_hi_gev"].to_numpy() * 1000.0
+    target_per_1e17pot = table["target_xs_cv_weight_per_1e17pot"].to_numpy()
+    n_bins = len(target_per_1e17pot)
+    widths = bin_hi_mev - bin_lo_mev
+
+    if not (np.allclose(widths, widths[0]) and np.allclose(bin_lo_mev[1:], bin_hi_mev[:-1])
+            and np.isclose(bin_lo_mev[0], 0.0)):
+        raise ValueError(f"{nue_flux_sampling_csv} bins are not contiguous, uniform, and starting at 0!")
+    if not np.all(np.isfinite(target_per_1e17pot)) or np.any(target_per_1e17pot < 0):
+        raise ValueError(f"{nue_flux_sampling_csv} has non-finite or negative target values!")
+
+    enu = df["wc_truth_nuEnergy"].to_numpy()
+    if not np.all(np.isfinite(enu)):
+        raise ValueError(f"nue_overlay file has {np.sum(~np.isfinite(enu))} non-finite wc_truth_nuEnergy values!")
+
+    # per-event cv*spline with the same validity clamp postprocessing applies to it,
+    # plus a lower bound used only in this step: pathological tiny positive GENIE
+    # weights (e.g. ~1e-40..1e-8 in the Run4a4c4d5 nue files) pass the standard
+    # clamp, but here cv*spline enters the denominator histogram, where a single
+    # such event alone in a sparse bin would blow up that bin's ratio
+    cv_spline = (df["wc_weight_cv"] * df["wc_weight_spline"]).to_numpy().astype(np.float64)
+    invalid = ~np.isfinite(cv_spline) | (cv_spline < 1e-3) | (cv_spline > 30.0)
+    cv_spline = np.where(invalid, 1.0, cv_spline)
+
+    bin_idx = np.floor(enu / widths[0]).astype(np.int64)
+    in_range = (bin_idx >= 0) & (bin_idx < n_bins)
+    weighted_counts = np.bincount(bin_idx[in_range], weights=cv_spline[in_range], minlength=n_bins)
+    file_rate_per_1e17pot = weighted_counts / (file_POT / 1e17)
+
+    # bins with no file events never look up a ratio, so their value is irrelevant
+    bin_ratio = np.divide(target_per_1e17pot, file_rate_per_1e17pot,
+                          out=np.zeros(n_bins), where=weighted_counts > 0)
+
+    new_weight = np.zeros(len(df))
+    new_weight[in_range] = bin_ratio[bin_idx[in_range]]
+
+    n_out_of_range = int(np.sum(~in_range))
+    n_zero = int(np.sum(new_weight == 0.0))
+    print(f"    nue flux sampling weight: {len(df)} events, "
+          f"{n_out_of_range} outside [0, {bin_hi_mev[-1]:.0f}] MeV, {n_zero} with weight 0")
+    print(f"    reweighted cv*spline rate per 1e17 POT: {np.sum(new_weight * cv_spline) / (file_POT / 1e17):.4e} "
+          f"(target integral {np.sum(target_per_1e17pot):.4e})")
+
+    if save_nue_flux_sampling_plots:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        plot_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "plots", "nue_flux_sampling_reweighting")
+        os.makedirs(plot_dir, exist_ok=True)
+        plot_name = (filename or "unknown_file").removesuffix(".root")
+
+        bin_edges_gev = np.append(bin_lo_mev, bin_hi_mev[-1]) / 1000.0
+        post_rate_per_1e17pot = file_rate_per_1e17pot * bin_ratio
+
+        for scale in ("log", "linear"):
+            fig, (ax, ax_ratio) = plt.subplots(
+                2, 1, figsize=(8, 7), sharex=True,
+                gridspec_kw={"height_ratios": [3, 1], "hspace": 0.06},
+            )
+            ax.stairs(file_rate_per_1e17pot, bin_edges_gev, color="#0072B2", lw=1.8,
+                      label="pre-reweight (cv*spline weighted)")
+            ax.stairs(post_rate_per_1e17pot, bin_edges_gev, color="#E69F00", lw=1.8,
+                      label="post-reweight (cv*spline * flux sampling weight)")
+            ax.stairs(target_per_1e17pot, bin_edges_gev, color="black", ls="--", lw=1.2,
+                      label="target (enu_reweighted_run4b4d_50MeV.csv)")
+            ax.set_ylabel("events / 1e17 POT / 50 MeV")
+            ax.legend(frameon=False, fontsize=9)
+            ax.set_title(f"nue flux sampling reweighting ({file_POT:.3e} POT)\n{plot_name}", fontsize=10)
+
+            ax_ratio.stairs(bin_ratio, bin_edges_gev, color="#555555", lw=1.5)
+            ax_ratio.axhline(1.0, color="#aaaaaa", ls=":", lw=0.8, zorder=0)
+            ax_ratio.set_ylabel("applied weight\n(target / pre)")
+            ax_ratio.set_xlabel("true neutrino energy [GeV]")
+
+            if scale == "log":
+                ax.set_yscale("log")
+                ax_ratio.set_yscale("log")
+            else:
+                ax_ratio.set_ylim(0, 2)
+
+            for a in (ax, ax_ratio):
+                a.grid(alpha=0.25, lw=0.5)
+
+            fig.savefig(os.path.join(plot_dir, f"{plot_name}_{scale}.png"), dpi=300, bbox_inches="tight")
+            plt.close(fig)
+        print(f"    saved pre/post reweighting spectra plots to {plot_dir}/{plot_name}_log.png and _linear.png")
+
+    df = df.with_columns(pl.Series("nue_flux_sampling_weight", new_weight).cast(pl.Float32))
+    return df
+
+
 if __name__ == "__main__":
     main_start_time = time.time()
     
@@ -550,6 +685,19 @@ if __name__ == "__main__":
                     os.remove(p)
             print(f"curr_df_pl size: {os.path.getsize(parquet_path) / 1e9:.2f} GB (on disk)")
             print("saved to parquet file")
+
+            # nue_overlay: add the flux-sampling reweight column (folded into the
+            # net weights on top of weight_cv*weight_spline, see postprocessing).
+            # Runs on the combined per-file parquet because the reweight needs
+            # the whole file's energy histogram.
+            if filetype == "nue_overlay":
+                print("applying nue flux sampling weight...")
+                nue_df = pl.read_parquet(parquet_path)
+                nue_df = add_nue_flux_sampling_weight(nue_df, file_POT, filename=filename,
+                                                      detailed_run_period=detailed_run_period)
+                nue_df.write_parquet(parquet_path)
+                del nue_df
+                gc.collect()
 
             print(f"Reloading {parquet_path} to ensure on-disk integrity...")
             reloaded_df = pl.read_parquet(parquet_path)
