@@ -310,24 +310,35 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
 
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
-    cv_counts = np.histogram(get_vals(cv_df, var), weights=get_vals(cv_df, net_weight_var)*additional_scaling_factor, bins=bins)[0]
+    # the two run 3b CV samples (detvar_sample 0 = 1mil, 1 = 500k) overlap in
+    # run/subrun/event, so the displayed total CV uses only detvar_sample == 0
+    # (the 1mil sample plus every other batch) to avoid double counting
+    cv_display_df = cv_df.filter(pl.col("detvar_sample") == 0)
+
+    cv_counts = np.histogram(get_vals(cv_display_df, var), weights=get_vals(cv_display_df, net_weight_var)*additional_scaling_factor, bins=bins)[0]
     min_nonzero_y = np.min(cv_counts[cv_counts > 0])
     max_y = np.max(cv_counts)
     ax1.hist(display_bin_centers, weights=cv_counts, bins=display_bins, histtype="step", color="k", lw=2, zorder=-1, label="CV")
 
     ratios_by_var_dic = {}
 
-    total_cv_weight = np.sum(get_vals(cv_df, net_weight_var))
-    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
+    detvar_match_keys = ["filetype", "detvar_sample", "run", "subrun", "event"]
+    detvar_plot_vartypes = ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
+
+    total_cv_weight = np.sum(get_vals(cv_display_df, net_weight_var))
+    for vartype in detvar_plot_vartypes:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
-        curr_filetype_rse_df = curr_df.select(["filetype", "run", "subrun", "event"])
-        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=["filetype", "run", "subrun", "event"], how="inner")
+        if curr_df.height == 0:
+            continue
+
+        curr_filetype_rse_df = curr_df.select(detvar_match_keys)
+        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=detvar_match_keys, how="inner")
 
         matching_cv_weight = np.sum(get_vals(matching_cv_df, net_weight_var))
         match_weight = total_cv_weight / matching_cv_weight
 
-        matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
+        matching_curr_df = curr_df.join(matching_cv_df.select(detvar_match_keys), on=detvar_match_keys, how="inner")
 
         matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, net_weight_var)*additional_scaling_factor*match_weight, bins=bins)[0]
         matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, net_weight_var)*additional_scaling_factor*match_weight, bins=bins)[0]
@@ -345,9 +356,8 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
 
     ax1.set_xticklabels([])
 
-    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
-        
-        ratios = ratios_by_var_dic[vartype]
+    for vartype, ratios in ratios_by_var_dic.items():
+
         custom_step(display_bins, ratios, ax=ax2, label=vartype)                
 
         # Draw horizontal line at 1

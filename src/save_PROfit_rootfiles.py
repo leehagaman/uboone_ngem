@@ -51,7 +51,7 @@ DETVAR_NET_WEIGHT_COL = "wc_net_weight"
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the
 # covariance).  Only these get a ROOT file; any other vartype value (e.g. the empty
 # "" that create_detvar_df.py mislabels some events with) is skipped with a warning.
-DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]
+DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
 
 # The reco categories (and therefore the prob_<category> BDT-score columns) come from
 # the training definition.
@@ -69,8 +69,11 @@ TRAINING_VARS = combined_training_vars
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
-# and for each DETVAR file: filetype, vartype, run, subrun, event, isdata/isext/isdirt,
-#     reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+# and for each DETVAR file: filetype, vartype, detvar_sample, run, subrun, event,
+#     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+#     (detvar_sample distinguishes the two overlapping run 3b CV samples: 0 = 1mil,
+#     matched by all run 3b variations except SCE/Recomb2; 1 = 500k, matched by
+#     SCE/Recomb2.)
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
@@ -657,7 +660,7 @@ def save_detvar(training, output_dir):
     # dict.fromkeys dedups columns that are both an explicit id/weight and a training var
     # (e.g. wc_kine_reco_Enu is in TRAINING_VARS), which .select would reject as duplicate.
     keep = list(dict.fromkeys(
-        ["filetype", "vartype", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_NET_WEIGHT_COL]
+        ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_NET_WEIGHT_COL]
         + TRAINING_VARS))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -687,7 +690,7 @@ def save_detvar(training, output_dir):
     ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
 
     detvar_minimal = presel.select(
-        ["filetype", "vartype", "run", "subrun", "event", "isdata", "isext", "isdirt",
+        ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "isdata", "isext", "isdirt",
          "reco_category", "wc_kine_reco_Enu", "net_weight"] + prob_cols
     )
 

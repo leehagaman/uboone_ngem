@@ -254,13 +254,21 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
 
     detvar_sys_frac_cov_dic = {}
 
-    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]:
+    # detvar_sample is part of the match key because the two run 3b CV samples
+    # (500k for SCE/Recomb2, 1mil for the other variations) overlap in run/subrun/event
+    detvar_match_keys = ["filetype", "detvar_sample", "run", "subrun", "event"]
+
+    for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
-        curr_filetype_rse_df = curr_df.select(["filetype", "run", "subrun", "event"])
-        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=["filetype", "run", "subrun", "event"], how="inner")
+        if curr_df.height == 0:
+            print(f"WARNING: no detvar events for vartype '{vartype}', skipping its covariance matrix")
+            continue
 
-        matching_curr_df = curr_df.join(matching_cv_df.select(["filetype", "run", "subrun", "event"]), on=["filetype", "run", "subrun", "event"], how="inner")
+        curr_filetype_rse_df = curr_df.select(detvar_match_keys)
+        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=detvar_match_keys, how="inner")
+
+        matching_curr_df = curr_df.join(matching_cv_df.select(detvar_match_keys), on=detvar_match_keys, how="inner")
 
         if not use_detvar_bootstrapping:
             matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, "wc_net_weight"), bins=bins)[0]
