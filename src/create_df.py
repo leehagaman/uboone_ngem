@@ -334,7 +334,10 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
 
     # hA2025 pion-FSI reweight: a standalone per-event weight computed (in pure
     # Python, no GENIE/ROOT) from the same nuselection mc_generator_* truth slice.
-    # It reweights GENIE's INTRANUKE hA2018->hA2025, so it is skipped for data/EXT
+    # It reweights GENIE's INTRANUKE hA2018->hA2025 (fate-fraction ratio, plus
+    # the "hN charge correction" -- GENIE's official pi0-only charge treatment
+    # in HAIntranuke2025::HadronFateHA, the model hA2025 actually samples; the
+    # rwgtNtupleFSI.C macro lacks that piece), so it is skipped for data/EXT
     # (no truth), NuWro fake data (a different generator), and the isotropic
     # one-gamma overlay; those are left without the column (-> filled 1.0 when it
     # is folded into wc_net_weight below).
@@ -344,10 +347,13 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
              "mc_generator_statuscode", "mc_generator_E", "mc_generator_px",
              "mc_generator_py", "mc_generator_pz"], library="np", **slice_kwargs)
         # one pass returns both the hA2025 weight and the additional hA2025c
-        # factor (hA2025 + pion-charge effects).  hA2025_pion_fsi_rw_weight is the
-        # default (folded into wc_net_weight below); multiply it by
-        # additional_hA2025c_weight to get the hA2025c variant.  Both stored
-        # separately -- additional_hA2025c_weight is NOT folded into wc_net_weight.
+        # factor.  hA2025_pion_fsi_rw_weight is the default (folded into
+        # wc_net_weight below; includes the hN charge correction); multiply it
+        # by additional_hA2025c_weight to get the hA2025c variant (table ratio
+        # x our nucleon counting charge correction, WITHOUT the hN charge
+        # correction -- an alternative, not a stacked correction).  Both stored
+        # separately -- additional_hA2025c_weight is NOT folded into
+        # wc_net_weight.
         hA2025_w, additional_hA2025c_w = compute_pion_fsi_weights_from_arrays(
             mcg["mc_generator_pdg"], mcg["mc_generator_mother"],
             mcg["mc_generator_rescatter"], mcg["mc_generator_statuscode"],

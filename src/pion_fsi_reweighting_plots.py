@@ -2,9 +2,27 @@
 
 Produces, in ``plots/pion_fsi_reweighting/``:
 
-  Validation against GENIE's own ``hA2025reweight`` branch (the macro output):
+  Naming used throughout (plots and code):
+    * "hN charge correction"  -- GENIE's official hA2025 pion-charge treatment
+      (HAIntranuke2025::HadronFateHA: pi0-only, all four fates rescaled by
+      hN-fitted pi0/pi+ ratios, then renormalised).  The DEFAULT weight.
+    * "nucleon counting charge correction" -- our alternative (hA2025c): CEx
+      fate scaled by the available target nucleons for pi+/pi-/pi0, NOT
+      renormalised.
+    * "no charge correction" -- the plain FracADep ratio (= GENIE's
+      rwgtNtupleFSI.C macro, which lacks the hN charge correction).
+
+  Validation against GENIE's own ``hA2025reweight`` branch (the macro output,
+  no charge correction -> compared with ``hN_charge_correction=False``):
     * validation_residuals.png       -- histogram of (mine - GENIE), log-y.
     * validation_weight_dist.png     -- overlaid weight distributions.
+    * validation_hN_charge_corr_effect.png -- default / macro weight per
+      event: the size of the hN charge correction.
+
+  The hN charge correction (HAIntranuke2025::HadronFateHA):
+    * hN_charge_correction.png       -- the raw pi0/pi+ ratio lines, the
+      renormalised per-fate pi0 factors on argon, and the resulting pi0
+      hA2018->hA2025 reweight per fate with/without the correction.
 
   The interpolation (all GENIE-exact):
     * fate_fractions_vs_KE.png       -- hA2018 vs hA2025 fate fractions vs KE for
@@ -20,7 +38,10 @@ Produces, in ``plots/pion_fsi_reweighting/``:
 
   The deliverable comparison:
     * pi0_momentum_reweighting.png   -- true final-state pi0 momentum spectrum,
-      unweighted vs hA2025-reweighted, with a ratio panel.
+      unweighted vs hA2025-reweighted (hN charge correction = default, no
+      charge correction = macro, nucleon counting = hA2025c), with a ratio panel.
+    * {pi0,piplus,piminus}_momentum_4panel.png -- the same three variants for
+      each pion species, split numuCC/NC x Np/0p, each with a ratio panel.
 
 Run:  python src/pion_fsi_reweighting_plots.py [FILE.root]
 The default FILE is the downloaded run4b nu-overlay FSIrwgt reference, which has
@@ -62,6 +83,11 @@ def _save(fig, name):
 
 _KE_MAX = 999.0  # FracADep clamps KE to [1, 999] MeV
 
+# Shared legend labels for the three reweight variants.
+_LBL_HN = "hA2025 + hN charge correction (default; GENIE official)"
+_LBL_NONE = "hA2025, no charge correction (= GENIE macro)"
+_LBL_NC = "hA2025c: hA2025 + nucleon counting charge correction"
+
 
 def _set_ke_axis(ax, label=True):
     ax.set_xlim(0, _KE_MAX)
@@ -78,9 +104,13 @@ def _ke_mesh(n=480):
 # ─────────────────────────────────────────────────────────────────────────────
 def plot_validation(file_path, tree_path="nuselection/NeutrinoSelectionFilter",
                     entry_stop=None):
+    # the macro's branch is the plain FracADep ratio (no charge correction)
     mine, _add, q = R.compute_pion_fsi_weights(file_path, tree_path=tree_path,
                                                entry_stop=entry_stop,
-                                               return_queries=True)
+                                               return_queries=True,
+                                               hN_charge_correction=False)
+    default, _ = R.compute_pion_fsi_weights(file_path, tree_path=tree_path,
+                                            entry_stop=entry_stop)
     with uproot.open(file_path) as f:
         ref = f[tree_path]["hA2025reweight"].array(
             entry_stop=entry_stop, library="np").astype(float)
@@ -117,7 +147,82 @@ def plot_validation(file_path, tree_path="nuselection/NeutrinoSelectionFilter",
     ax.legend()
     _save(fig, "validation_weight_dist.png")
 
+    # effect of the hN charge correction (default / macro-equivalent) -----------
+    with np.errstate(divide="ignore", invalid="ignore"):
+        eff = np.where(mine > 0, default / mine, np.nan)
+    m = np.isfinite(eff) & (np.abs(eff - 1.0) > 1e-9)
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    if m.any():
+        ax.hist(eff[m], bins=np.linspace(0.3, 2.5, 111), color="C2")
+    ax.set_yscale("log")
+    ax.set_xlabel("default (hN charge corr.) / no-charge-corr. (macro) weight, per event")
+    ax.set_ylabel("events (with a pi0 FSI only)")
+    ax.set_title("hN charge correction (GENIE official, pi0 only): %d/%d events affected\n"
+                 "mean weight: no charge corr. %.5f -> default %.5f"
+                 % (int(m.sum()), n, mine.mean(), default.mean()))
+    _save(fig, "validation_hN_charge_corr_effect.png")
+
     return mine, ref, q
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# hN charge correction (GENIE official; HAIntranuke2025::HadronFateHA)
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_hN_charge_correction(A_show=40):
+    ke = np.linspace(1, 999, 400)
+    AA = np.full_like(ke, float(A_show))
+    rc, ri, ra, rp = R._hN_pi0_ratios(ke)
+    fc, fi, fa, fp = R._fracs_2025(ke, AA)
+    norm = rc * fc + ri * fi + ra * fa + rp * fp
+    raw = {R.FATE_CEX: rc, R.FATE_INELAS: ri, R.FATE_ABS: ra, R.FATE_PIPRO: rp}
+    cols = {R.FATE_CEX: "C0", R.FATE_INELAS: "C1", R.FATE_ABS: "C2", R.FATE_PIPRO: "C3"}
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+    ax = axes[0]
+    for fate, fname in _FATES:
+        ax.plot(ke, raw[fate], color=cols[fate], lw=1.8, label=fname)
+    ax.axhline(1.0, color="k", lw=0.8)
+    ax.set_title("hN-fitted pi0/pi+ ratio lines (KE capped at 1 GeV;\n"
+                 "pi-prod only applied above 400 MeV)")
+    ax.set_ylabel("multiplier on the pi0 fate fraction, before renormalisation")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+
+    ax = axes[1]
+    for fate, fname in _FATES:
+        ax.plot(ke, raw[fate] / norm, color=cols[fate], lw=1.8, label=fname)
+    ax.plot(ke, norm, color="k", ls=":", lw=1.2, label="renormalisation sum")
+    ax.axhline(1.0, color="k", lw=0.8)
+    ax.set_title("effective pi0 factor after renormalisation, A=%d\n"
+                 "(frac_pi0' = r_f frac_f / sum_g r_g frac_g)" % A_show)
+    ax.set_ylabel("pi0 FracADep_2025 -> sampled fraction")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+
+    ax = axes[2]
+    for fate, fname in _FATES:
+        fa_ = np.full_like(ke, fate, dtype=int)
+        f18 = R._frac_adep_2018(fa_, ke, AA)
+        f25 = R._frac_adep_2025(fa_, ke, AA)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r = np.where(f18 != 0, f25 / f18, 1.0)
+        ax.plot(ke, r, color=cols[fate], ls="--", lw=1.3)
+        ax.plot(ke, r * raw[fate] / norm, color=cols[fate], lw=1.8, label=fname)
+    ax.axhline(1.0, color="k", lw=0.8)
+    ax.set_yscale("log")
+    ax.set_ylim(0.05, 20)
+    ax.set_title("pi0 per-pion reweight factor on A=%d (hA2025/hA2018)\n"
+                 "solid: with hN charge corr. (default); dashed: without "
+                 "(macro / charged pions)" % A_show, fontsize=10)
+    ax.set_ylabel("weight factor")
+    ax.legend(fontsize=8, loc="lower right")
+    ax.grid(alpha=0.3, which="both")
+    for ax in axes:
+        _set_ke_axis(ax)
+    fig.suptitle("hN charge correction (GENIE official hA2025, "
+                 "HAIntranuke2025::HadronFateHA; pi0 only, fitted to hN, renormalised)")
+    fig.tight_layout()
+    _save(fig, "hN_charge_correction.png")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +369,9 @@ def plot_pi0_momentum(file_path, tree_path="nuselection/NeutrinoSelectionFilter"
     weights, additional = R.compute_pion_fsi_weights(file_path, tree_path=tree_path,
                                                      entry_stop=entry_stop)
     weights_c = weights * additional   # hA2025c = hA2025 * additional charge factor
+    weights_m, _ = R.compute_pion_fsi_weights(file_path, tree_path=tree_path,
+                                              entry_stop=entry_stop,
+                                              hN_charge_correction=False)  # macro-equivalent
     with uproot.open(file_path) as f:
         a = f[tree_path].arrays(
             ["mc_generator_pdg", "mc_generator_statuscode",
@@ -274,7 +382,7 @@ def plot_pi0_momentum(file_path, tree_path="nuselection/NeutrinoSelectionFilter"
     px, py, pz = a["mc_generator_px"], a["mc_generator_py"], a["mc_generator_pz"]
 
     # true final-state pi0: pdg 111, status kIStStableFinalState (1)
-    p_list, w_list, wc_list = [], [], []
+    p_list, w_list, wc_list, wm_list = [], [], [], []
     for i in range(len(pdg)):
         sel = (pdg[i] == 111) & (st[i] == 1)
         if not sel.any():
@@ -283,15 +391,18 @@ def plot_pi0_momentum(file_path, tree_path="nuselection/NeutrinoSelectionFilter"
         p_list.append(mom.astype(float))
         w_list.append(np.full(sel.sum(), weights[i], dtype=float))
         wc_list.append(np.full(sel.sum(), weights_c[i], dtype=float))
+        wm_list.append(np.full(sel.sum(), weights_m[i], dtype=float))
     p = np.concatenate(p_list) if p_list else np.array([])
     w = np.concatenate(w_list) if w_list else np.array([])
     wc = np.concatenate(wc_list) if wc_list else np.array([])
+    wm = np.concatenate(wm_list) if wm_list else np.array([])
 
     bins = np.linspace(0, 1.2, 49)
     cent = 0.5 * (bins[1:] + bins[:-1])
     h_unw, _ = np.histogram(p, bins=bins)
     h_rw, _ = np.histogram(p, bins=bins, weights=w)
     h_rwc, _ = np.histogram(p, bins=bins, weights=wc)
+    h_rwm, _ = np.histogram(p, bins=bins, weights=wm)
 
     fig, (ax, axr) = plt.subplots(
         2, 1, figsize=(7.5, 6.5), sharex=True,
@@ -299,27 +410,34 @@ def plot_pi0_momentum(file_path, tree_path="nuselection/NeutrinoSelectionFilter"
     ax.hist(p, bins=bins, histtype="step", lw=2, color="k",
             label="no reweighting (CV)")
     ax.hist(p, bins=bins, weights=w, histtype="step", lw=2, color="C3",
-            label="hA2025 pion-FSI reweight")
+            label=_LBL_HN)
+    ax.hist(p, bins=bins, weights=wm, histtype="step", lw=1.5, ls="--", color="C1",
+            label=_LBL_NONE)
     ax.hist(p, bins=bins, weights=wc, histtype="step", lw=2, color="C0",
-            label="hA2025c (+ pion-charge)")
+            label=_LBL_NC)
     ax.set_ylabel("true final-state pi0 / bin")
     ax.set_title("True pi0 momentum spectrum, pion-FSI reweighting (%d true pi0)\n"
-                 "sum of weights / count: hA2025 %.4f, hA2025c %.4f"
-                 % (len(p), w.sum() / max(len(p), 1), wc.sum() / max(len(p), 1)))
-    ax.legend()
+                 "sum of weights / count: hN %.4f, no charge corr. %.4f, "
+                 "nucleon counting %.4f"
+                 % (len(p), w.sum() / max(len(p), 1), wm.sum() / max(len(p), 1),
+                    wc.sum() / max(len(p), 1)))
+    ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
 
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(h_unw > 0, h_rw / h_unw, np.nan)
         ratio_c = np.where(h_unw > 0, h_rwc / h_unw, np.nan)
-    axr.plot(cent, ratio, drawstyle="steps-mid", color="C3", label="hA2025")
-    axr.plot(cent, ratio_c, drawstyle="steps-mid", color="C0", label="hA2025c")
+        ratio_m = np.where(h_unw > 0, h_rwm / h_unw, np.nan)
+    axr.plot(cent, ratio, drawstyle="steps-mid", color="C3", label="hN charge corr.")
+    axr.plot(cent, ratio_m, drawstyle="steps-mid", color="C1", ls="--",
+             label="no charge corr.")
+    axr.plot(cent, ratio_c, drawstyle="steps-mid", color="C0", label="nucleon counting")
     axr.axhline(1.0, color="k", lw=0.8)
-    axr.set_ylim(0.8, 1.2)
+    axr.set_ylim(0.7, 1.25)
     axr.set_ylabel("reweighted / CV")
     axr.set_xlabel("true pi0 momentum [GeV]")
     axr.grid(alpha=0.3)
-    axr.legend(fontsize=8, ncol=2)
+    axr.legend(fontsize=8, ncol=3)
     _save(fig, "pi0_momentum_reweighting.png")
 
 
@@ -334,14 +452,19 @@ def _true_mass(E, px, py, pz):
 def plot_pion_momentum_by_category(file_path, pion_pdg, pion_label, out_name,
                                    tree_path="nuselection/NeutrinoSelectionFilter",
                                    entry_stop=None):
-    """True final-state pion (``pion_pdg``) momentum spectrum -- CV vs hA2025 vs
-    hA2025c -- in a 2x2 grid split by interaction current (numuCC / NC) and
-    proton topology (Np / 0p, with a 35 MeV true final-state proton KE
-    threshold).  Classification and kinematics come from the mc_generator_*
-    truth stack (status==1 = stable final state)."""
+    """True final-state pion (``pion_pdg``) momentum spectrum -- CV vs the
+    three hA2025 reweight variants (hN charge correction = default, no charge
+    correction = macro, nucleon counting charge correction = hA2025c) -- in a
+    2x2 grid split by interaction current (numuCC / NC) and proton topology
+    (Np / 0p, with a 35 MeV true final-state proton KE threshold), each panel
+    with a reweighted/CV ratio strip.  Classification and kinematics come from
+    the mc_generator_* truth stack (status==1 = stable final state)."""
     weights, additional = R.compute_pion_fsi_weights(file_path, tree_path=tree_path,
                                                      entry_stop=entry_stop)
-    weights_c = weights * additional
+    weights_c = weights * additional   # hA2025c = hA2025 * additional factor
+    weights_m, _ = R.compute_pion_fsi_weights(file_path, tree_path=tree_path,
+                                              entry_stop=entry_stop,
+                                              hN_charge_correction=False)  # macro
     with uproot.open(file_path) as f:
         a = f[tree_path].arrays(
             ["mc_generator_pdg", "mc_generator_statuscode", "mc_generator_E",
@@ -350,8 +473,8 @@ def plot_pion_momentum_by_category(file_path, pion_pdg, pion_label, out_name,
     pdg, st, E = a["mc_generator_pdg"], a["mc_generator_statuscode"], a["mc_generator_E"]
     px, py, pz = a["mc_generator_px"], a["mc_generator_py"], a["mc_generator_pz"]
 
-    # per (current, topology) -> [momenta, hA2025 weights, hA2025c weights]
-    cats = {(c, t): ([], [], []) for c in ("numuCC", "NC") for t in ("Np", "0p")}
+    # per (current, topology) -> [momenta, hN (default), nucleon counting, none]
+    cats = {(c, t): ([], [], [], []) for c in ("numuCC", "NC") for t in ("Np", "0p")}
     for i in range(len(pdg)):
         p_i, s_i = pdg[i], st[i]
         fs = s_i == 1
@@ -374,34 +497,59 @@ def plot_pion_momentum_by_category(file_path, pion_pdg, pion_label, out_name,
         if not pi.any():
             continue
         mom = np.sqrt(px[i][pi] ** 2 + py[i][pi] ** 2 + pz[i][pi] ** 2).astype(float)
-        mlist, wlist, wclist = cats[(cur, topo)]
+        mlist, wlist, wclist, wmlist = cats[(cur, topo)]
         mlist.append(mom)
         wlist.append(np.full(pi.sum(), weights[i], dtype=float))
         wclist.append(np.full(pi.sum(), weights_c[i], dtype=float))
+        wmlist.append(np.full(pi.sum(), weights_m[i], dtype=float))
 
     bins = np.linspace(0, 1.2, 49)
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8.5), sharex=True)
+    cent = 0.5 * (bins[1:] + bins[:-1])
+    fig = plt.figure(figsize=(12.5, 11.5))
+    # rows: main, ratio, (spacer), main, ratio
+    gs = fig.add_gridspec(5, 2, height_ratios=[3, 1.1, 0.55, 3, 1.1],
+                          hspace=0.08, wspace=0.18)
     for (cur, row) in (("numuCC", 0), ("NC", 1)):
         for (topo, col) in (("Np", 0), ("0p", 1)):
-            ax = axes[row, col]
-            mlist, wlist, wclist = cats[(cur, topo)]
-            p = np.concatenate(mlist) if mlist else np.array([])
-            w = np.concatenate(wlist) if wlist else np.array([])
-            wc = np.concatenate(wclist) if wclist else np.array([])
+            ax = fig.add_subplot(gs[3 * row, col])
+            axr = fig.add_subplot(gs[3 * row + 1, col], sharex=ax)
+            mlist, wlist, wclist, wmlist = cats[(cur, topo)]
+            cat = lambda L: np.concatenate(L) if L else np.array([])
+            p, w, wc, wm = cat(mlist), cat(wlist), cat(wclist), cat(wmlist)
             ax.hist(p, bins=bins, histtype="step", lw=2, color="k",
                     label="no reweighting (CV)")
             ax.hist(p, bins=bins, weights=w, histtype="step", lw=2, color="C3",
-                    label="hA2025")
+                    label=_LBL_HN)
+            ax.hist(p, bins=bins, weights=wm, histtype="step", lw=1.5, ls="--",
+                    color="C1", label=_LBL_NONE)
             ax.hist(p, bins=bins, weights=wc, histtype="step", lw=2, color="C0",
-                    label="hA2025c (+ pion-charge)")
-            ax.set_title("%s, %s  (%d true %s)" % (cur, topo, len(p), pion_label),
-                         fontsize=10)
+                    label=_LBL_NC)
+            npi = max(len(p), 1)
+            ax.set_title("%s, %s  (%d true %s)\nsum w / N:  hN %.3f,  "
+                         "no charge corr. %.3f,  nucleon counting %.3f"
+                         % (cur, topo, len(p), pion_label, w.sum() / npi,
+                            wm.sum() / npi, wc.sum() / npi), fontsize=9)
             ax.grid(alpha=0.3)
-            if row == 1:
-                ax.set_xlabel("true %s momentum [GeV]" % pion_label)
+            ax.tick_params(labelbottom=False)
             if col == 0:
                 ax.set_ylabel("true final-state %s / bin" % pion_label)
-    axes[0, 0].legend(fontsize=8)
+            h_unw, _ = np.histogram(p, bins=bins)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                for ww, colr, ls in ((w, "C3", "-"), (wm, "C1", "--"), (wc, "C0", "-")):
+                    h_w, _ = np.histogram(p, bins=bins, weights=ww)
+                    axr.plot(cent, np.where(h_unw > 0, h_w / h_unw, np.nan),
+                             drawstyle="steps-mid", color=colr, ls=ls)
+            axr.axhline(1.0, color="k", lw=0.8)
+            axr.set_ylim(0.7, 1.3)
+            axr.grid(alpha=0.3)
+            if col == 0:
+                axr.set_ylabel("reweighted / CV", fontsize=9)
+            if row == 1:
+                axr.set_xlabel("true %s momentum [GeV]" % pion_label)
+            else:
+                axr.tick_params(labelbottom=False)
+            if row == 0 and col == 0:
+                ax.legend(fontsize=7.5)
     fig.suptitle("True %s momentum, pion-FSI reweighting, by current and proton "
                  "topology\n(Np/0p: >=1 / 0 true final-state protons with "
                  "KE > 35 MeV)" % pion_label)
@@ -442,6 +590,7 @@ def main():
     print("input:", file_path, " entry_stop:", entry_stop)
     _, _, q = plot_validation(file_path, entry_stop=entry_stop)
     plot_fate_fractions()
+    plot_hN_charge_correction()      # hN charge correction (GENIE official; default on)
     plot_pi0_momentum(file_path, entry_stop=entry_stop)
     # four-panel (numuCC/NC x Np/0p) momentum spectra for each pion species
     for pdg, label, out in ((111, "pi0", "pi0_momentum_4panel.png"),

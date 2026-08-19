@@ -18,6 +18,15 @@ What the GENIE macro does, per event (rwgtNtupleFSI.C):
                                   / FracADep_2018(fate, KE, remnA),
      where the ratio is taken as 1.0 whenever the 2018 fraction is 0.
 
+On top of that, the DEFAULT weight here also applies what we call the
+**hN charge correction** -- GENIE's official hA2025 treatment of pion charge
+(HAIntranuke2025::HadronFateHA rescales the four pi0 fate fractions by
+KE-dependent pi0/pi+ ratios fitted to hN and renormalises; charged pions
+untouched).  The macro reads FracADep directly and so misses it; pass
+``hN_charge_correction=False`` to reproduce the macro's branch bit-exactly.
+An alternative, our own **nucleon counting charge correction** (hA2025c), is
+also returned.  See the two sections below.
+
 FracADep returns the renormalised cross-section *fraction* for a given fate
 (charge-exchange / inelastic / absorption / pi-production) of a pion with the
 given kinetic energy KE (MeV, clamped to [1, 999]) on a nucleus of mass number
@@ -45,7 +54,7 @@ from matplotlib.tri import LinearTriInterpolator as _LinearTriInterp
 from scipy.interpolate import LinearNDInterpolator as _LinearND
 from scipy.interpolate import CloughTocher2DInterpolator as _CloughTocher
 
-# ── GENIE INTRANUKE data directory (shipped with the coworker's build) ───────
+# ── GENIE INTRANUKE data directory ───────
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GENIE_INTRANUKE_DIR = os.path.join(
     _REPO_ROOT, "BuildEventGenerators", "Generator",
@@ -291,24 +300,120 @@ def _frac_adep_2018(fate, ke, A, tables=None):
         return np.where(total != 0.0, num / total, 0.0)
 
 
-def _frac_adep_2025(fate, ke, A, tables=None):
-    """Vectorised INukeHadroData2025::FracADep for pions.  The tables store
-    log(xsec); the total reaction xsec cancels in the renormalised fraction."""
+def _fracs_2025(ke, A, tables=None):
+    """The four renormalised hA2025 pion fate fractions (cex, inelas, abs,
+    pipro) at (ke, A) -- what INukeHadroData2025::FracADep returns for each
+    fate.  The tables store log(xsec); the total reaction xsec cancels."""
     t = _T2025 if tables is None else tables
     cex = np.exp(t["cex"](A, ke))
     inel = np.exp(t["inelas"](A, ke))
     ab = np.exp(t["abs"](A, ke))
     pp = np.exp(t["pipro"](A, ke))
     total = cex + inel + ab + pp
-    num = np.select([fate == FATE_CEX, fate == FATE_INELAS,
-                     fate == FATE_ABS, fate == FATE_PIPRO],
-                    [cex, inel, ab, pp], default=0.0)
     with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(total != 0.0, num / total, 0.0)
+        return tuple(np.where(total != 0.0, x / total, 0.0)
+                     for x in (cex, inel, ab, pp))
+
+
+def _frac_adep_2025(fate, ke, A, tables=None):
+    """Vectorised INukeHadroData2025::FracADep for pions (renormalised fraction
+    of the requested fate; 0 for fates pions don't have)."""
+    fc, fi, fa, fp = _fracs_2025(ke, A, tables)
+    return np.select([fate == FATE_CEX, fate == FATE_INELAS,
+                      fate == FATE_ABS, fate == FATE_PIPRO],
+                     [fc, fi, fa, fp], default=0.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# hA2025c -- hA2025 with pion-charge considerations (v0, charge-exchange only)
+# "hN charge correction" -- GENIE's official hA2025 pion-charge treatment
+# (HAIntranuke2025::HadronFateHA).  DEFAULT.
+# ─────────────────────────────────────────────────────────────────────────────
+# The hA fate tables are pi+ data, used unchanged for pi+, pi- and pi0 by
+# FracADep.  GENIE master (commit 6a91779, "MI Nov 2025", hard-coded on via
+# ``apply_pi0_ratio_correction = true``) corrects this *for pi0 only* at fate-
+# selection time: each pi0 fate fraction is multiplied by a KE-dependent
+# pi0/pi+ ratio fitted to the hN (isospin-explicit) simulation, and the four
+# fractions are then renormalised to sum to 1:
+#
+#     ke_r       = min(KE, 1000 MeV)
+#     r_cex      =  0.0008702 * ke_r + 1.9047
+#     r_abs      =  0.0003291 * ke_r + 0.82617
+#     r_inel     = -0.0003209 * ke_r + 0.837764
+#     r_piprod   =  0.0004402 * ke_r + 0.47418     (applied only if KE > 400 MeV)
+#     frac_f'    =  r_f * frac_f / sum_g r_g * frac_g
+#
+# Charged pions get no correction.  At low KE these ratios are just the Delta-
+# dominated isospin factors (pi0 has two CEx channels -> ~2; pi0 N elastic is
+# 4/9 vs pi+ on an isoscalar pair's 5/9 -> ~0.8), so they agree with the
+# nucleon counting charge correction below for pi0 CEx, but GENIE's version
+# also adjusts abs/inelas/piprod and renormalises -- i.e. it is the fate model
+# the hA2025 generator actually samples from.
+#
+# Because ``rwgtNtupleFSI.C`` calls FracADep directly (which has no such
+# correction) that ``hA2025reweight`` branch does NOT include it.  The
+# DEFAULT weight here includes it (``hN_charge_correction=True``), so the
+# reweighted MC matches what GENIE hA2025 officially generates;
+# ``hN_charge_correction=False`` reproduces the macro bit-exactly.
+#
+# Renormalisation note.  hA fixes the pion's *total* interaction probability
+# (mean free path from the total reaction xsec) and only redistributes fates,
+# so in GENIE a larger pi0 CEx rate is paid for by smaller pi0 inelastic / abs
+# fractions.  For a surviving-pi0 observable that is the dominant effect of the
+# correction (pi0 inelastic x~0.8), while the CEx boost itself is invisible
+# (those pi0s are gone).  One could argue the opposite: the mean free path was
+# presumably measured with charged pions, so if pi0s charge-exchange more the
+# pi0 mean free path should *shrink* rather than the other fates being
+# depleted.  We note this but match official GENIE behaviour by default.
+_HN_PI0_RATIO_COEF = {              # fate -> (slope per MeV, intercept)
+    FATE_CEX:    (0.0008702, 1.9047),
+    FATE_ABS:    (0.0003291, 0.82617),
+    FATE_INELAS: (-0.0003209, 0.837764),
+    FATE_PIPRO:  (0.0004402, 0.47418),
+}
+_HN_KE_CAP = 1000.0            # ke_ratio = min(KE, 1000 MeV)
+_HN_PIPROD_KE_MIN = 400.0      # pi-production ratio applied only above this
+
+
+def _hN_pi0_ratios(ke_raw):
+    """The four GENIE pi0/pi+ ratio scale factors (cex, inelas, abs, pipro) at
+    the *unclamped* pion KE (MeV).  Vectorised."""
+    ke_raw = np.asarray(ke_raw, dtype=float)
+    ke_r = np.minimum(ke_raw, _HN_KE_CAP)
+    r = {}
+    for fate, (slope, icpt) in _HN_PI0_RATIO_COEF.items():
+        r[fate] = slope * ke_r + icpt
+    # piprod correction only for KE > 400 MeV (else the fraction is untouched)
+    r[FATE_PIPRO] = np.where(ke_raw > _HN_PIPROD_KE_MIN, r[FATE_PIPRO], 1.0)
+    return r[FATE_CEX], r[FATE_INELAS], r[FATE_ABS], r[FATE_PIPRO]
+
+
+def _hN_charge_correction(fate, pion_pdg, ke_raw, A_lookup, tables=None):
+    """hN charge correction: per-pion factor turning the FracADep hA2025
+    fraction into the fraction GENIE's HAIntranuke2025 actually samples.  For
+    a pi0 with a handled fate f, ``r_f / sum_g r_g * frac25_g``; 1.0 for
+    charged pions / other fates.  ``ke_raw`` is the unclamped KE (MeV);
+    ``A_lookup`` the clamped table A.  Vectorised."""
+    fate = np.asarray(fate)
+    pion_pdg = np.asarray(pion_pdg)
+    corr = np.ones(len(fate), dtype=float)
+    sel = (pion_pdg == 111) & np.isin(fate, _PION_FATES)
+    if not sel.any():
+        return corr
+    rc, ri, ra, rp = _hN_pi0_ratios(np.asarray(ke_raw, dtype=float)[sel])
+    fc, fi, fa, fp = _fracs_2025(np.asarray(ke_raw, dtype=float).clip(_KE_MIN, _KE_MAX)[sel],
+                                 np.asarray(A_lookup, dtype=float)[sel], tables)
+    norm = rc * fc + ri * fi + ra * fa + rp * fp
+    r_f = np.select([fate[sel] == FATE_CEX, fate[sel] == FATE_INELAS,
+                     fate[sel] == FATE_ABS, fate[sel] == FATE_PIPRO],
+                    [rc, ri, ra, rp], default=1.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        corr[sel] = np.where(norm > 0.0, r_f / norm, 1.0)
+    return corr
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# "nucleon counting charge correction" -- our own alternative (hA2025c = hA2025
+# table ratio x this factor; v0, charge-exchange only, NOT renormalised)
 # ─────────────────────────────────────────────────────────────────────────────
 # GENIE's hA model uses the pi+ -on-A cross sections for pi+, pi-, AND pi0 alike.
 # That is charge-blind, which mainly matters for charge exchange (CEx), whose rate
@@ -327,8 +432,13 @@ def _frac_adep_2025(fate, ke, A, tables=None):
 # (interpolated from the actual N of the hA2025 CEx data nuclei).  v0 applies this
 # to CEx only (the dominant, cleanest term); abs/inelas/pipro keep factor 1.0.
 # This is a leading-order nucleon-counting model: it omits the renormalisation of
-# the other fate fractions, the Delta Clebsch-Gordan / KE structure, and the
-# absorption isospin weights -- refinements for later versions.
+# the other fate fractions (so it effectively *raises* the total pi0 interaction
+# rate instead of depleting inelastic/abs -- see the renormalisation note
+# above), the Delta Clebsch-Gordan / KE structure, and the absorption isospin
+# weights -- refinements for later versions.  Unlike the hN charge correction
+# it also corrects pi+ (N/Nref) and pi- (Z/Nref), i.e. the neutron-excess
+# asymmetry on argon.  It is an *alternative* to the hN charge correction
+# (not stacked on it): hA2025c = (hA2018->hA2025 table ratio) x (this factor).
 #
 # Neutrons of the 2025 CEx data nuclei (He3, Li7, C12, Al27, Fe56, Nb93, Bi209):
 _NREF_A = np.array([3, 7, 12, 27, 56, 93, 209], dtype=float)
@@ -341,10 +451,11 @@ def _n_ref(A):
     return np.interp(A, _NREF_A, _NREF_N)
 
 
-def _charge_correction(fate, pion_pdg, Z, N):
-    """hA2025c per-pion factor C(fate, charge, Z, N): 1.0 except for charge
-    exchange, where the rate scales with the available target nucleons relative
-    to the pi+ baseline N_ref(A).  Vectorised.
+def _nucleon_counting_charge_correction(fate, pion_pdg, Z, N):
+    """nucleon counting charge correction (hA2025c) per-pion factor
+    C(fate, charge, Z, N): 1.0 except for charge exchange, where the rate
+    scales with the available target nucleons relative to the pi+ baseline
+    N_ref(A).  Vectorised.
 
         pion   CEx channel(s)                       available    factor
         pi+    pi+ n -> pi0 p   (off a neutron)      N            N / Nref
@@ -384,15 +495,21 @@ def compute_pion_fsi_weights(
     return_queries=False,
     engine="root628",
     include_phantom=True,
+    hN_charge_correction=True,
 ):
     """Read a ROOT file and return ``(hA2025, additional_hA2025c)`` per-event
     weight arrays (see :func:`compute_pion_fsi_weights_from_arrays`).
 
-    With the defaults (``engine="root628"``, ``include_phantom=True``) the
-    ``hA2025`` array is the bit-exact GENIE reproduction.  Pass a different
-    ``engine`` (``"qhull"``, ``"cubic"``, or your own ``factory(xn, yn, z) ->
-    eval`` callable) and/or ``include_phantom=False`` to test alternative
-    interpolation choices -- only the fate-fraction interpolation changes.
+    With the defaults (``engine="root628"``, ``include_phantom=True``,
+    ``hN_charge_correction=True``) the ``hA2025`` array is the hA2018->hA2025
+    reweight including GENIE's official hN charge correction (what
+    HAIntranuke2025 samples).  ``hN_charge_correction=False`` gives the
+    bit-exact reproduction of the ``rwgtNtupleFSI.C`` macro's ``hA2025reweight``
+    branch (FracADep ratio only, no charge correction).
+    Pass a different ``engine`` (``"qhull"``, ``"cubic"``, or your own
+    ``factory(xn, yn, z) -> eval`` callable) and/or ``include_phantom=False`` to
+    test alternative interpolation choices -- only the fate-fraction
+    interpolation changes.
 
     Reads with uproot; no ROOT/GENIE/cvmfs dependency.  With
     ``return_queries=True`` a third element, the per-reweighted-pion dict, is
@@ -414,12 +531,12 @@ def compute_pion_fsi_weights(
         arr["mc_generator_E"], arr["mc_generator_px"],
         arr["mc_generator_py"], arr["mc_generator_pz"],
         engine=engine, include_phantom=include_phantom,
-        return_queries=return_queries)
+        hN_charge_correction=hN_charge_correction, return_queries=return_queries)
 
 
 def compute_pion_fsi_weights_from_arrays(pdg, mother, rescatter, status, E, px, py, pz,
                                 engine="root628", include_phantom=True,
-                                return_queries=False):
+                                hN_charge_correction=True, return_queries=False):
     """Per-event pion-FSI weights from already-loaded ``mc_generator_*`` arrays
     (each an object array of variable-length per-event vectors).
 
@@ -429,13 +546,22 @@ def compute_pion_fsi_weights_from_arrays(pdg, mother, rescatter, status, E, px, 
 
     Returns ``(hA2025, additional_hA2025c)``, two arrays aligned to the input
     event order:
-      * ``hA2025`` -- the bit-exact GENIE hA2018->hA2025 reweight, and
-      * ``additional_hA2025c`` -- the extra per-event factor (product of the
-        per-pion :func:`_charge_correction`) that turns hA2025 into the
-        charge-aware hA2025c: ``weight_hA2025c = hA2025 * additional_hA2025c``.
-        1.0 for events with no charge-exchange pion / an isoscalar remnant.
+      * ``hA2025`` -- the DEFAULT hA2018->hA2025 reweight: product over the
+        event's FSI'd pions of  FracADep_2025/FracADep_2018  times the hN
+        charge correction (:func:`_hN_charge_correction`, GENIE's official
+        pi0-only factor; the fate model HAIntranuke2025 actually samples).
+        With ``hN_charge_correction=False`` that factor is dropped and the
+        result is the bit-exact reproduction of the macro's ``hA2025reweight``
+        branch.
+      * ``additional_hA2025c`` -- the per-event factor that turns the returned
+        ``hA2025`` into hA2025c, the variant with our nucleon counting charge
+        correction instead (= table ratio x
+        :func:`_nucleon_counting_charge_correction`, *without* the hN charge
+        correction): ``weight_hA2025c = hA2025 * additional_hA2025c`` holds
+        for either value of ``hN_charge_correction``.
     With ``return_queries=True`` a third element, the per-reweighted-pion dict,
-    is appended.
+    is appended (includes per-pion ``hN_corr``, ``nc_corr`` and the unclamped
+    ``ke_raw``).
     """
     t2025, t2018 = make_tables(engine, include_phantom)
 
@@ -511,13 +637,14 @@ def compute_pion_fsi_weights_from_arrays(pdg, mother, rescatter, status, E, px, 
         if return_queries:
             empty = np.array([], dtype=float)
             return weights, additional, {k: empty for k in
-                             ("evt", "fate", "ke", "A", "Z", "pdg",
-                              "f18", "f25", "ratio", "charge_corr")}
+                             ("evt", "fate", "ke", "ke_raw", "A", "Z", "pdg",
+                              "f18", "f25", "ratio", "hN_corr", "nc_corr")}
         return weights, additional
 
     q_evt = np.asarray(q_evt)
     q_fate = np.asarray(q_fate)
-    q_ke = np.clip(np.asarray(q_ke, dtype=float), _KE_MIN, _KE_MAX)
+    q_ke_raw = np.asarray(q_ke, dtype=float)  # unclamped (GENIE pi0 ratio uses it)
+    q_ke = np.clip(q_ke_raw, _KE_MIN, _KE_MAX)
     q_A = np.asarray(q_A, dtype=float)        # raw remnant A (for nucleon counting)
     q_Z = np.asarray(q_Z, dtype=float)
     q_pdg = np.asarray(q_pdg)
@@ -537,18 +664,26 @@ def compute_pion_fsi_weights_from_arrays(pdg, mother, rescatter, status, E, px, 
         with np.errstate(divide="ignore", invalid="ignore"):
             ratio[handled] = np.where(f18 != 0.0, f25 / f18, 1.0)
 
-    # per-pion charge correction (hA2025c); 1.0 except for charge-exchange pions.
-    charge_corr = _charge_correction(q_fate, q_pdg, q_Z, q_A - q_Z)
+    # hN charge correction (GENIE official; default on); 1.0 for charged pions.
+    if hN_charge_correction:
+        hN_corr = _hN_charge_correction(q_fate, q_pdg, q_ke_raw, q_A_lookup, t2025)
+    else:
+        hN_corr = np.ones(len(q_evt), dtype=float)
 
-    # hA2025 weight  = product over the event's pions of the hA2018->hA2025 ratio
-    # additional fac = product over the event's pions of the charge correction
-    np.multiply.at(weights, q_evt, ratio)
-    np.multiply.at(additional, q_evt, charge_corr)
+    # nucleon counting charge correction (hA2025c); 1.0 except for CEx pions.
+    nc_corr = _nucleon_counting_charge_correction(q_fate, q_pdg, q_Z, q_A - q_Z)
+
+    # hA2025 weight  = product over the event's pions of ratio x hN_corr
+    # additional fac = product over the event's pions of nc_corr / hN_corr,
+    #                  so that hA2025 x additional = ratio x nc_corr = hA2025c
+    np.multiply.at(weights, q_evt, ratio * hN_corr)
+    np.multiply.at(additional, q_evt, nc_corr / hN_corr)
 
     if return_queries:
-        queries = {"evt": q_evt, "fate": q_fate, "ke": q_ke, "A": q_A, "Z": q_Z,
-                   "pdg": q_pdg, "f18": f18_all, "f25": f25_all, "ratio": ratio,
-                   "charge_corr": charge_corr}
+        queries = {"evt": q_evt, "fate": q_fate, "ke": q_ke, "ke_raw": q_ke_raw,
+                   "A": q_A, "Z": q_Z, "pdg": q_pdg, "f18": f18_all,
+                   "f25": f25_all, "ratio": ratio, "hN_corr": hN_corr,
+                   "nc_corr": nc_corr}
         return weights, additional, queries
     return weights, additional
 
@@ -561,5 +696,8 @@ if __name__ == "__main__":
     )
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 20000
     w, add = compute_pion_fsi_weights(fp, entry_stop=n)
-    print("computed %d weights: hA2025 mean %.5f, additional hA2025c mean %.5f"
-          % (len(w), w.mean(), add.mean()))
+    w0, _ = compute_pion_fsi_weights(fp, entry_stop=n, hN_charge_correction=False)
+    print("computed %d weights: hA2025 (default, hN charge corr.) mean %.5f, "
+          "macro-equivalent (no charge corr.) mean %.5f, "
+          "hA2025c (nucleon counting charge corr.) mean %.5f"
+          % (len(w), w.mean(), w0.mean(), (w * add).mean()))
