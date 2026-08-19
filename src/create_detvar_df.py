@@ -20,6 +20,8 @@ from postprocessing import remove_vector_variables
 
 from file_locations import data_files_location, intermediate_files_location
 
+from create_df import _arrays_filling_missing
+
 from df_helpers import align_columns_for_concat
 from memory_monitoring import start_memory_logger
 
@@ -53,6 +55,10 @@ def _vartype_from_filename(filename):
         return "LYDown"
     if "lyr" in fn:
         return "LYRayleigh"
+    if "wmthetaxz" in fn:
+        return "WireModThetaXZ"
+    if "wmthetayz" in fn:
+        return "WireModThetaYZ"
     if "wmx" in fn:
         return "WireModX"
     if "wmyz" in fn:
@@ -66,51 +72,42 @@ def _vartype_from_filename(filename):
     raise ValueError("Unknown vartype!", filename)
 
 
+def _detvar_sample_from_filename(filename):
+    """Index of the independent detvar generation sample this file belongs to, used
+    (together with run, subrun, event) to pair variation events with their CV events.
+
+    Run 3b has two CV samples that overlap heavily in (run, subrun, event) (the 500k
+    sample is ~95% a subset of the 1mil sample), so run/subrun/event alone is ambiguous:
+        0 = the 1mil CV sample (paired with all run 3b variations except SCE and Recomb2)
+        1 = the 500k CV sample (paired with the run 3b SCE and Recomb2 variations)
+    All non-run-3b detvar batches also get 0: their run-number ranges are disjoint from
+    run 3b (and from each other), so they can't cross-match.  (Empirically confirmed for
+    the lya hist_3 file, whose run 3b events cover ~99% of the 1mil CV.)
+    """
+    fn = filename.lower()
+    if "3b" not in fn:
+        return 0
+    if "1mil" in fn:
+        return 0
+    if "500k" in fn:
+        return 1
+    return 1 if _vartype_from_filename(filename) in ("SCE", "Recomb2") else 0
+
+
 def _get_file_metadata(filename, frac_events=1):
     """Open a ROOT file briefly to collect per-file metadata without reading branch data.
 
     Returns a dict with keys:
-        filetype, vartype, detailed_run_period, file_POT, n_events,
+        filetype, vartype, detvar_sample, detailed_run_period, file_POT, n_events,
         root_file_size_gb, curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars
     """
-    if "nu_overlay" in filename.lower():
-        filetype = "nu_overlay"
-    elif "nue_overlay" in filename.lower():
-        filetype = "nue_overlay"
-    elif "dirt" in filename.lower():
-        filetype = "dirt_overlay"
-    elif "nc_pi0" in filename.lower() or "ncpi0" in filename.lower() or "nc_pio" in filename.lower() or "ncpio" in filename.lower():
-        filetype = "nc_pi0_overlay"
-    elif "ccpi0" in filename.lower():
-        filetype = "numucc_pi0_overlay"
-    elif "delete_one_gamma" in filename.lower():
-        filetype = "delete_one_gamma_overlay"
-    elif "isotropic_one_gamma" in filename.lower():
-        filetype = "isotropic_one_gamma_overlay"
-    else:
-        raise ValueError("Unknown filetype!", filename)
+    filetype = _filetype_from_filename(filename)
 
     if not filetype or filetype == '':
         raise ValueError(f"filetype is empty or None for filename: {filename}")
 
-    if "lya" in filename.lower():
-        vartype = "LYAtt"
-    elif "lyd" in filename.lower():
-        vartype = "LYDown"
-    elif "lyr" in filename.lower():
-        vartype = "LYRayleigh"
-    elif "wmx" in filename.lower():
-        vartype = "WireModX"
-    elif "wmyz" in filename.lower():
-        vartype = "WireModYZ"
-    elif "recomb2" in filename.lower():
-        vartype = "Recomb2"
-    elif "sce" in filename.lower():
-        vartype = "SCE"
-    elif "cv" in filename.lower():
-        vartype = "CV"
-    else:
-        raise ValueError("Unknown vartype!", filename)
+    vartype = _vartype_from_filename(filename)
+    detvar_sample = _detvar_sample_from_filename(filename)
 
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -135,7 +132,12 @@ def _get_file_metadata(filename, frac_events=1):
     f.close()
 
     detailed_run_period = "?"
-    if "1.root" in filename:
+    if "3b" in filename.lower(): # run 3b detvar files (e.g. cv_3b_1mil) have no trailing run suffix;
+        # the two overlapping 3b samples get distinct periods so POT counting stays per-sample
+        detailed_run_period = "3b1" if detvar_sample == 0 else "3b2"
+    elif "13a" in filename.lower() and "3.root" in filename: # the run-3 part of the 13a detvar batch is run 3a only
+        detailed_run_period = "3a"
+    elif "1.root" in filename:
         detailed_run_period = "1"
     elif "2.root" in filename:
         detailed_run_period = "2"
@@ -173,6 +175,7 @@ def _get_file_metadata(filename, frac_events=1):
     return {
         "filetype": filetype,
         "vartype": vartype,
+        "detvar_sample": detvar_sample,
         "detailed_run_period": detailed_run_period,
         "file_POT": file_POT,
         "n_events": n_events,
@@ -182,7 +185,7 @@ def _get_file_metadata(filename, frac_events=1):
     }
 
 
-def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
+def _load_chunk(filename, filetype, vartype, detvar_sample, detailed_run_period, file_POT,
                 curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars,
                 entry_start, entry_stop, **_):
     """Load events [entry_start, entry_stop) from a ROOT file and return a DataFrame.
@@ -204,34 +207,37 @@ def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
     del dic
     all_df["wc_file_POT"] = file_POT
 
+    n_rows = len(all_df)
+
     # loading blip variables (blip variables already have the "blip_" prefix)
-    dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(blip_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["nuselection"]["NeutrinoSelectionFilter"], blip_vars,
+                                  slice_kwargs, n_rows, filename, "blip")
     blip_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()})
     del dic
     all_df = pd.concat([all_df, blip_df], axis=1)
     del blip_df
 
     # loading pandora variables
-    dic = {}
-    dic.update(f["nuselection"]["NeutrinoSelectionFilter"].arrays(pandora_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["nuselection"]["NeutrinoSelectionFilter"], pandora_vars,
+                                  slice_kwargs, n_rows, filename, "pandora")
     pandora_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("pandora_")
     del dic
     all_df = pd.concat([all_df, pandora_df], axis=1)
     del pandora_df
 
     # loading gLEE variables
-    dic = {}
-    dic.update(f["singlephotonana"]["vertex_tree"].arrays(glee_vars, library="np", **slice_kwargs))
-    dic.update(f["singlephotonana"]["eventweight_tree"].arrays(["GTruth_gQ2"], library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["singlephotonana"]["vertex_tree"], glee_vars,
+                                  slice_kwargs, n_rows, filename, "glee vertex_tree")
+    dic.update(_arrays_filling_missing(f["singlephotonana"]["eventweight_tree"], ["GTruth_gQ2"],
+                                       slice_kwargs, n_rows, filename, "glee eventweight_tree"))
     glee_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("glee_")
     del dic
     all_df = pd.concat([all_df, glee_df], axis=1)
     del glee_df
 
     # loading LANTERN variables
-    dic = {}
-    dic.update(f["lantern"]["EventTree"].arrays(lantern_vars, library="np", **slice_kwargs))
+    dic = _arrays_filling_missing(f["lantern"]["EventTree"], lantern_vars,
+                                  slice_kwargs, n_rows, filename, "lantern")
     lantern_df = pd.DataFrame({col: arr.tolist() if arr.ndim != 1 else arr for col, arr in dic.items()}).add_prefix("lantern_")
     del dic
     all_df = pd.concat([all_df, lantern_df], axis=1)
@@ -250,6 +256,7 @@ def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
     all_df["filename"] = filename
     all_df["filetype"] = filetype
     all_df["vartype"] = vartype
+    all_df["detvar_sample"] = np.int32(detvar_sample)
 
     return all_df
 
@@ -335,7 +342,10 @@ if __name__ == "__main__":
         n_events = meta["n_events"]
 
         if vartype == "CV":
-            pot_dic[(filetype, detailed_run_period)] = file_POT
+            key = (filetype, detailed_run_period)
+            if key in pot_dic:
+                raise ValueError(f"Duplicate CV POT key {key} -- two CV files share a detailed_run_period, give them distinct ones (like 3b1/3b2)")
+            pot_dic[key] = file_POT
 
         n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
         chunk_parquet_paths = []
@@ -490,7 +500,7 @@ if __name__ == "__main__":
             name="detvar",
             weight_col="wc_net_weight",
             run_period_map={
-                "1": "1", "2": "2", "3": "3", "4a": "4a",
+                "1": "1", "2": "2", "3": "3", "3a": "3", "3b1": "3", "3b2": "3", "4a": "4a",
                 "4b": "4nota", "4c": "4nota", "4d": "4nota", "4bcd": "4nota", "5": "5",
             },
             goal_pot=None,
@@ -513,11 +523,13 @@ if __name__ == "__main__":
     # have limited DetVar files available (no delete_one_gamma / isotropic_one_gamma
     # detector variations), so there are no events for these reweightings to act on.
 
-    # duplicate (filetype, vartype, run, subrun, event) check, done in polars to avoid
-    # materializing a multi-million-row Python string list
-    n_dups = all_df.select(pl.struct("filetype", "vartype", "run", "subrun", "event").is_duplicated().sum()).item()
+    # duplicate (filetype, vartype, detvar_sample, run, subrun, event) check, done in
+    # polars to avoid materializing a multi-million-row Python string list.
+    # detvar_sample is part of the key because the two run 3b CV samples (1mil / 500k)
+    # overlap in run/subrun/event.
+    n_dups = all_df.select(pl.struct("filetype", "vartype", "detvar_sample", "run", "subrun", "event").is_duplicated().sum()).item()
     if n_dups > 0:
-        raise ValueError(f"Duplicate filetype/vartype/run/subrun/event! ({n_dups} rows)")
+        raise ValueError(f"Duplicate filetype/vartype/detvar_sample/run/subrun/event! ({n_dups} rows)")
 
     print(f"saving {intermediate_files_location}/detvar_presel_df_train_vars.parquet...", end="", flush=True)
     start_time = time.time()

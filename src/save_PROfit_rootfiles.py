@@ -51,7 +51,7 @@ DETVAR_NET_WEIGHT_COL = "wc_net_weight"
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the
 # covariance).  Only these get a ROOT file; any other vartype value (e.g. the empty
 # "" that create_detvar_df.py mislabels some events with) is skipped with a warning.
-DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]
+DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
 
 # The reco categories (and therefore the prob_<category> BDT-score columns) come from
 # the training definition.
@@ -69,8 +69,11 @@ TRAINING_VARS = combined_training_vars
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
-# and for each DETVAR file: filetype, vartype, run, subrun, event, isdata/isext/isdirt,
-#     reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+# and for each DETVAR file: filetype, vartype, detvar_sample, run, subrun, event,
+#     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+#     (detvar_sample distinguishes the two overlapping run 3b CV samples: 0 = 1mil,
+#     matched by all run 3b variations except SCE/Recomb2; 1 = 500k, matched by
+#     SCE/Recomb2.)
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
@@ -531,8 +534,9 @@ def build_minimal_df(training):
     )
 
     # prediction (drop raw 1g overlays, kept as their reweighted filetypes) vs real data
+    # If you want fullosc overlay in your PROfit rootfile, remove fullosc_overlay from this list!
     pred = merged.filter(~pl.col("filetype").is_in(
-        ["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"]))
+        ["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay", "fullosc_overlay"]))
     data = merged.filter(pl.col("filetype") == "data")
 
     # generic preselection + only events with a valid open-data weight
@@ -540,7 +544,12 @@ def build_minimal_df(training):
 
     # Use only test events (the BDT trained on the train half), weighted up by
     # 1/frac_test so the total normalization is preserved.  Both counts in one pass.
-    counts = pred.select([
+    # fullosc is evaluation-only: train.py never puts it in the train/test split
+    # (both flags False), but nothing was trained on it either, so every event is
+    # usable here.  Keep the whole sample, leave it out of the frac_test counts,
+    # and don't apply the test-half upweight to it.
+    filetype_used_for_training = pl.col("filetype") != "fullosc_overlay"
+    counts = pred.filter(filetype_used_for_training).select([
         pl.col("used_for_training").sum().alias("n_train"),
         pl.col("used_for_testing").sum().alias("n_test"),
     ]).collect()
@@ -548,11 +557,11 @@ def build_minimal_df(training):
     frac_test = num_test / (num_train + num_test)
     print(f"  train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}")
     pred = pred.with_columns(
-        pl.when(pl.col("used_for_testing"))
+        pl.when(pl.col("used_for_testing") & filetype_used_for_training)
         .then(pl.col(NET_WEIGHT_COL) / frac_test)
         .otherwise(pl.col(NET_WEIGHT_COL))
         .alias(NET_WEIGHT_COL)
-    ).filter(pl.col("used_for_testing"))
+    ).filter(pl.col("used_for_testing") | ~filetype_used_for_training)
 
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
@@ -564,6 +573,13 @@ def build_minimal_df(training):
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
     ])
+    # all_df.parquet made before postprocessing.py zero-filled
+    # the fullosc-only branches: null here becomes NaN in ROOT, where wc_fullosc==0 is
+    # always false.
+    fullosc_cols = [c for c in ("wc_fullosc", "wc_fullosc_cv_weight")
+                    if c in minimal.collect_schema().names()]
+    if fullosc_cols:
+        minimal = minimal.with_columns([pl.col(c).fill_null(0.0) for c in fullosc_cols])
     return minimal
 
 
@@ -644,7 +660,7 @@ def save_detvar(training, output_dir):
     # dict.fromkeys dedups columns that are both an explicit id/weight and a training var
     # (e.g. wc_kine_reco_Enu is in TRAINING_VARS), which .select would reject as duplicate.
     keep = list(dict.fromkeys(
-        ["filetype", "vartype", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_NET_WEIGHT_COL]
+        ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_NET_WEIGHT_COL]
         + TRAINING_VARS))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -674,7 +690,7 @@ def save_detvar(training, output_dir):
     ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
 
     detvar_minimal = presel.select(
-        ["filetype", "vartype", "run", "subrun", "event", "isdata", "isext", "isdirt",
+        ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "isdata", "isext", "isdirt",
          "reco_category", "wc_kine_reco_Enu", "net_weight"] + prob_cols
     )
 

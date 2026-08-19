@@ -3,6 +3,7 @@ import uproot
 import numpy as np
 import pandas as pd
 import polars as pl
+import pyarrow.parquet as pq
 import sys
 import os
 import time
@@ -24,6 +25,42 @@ from src.zexp_reweighting import (
     ZEXP_VARIATION_BRANCHES,
     compute_zexp_weights,
 )
+
+def _merge_parquet_parts(paths, out_path, batch_size=32_768):
+    """Concatenate parquet part files into one parquet, diagonal_relaxed-style
+    (union of columns, missing columns null-filled, dtypes upcast).
+
+    Deliberately avoids pl.concat(...).sink_parquet(...): polars 1.34's streaming
+    engine intermittently corrupts schemas on wide inputs under load (a bogus
+    'Float64 != Boolean' SchemaError followed by a segfault inside the polars
+    runtime -- same engine-bug family as _collect_scalar_aggs_verified in
+    postprocessing.py).  Streams one pyarrow record batch at a time instead, so
+    memory stays bounded regardless of the total merged size.
+    """
+    # unified schema comes from the logical plan only -- no query execution
+    unified = pl.concat(
+        [pl.scan_parquet(p) for p in paths], how="diagonal_relaxed"
+    ).collect_schema()
+    target_cols = unified.names()
+    writer = None
+    try:
+        for path in paths:
+            pf = pq.ParquetFile(path)
+            for batch in pf.iter_batches(batch_size=batch_size):
+                df = pl.from_arrow(batch)
+                df = df.with_columns([
+                    pl.lit(None, dtype=unified[c]).alias(c)
+                    for c in target_cols if c not in df.columns
+                ]).select([pl.col(c).cast(unified[c]) for c in target_cols])
+                tbl = df.to_arrow()
+                if writer is None:
+                    writer = pq.ParquetWriter(out_path, tbl.schema, compression="zstd")
+                writer.write_table(tbl)
+            pf.close()
+    finally:
+        if writer is not None:
+            writer.close()
+
 
 def _get_file_metadata(filename, frac_events=1):
     """Collect per-file metadata without reading any weight data.
@@ -180,7 +217,8 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     # are per-event scalars, not spline knobs, so they are excluded here
     spline_id_cols = {"run", "subrun", "event", "entry", "samdef",
                       "fullosc", "fullosc_numu_entry", "fullosc_numu_run",
-                      "fullosc_numu_subrun", "fullosc_numu_event", "fullosc_cv_weight"}
+                      "fullosc_numu_subrun", "fullosc_numu_event", "fullosc_cv_weight",
+                      "numu_nue_xs_ratio_weight", "numu_nue_xs_ratio_weight_bar"}
     spline_knob_cols = [c for c in spline_tree.keys() if c not in spline_id_cols]
     spline_data = spline_tree.arrays(spline_knob_cols, library="np", **slice_kwargs)
     reint_data = f["nuselection"]["NeutrinoSelectionFilter"].arrays(["weightsReint"], library="np", **slice_kwargs)
@@ -266,6 +304,9 @@ if __name__ == "__main__":
                         help="Filename substring to use with --just_one_file. Default: a BNB nu_overlay file with CCQE-capable MaCCQE splines")
     parser.add_argument("--chunk_size", type=int, default=100_000,
                         help="Number of events per chunk when reading ROOT files. Default: 100000")
+    parser.add_argument("--merge_only", action="store_true", default=False,
+                        help="Skip the ROOT file loop and only merge existing per-file parquet parts "
+                             "(resume after a failure in the final merge stage)")
     args = parser.parse_args()
 
     if args.memory_logger:
@@ -274,14 +315,15 @@ if __name__ == "__main__":
     if args.frac_events < 1.0:
         print(f"Loading {args.frac_events} fraction of events from each file")
 
-    for file in os.listdir(intermediate_files_location):
-        if file.endswith(".parquet") and (
-            file.startswith("presel_weights_df") or file.startswith("chunk_weights_")
-            or file.startswith("spline_weights_df") or file.startswith("chunk_splines_")
-            or file == "_derived_weights.parquet"
-        ):
-            os.remove(f"{intermediate_files_location}/{file}")
-    print("Deleted intermediate weight/spline parquet files")
+    if not args.merge_only:
+        for file in os.listdir(intermediate_files_location):
+            if file.endswith(".parquet") and (
+                file.startswith("presel_weights_df") or file.startswith("chunk_weights_")
+                or file.startswith("spline_weights_df") or file.startswith("chunk_splines_")
+                or file == "_derived_weights.parquet"
+            ):
+                os.remove(f"{intermediate_files_location}/{file}")
+        print("Deleted intermediate weight/spline parquet files")
 
     print(f"Starting loop over root files (chunk_size={args.chunk_size:,})...")
 
@@ -303,15 +345,19 @@ if __name__ == "__main__":
             or "one_gamma" in low or "nuwro" in low or "detvar" in low
         )
 
-    filenames = [f for f in sorted(os.listdir(data_files_location)) if _is_systematics_root_file(f)]
-    if args.just_one_file:
-        target = args.just_one_file_target
-        filenames = [f for f in filenames if target in f]
-        if not filenames:
-            raise ValueError(f"--just_one_file_target matched no systematics ROOT files: {target}")
-        filenames = filenames[:1]
-        print(f"  --just_one_file target: {target}")
-    print(f"Processing {len(filenames)} systematics ROOT files...")
+    if args.merge_only:
+        print("--merge_only: skipping the ROOT file loop, merging existing per-file parquet parts")
+        filenames = []
+    else:
+        filenames = [f for f in sorted(os.listdir(data_files_location)) if _is_systematics_root_file(f)]
+        if args.just_one_file:
+            target = args.just_one_file_target
+            filenames = [f for f in filenames if target in f]
+            if not filenames:
+                raise ValueError(f"--just_one_file_target matched no systematics ROOT files: {target}")
+            filenames = filenames[:1]
+            print(f"  --just_one_file target: {target}")
+        print(f"Processing {len(filenames)} systematics ROOT files...")
 
     for file_num, filename in enumerate(filenames):
 
@@ -352,7 +398,7 @@ if __name__ == "__main__":
                 os.rename(_paths[0], _out)
             else:
                 print(f"  combining {len(_paths)} chunks into {_out}...")
-                pl.concat([pl.scan_parquet(p) for p in _paths], how="diagonal_relaxed").sink_parquet(_out)
+                _merge_parquet_parts(_paths, _out)
                 for p in _paths:
                     os.remove(p)
 
@@ -389,7 +435,7 @@ if __name__ == "__main__":
     # ── spline_weights_df.parquet: stream-concat the per-file spline parts ──
     spline_out = f"{intermediate_files_location}/spline_weights_df.parquet"
     print(f"saving {spline_out}...", end="", flush=True)
-    pl.concat([pl.scan_parquet(p) for p in spline_parts], how="diagonal_relaxed").sink_parquet(spline_out)
+    _merge_parquet_parts(spline_parts, spline_out)
     for p in spline_parts:
         os.remove(p)
     print(f"done, {os.path.getsize(spline_out) / 1024**3:.2f} GB")
@@ -442,7 +488,7 @@ if __name__ == "__main__":
     all_weight_parts = weight_parts + ([derived_part] if derived_part else [])
     print(f"saving {presel_out}...", end="", flush=True)
     start_time = time.time()
-    pl.concat([pl.scan_parquet(p) for p in all_weight_parts], how="diagonal_relaxed").sink_parquet(presel_out)
+    _merge_parquet_parts(all_weight_parts, presel_out)
     for p in all_weight_parts:
         os.remove(p)
     end_time = time.time()

@@ -58,7 +58,7 @@ DETVAR_NET_WEIGHT_COL = "wc_net_weight"
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the
 # covariance).  Only these get a ROOT file; any other vartype value (e.g. the empty
 # "" that create_detvar_df.py mislabels some events with) is skipped with a warning.
-DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "Recomb2", "SCE"]
+DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
 
 # The reco categories (and therefore the prob_<category> BDT-score columns) come from
 # the training definition.
@@ -80,8 +80,11 @@ TRAINING_VARS = combined_training_vars
 #     non_genie_net_weight           (net_weight with the valid GENIE wc_weight_cv
 #                                      factor removed, for replacement-model weights)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
-# and for each DETVAR file: the scalar analysis columns plus vartype,
+# and for each DETVAR file: the scalar analysis columns plus vartype, detvar_sample,
 #     isdata/isext/isdirt/isnuwro, net_weight, and prob_<category>.
+#     (detvar_sample distinguishes the two overlapping run 3b CV samples: 0 = 1mil,
+#     matched by all run 3b variations except SCE/Recomb2; 1 = 500k, matched by
+#     SCE/Recomb2.)
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
@@ -725,6 +728,7 @@ def save_detvar(training, output_dir):
     keep = list(dict.fromkeys([
         "filetype",
         "vartype",
+        "detvar_sample",
         "run",
         "subrun",
         "event",
@@ -764,7 +768,7 @@ def save_detvar(training, output_dir):
     ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
 
     detvar_minimal = presel.select(
-        OUTPUT_SCALAR_COLUMNS[:1] + ["vartype"] + OUTPUT_SCALAR_COLUMNS[1:]
+        OUTPUT_SCALAR_COLUMNS[:1] + ["vartype", "detvar_sample"] + OUTPUT_SCALAR_COLUMNS[1:]
         + ["isdata", "isext", "isdirt", "isnuwro", "net_weight"] + prob_cols
     )
 
