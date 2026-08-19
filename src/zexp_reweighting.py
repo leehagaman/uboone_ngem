@@ -11,19 +11,9 @@ ZEXP_SIGMA_VALUES = np.array([-3, -2, -1, 0, 1, 2, 3], dtype=float)
 ZEXP_MINERVA_FA_BRANCH = "weight_minerva_FA"
 ZEXP_PCA_BRANCHES = tuple(f"weight_spline_FAzexpPCA{i}" for i in range(1, 5))
 
-ZEXP_CUSTOM_FA_BRANCH = "weight_custom_FA"
-ZEXP_CUSTOM_A_BRANCHES = tuple(f"weight_spline_FAzexpA{i}" for i in range(1, 5))
-
 ZEXP_MINERVA_K6_FA_BRANCH = "weight_minerva_hydrogen_k6_FA"
 ZEXP_MINERVA_K6_BRANCHES = tuple(
     f"weight_spline_FAzexpMinervaK6PCA{i}" for i in range(1, 3)
-)
-
-ZEXP_MINERVA_K6_DIAGONAL_FA_BRANCH = (
-    "weight_minerva_hydrogen_k6_diagonal_FA"
-)
-ZEXP_MINERVA_K6_DIAGONAL_BRANCHES = tuple(
-    f"weight_spline_FAzexpMinervaK6A{i}" for i in range(1, 3)
 )
 
 ZEXP_MINERVA_K7_FA_BRANCH = "weight_minerva_hydrogen_k7_FA"
@@ -135,36 +125,6 @@ MINERVA_LEGACY_PRIOR = ZExpPrior(
     fa_q2_zero=AXIAL_FORM_FACTOR_Q2_ZERO,
 )
 
-CUSTOM_LEGACY_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2023 kmax=8 diagonal",
-    free_a_values=MINERVA_LEGACY_PRIOR.free_a_values,
-    covariance=np.diag(np.diag(MINERVA_LEGACY_PRIOR.covariance)),
-    full_a_values=MINERVA_LEGACY_PRIOR.full_a_values,
-    cv_branch=ZEXP_CUSTOM_FA_BRANCH,
-    variation_branches=ZEXP_CUSTOM_A_BRANCHES,
-    t0_gev2=MINERVA_LEGACY_PRIOR.t0_gev2,
-    t_cut_gev2=MINERVA_LEGACY_PRIOR.t_cut_gev2,
-    fa_q2_zero=MINERVA_LEGACY_PRIOR.fa_q2_zero,
-    use_pca=False,
-)
-
-# A.S. Meyer et al., arXiv:2512.14097, Eqs. (31)--(41) and (56)--(58).
-MINERVA_K6_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2025 kmax=6",
-    free_a_values=_negative_fa_coefficients([-1.64778080, 0.94181417]),
-    covariance=np.array(
-        [[0.05554150, -0.03262482], [-0.03262482, 0.09151761]], dtype=float
-    ),
-    full_a_values=_negative_fa_coefficients(
-        [
-            0.61490770, -1.64778080, 0.94181417, 0.41239729,
-            0.36611559, -1.18722194, 0.49976799,
-        ]
-    ),
-    cv_branch=ZEXP_MINERVA_K6_FA_BRANCH,
-    variation_branches=ZEXP_MINERVA_K6_BRANCHES,
-)
-
 MINERVA_K7_PRIOR = ZExpPrior(
     name="MINERvA hydrogen 2025 kmax=7",
     free_a_values=_negative_fa_coefficients(
@@ -188,16 +148,33 @@ MINERVA_K7_PRIOR = ZExpPrior(
     variation_branches=ZEXP_MINERVA_K7_BRANCHES,
 )
 
-LQCD_K6_PRIOR = ZExpPrior(
-    name="LQCD 2025 kmax=6",
-    free_a_values=_negative_fa_coefficients([-1.72089706, 0.30982708]),
+MINERVA_K6_PRIOR = ZExpPrior(
+    name="MINERvA hydrogen 2025 kmax=6",
+    free_a_values=_negative_fa_coefficients([-1.64778080, 0.94181417]),
     covariance=np.array(
-        [[0.00265598, -0.00562374], [-0.00562374, 0.01596000]], dtype=float
+        [[0.05554150, -0.03262482], [-0.03262482, 0.09151761]], dtype=float
     ),
     full_a_values=_negative_fa_coefficients(
         [
-            0.71742019, -1.72089706, 0.30982708, 1.62125837,
-            -0.27506993, -1.25297945, 0.60044079,
+            0.61490770, -1.64778080, 0.94181417, 0.41239729,
+            0.36611559, -1.18722194, 0.49976799,
+        ]
+    ),
+    cv_branch=ZEXP_MINERVA_K6_FA_BRANCH,
+    variation_branches=ZEXP_MINERVA_K6_BRANCHES,
+)
+
+# A.S. Meyer, arXiv:2601.02676 (2026), Eqs. (53)--(55).
+LQCD_K6_PRIOR = ZExpPrior(
+    name="LQCD 2026 kmax=6",
+    free_a_values=_negative_fa_coefficients([-1.70104640, 0.26324902]),
+    covariance=np.array(
+        [[0.00175929, -0.00294651], [-0.00294651, 0.00807158]], dtype=float
+    ),
+    full_a_values=_negative_fa_coefficients(
+        [
+            0.72115656, -1.70104640, 0.26324902, 1.53433681,
+            0.01061114, -1.49893610, 0.67062898,
         ]
     ),
     cv_branch=ZEXP_LQCD_K6_FA_BRANCH,
@@ -206,38 +183,26 @@ LQCD_K6_PRIOR = ZExpPrior(
 
 MINERVA_LQCD_K6_PRIOR = ZExpPrior(
     name="MINERvA+LQCD 2025 kmax=6",
-    free_a_values=_negative_fa_coefficients([-1.74307738, 0.37944565]),
+    free_a_values=_negative_fa_coefficients([-1.71743430, 0.31652883]),
     covariance=np.array(
-        [[0.00241156, -0.00495246], [-0.00495246, 0.01406075]], dtype=float
+        [[0.00165493, -0.00268883], [-0.00268883, 0.00737483]], dtype=float
     ),
     full_a_values=_negative_fa_coefficients(
         [
-            0.71070233, -1.74307738, 0.37944565, 1.69894456,
-            -0.60326876, -0.95690585, 0.51415945,
+            0.71592650, -1.71743430, 0.31652883, 1.58969769,
+            -0.23282053, -1.27795482, 0.60605663,
         ]
     ),
     cv_branch=ZEXP_MINERVA_LQCD_K6_FA_BRANCH,
     variation_branches=ZEXP_MINERVA_LQCD_K6_BRANCHES,
 )
 
-MINERVA_K6_DIAGONAL_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2025 kmax=6 diagonal",
-    free_a_values=MINERVA_K6_PRIOR.free_a_values.copy(),
-    covariance=np.diag(np.diag(MINERVA_K6_PRIOR.covariance)),
-    full_a_values=MINERVA_K6_PRIOR.full_a_values.copy(),
-    cv_branch=ZEXP_MINERVA_K6_DIAGONAL_FA_BRANCH,
-    variation_branches=ZEXP_MINERVA_K6_DIAGONAL_BRANCHES,
-    use_pca=False,
-)
-
 ZEXP_PRIORS = (
     MINERVA_LEGACY_PRIOR, # MINERvA Nature result with covariance, in PCA
-    CUSTOM_LEGACY_PRIOR, # Use MINERvA Nature result with diagonal covariance, in a_k
     MINERVA_K6_PRIOR, # MINERvA k=6 result with covariance, in PCA
     MINERVA_K7_PRIOR, # MINERvA k=7 result with covariance, in PCA
     LQCD_K6_PRIOR, # LQCD k=6 result with covariance, in PCA
     MINERVA_LQCD_K6_PRIOR, # MINERvA + LQCD k=6 with covariance, in PCA
-    MINERVA_K6_DIAGONAL_PRIOR, # MINERvA k=6 result with diagonal covariance, in a_k
 )
 
 # Get relevant branches from all priors
