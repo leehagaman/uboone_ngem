@@ -19,6 +19,7 @@ from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables
 
 from file_locations import data_files_location, intermediate_files_location
+from check_ntuple_alignment import assert_ntuple_trees_aligned
 
 from create_df import _arrays_filling_missing
 
@@ -119,6 +120,9 @@ def _get_file_metadata(filename, frac_events=1):
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
+
+    # every per-event tree must be entry-aligned with T_eval (see check_ntuple_alignment.py)
+    assert_ntuple_trees_aligned(f, filename)
 
     # this nanosecond timing variable only exists in the CV and merged files
     curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var != "evtTimeNS_cor"]

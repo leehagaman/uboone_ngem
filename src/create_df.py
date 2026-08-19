@@ -25,6 +25,7 @@ from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dal
 from pion_fsi_reweighting import compute_pion_fsi_weights_from_arrays
 
 from file_locations import data_files_location, intermediate_files_location
+from check_ntuple_alignment import assert_ntuple_trees_aligned
 
 from pot_and_trigger_numbers import (
     open_data_POT, open_data_num_triggers, ext_num_triggers,
@@ -207,6 +208,10 @@ def _get_file_metadata(filename, frac_events=1):
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
+
+    # every per-event tree must be entry-aligned with T_eval (nuselection was not in
+    # Run123 nu_overlay hist_2 -- see check_ntuple_alignment.py); raises if not
+    assert_ntuple_trees_aligned(f, filename)
 
     curr_wc_T_pf_vars = wc_T_pf_vars
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars

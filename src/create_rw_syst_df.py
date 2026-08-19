@@ -16,6 +16,7 @@ if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
 from src.file_locations import data_files_location, intermediate_files_location
+from src.check_ntuple_alignment import assert_ntuple_trees_aligned
 
 from src.memory_monitoring import start_memory_logger
 
@@ -104,6 +105,10 @@ def _get_file_metadata(filename, frac_events=1):
     f = uproot.open(f"{data_files_location}/{filename}")
     total_entries = f["wcpselection"]["T_eval"].num_entries
     n_events = total_entries if frac_events >= 1.0 else max(1, int(total_entries * frac_events))
+    # the spline/rw_syst ids are taken from nuselection, which must be entry-aligned
+    # with T_eval and spline_weights (it was not in Run123 nu_overlay hist_2 -- see
+    # check_ntuple_alignment.py); raises if any per-event tree is misaligned
+    assert_ntuple_trees_aligned(f, filename)
     f.close()
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
