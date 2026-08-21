@@ -41,6 +41,17 @@ ID_TREES = [
     ("spline_weights", ("run", "subrun", "event")),
 ]
 
+# In samples without GENIE truth (beam on/off data, nuwro overlays, the
+# delete/isotropic one-gamma samples), gLEE's eventweight_tree is written but
+# never filled: its run/subrun/event hold uninitialized garbage and every
+# payload branch is at its sentinel.  That is not misalignment -- there is no
+# content to misattach -- so when the ids disagree with T_eval we check the
+# payload branch below, and if it is the sentinel on every entry the tree is
+# reported as unfilled and skipped rather than failing the file.
+UNFILLED_SENTINELS = {
+    "singlephotonana/eventweight_tree": ("GTruth_gQ2", -9999.0),
+}
+
 
 def _packed_keys(tree, branches, entry_stop=None):
     """run/subrun/event as one opaque 24-byte value per entry (a structured void
@@ -91,7 +102,12 @@ def check_ntuple_alignment(f, entry_stop=None):
             n_unique=int(len(uniq)),
             top_key=_unpack(uniq[top]),
             top_key_count=int(counts[top]),
+            unfilled=False,
         )
+        if not res["aligned"] and path in UNFILLED_SENTINELS:
+            branch, sentinel = UNFILLED_SENTINELS[path]
+            vals = tree.arrays([branch], library="np", entry_stop=entry_stop)[branch]
+            res["unfilled"] = bool(np.all(vals == sentinel))
         results.append(res)
     return results
 
@@ -103,6 +119,13 @@ def format_report(filename, results):
     for r in results:
         if r["aligned"]:
             lines.append(f"  OK   {r['tree']:<40s} {r['n_entries']:>9d} entries, run/subrun/event match T_eval on every entry")
+            continue
+        if r.get("unfilled"):
+            branch, sentinel = UNFILLED_SENTINELS[r["tree"]]
+            lines.append(
+                f"  SKIP {r['tree']:<40s} {r['n_entries']:>9d} entries, ids never filled "
+                f"(garbage run/subrun/event, {branch} == {sentinel} on every entry -- no GENIE truth in this sample)"
+            )
             continue
         if r["n_entries"] != r["n_ref"]:
             lines.append(f"  BAD  {r['tree']:<40s} {r['n_entries']:>9d} entries != {r['n_ref']} in T_eval")
@@ -119,7 +142,7 @@ def format_report(filename, results):
 def assert_ntuple_trees_aligned(f, filename, entry_stop=None):
     """Raise RuntimeError (with the evidence) if any per-event tree is misaligned."""
     results = check_ntuple_alignment(f, entry_stop)
-    bad = [r for r in results if not r["aligned"]]
+    bad = [r for r in results if not r["aligned"] and not r.get("unfilled")]
     if bad:
         raise RuntimeError(
             "ntuple trees are not entry-aligned -- refusing to load this file, since every "
@@ -147,7 +170,7 @@ def main(argv=None):
             f = uproot.open(f"{data_files_location}/{path}")
         results = check_ntuple_alignment(f, args.head)
         print(format_report(path, results), flush=True)
-        if any(not r["aligned"] for r in results):
+        if any(not r["aligned"] and not r.get("unfilled") for r in results):
             any_bad = True
             print("  ==> MISALIGNED TREES FOUND", flush=True)
         f.close()
