@@ -335,6 +335,12 @@ if __name__ == "__main__":
         if not "detvar" in filename.lower():
             continue
 
+        if (_filetype_from_filename(filename) == "nu_overlay"
+                and ("4d.root" in filename or "run4d" in filename.lower())):
+            print(f"TEMPORARY, SKIPPING RUN 4D NU_OVERLAY DETVAR, "
+                  f"MISALIGNED singlephotonana/vertex_tree RSE! ({filename})")
+            continue
+
         print(f"loading {filename}...")
         file_start_time = time.time()
 
