@@ -773,3 +773,61 @@ def do_blip_postprocessing(df):
     df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     return df
+
+
+# columns do_blip_postprocessing reads from the dataframe. Used by
+# do_blip_postprocessing_with_deex to run the counting a second time on an
+# augmented copy; if do_blip_postprocessing starts reading a new column, add
+# it here (a missing column fails loudly with a KeyError).
+POSTPROCESSING_INPUT_COLUMNS = [
+    "blip_x", "blip_y", "blip_z", "blip_energy", "blip_dx", "blip_dw",
+    "blip_nplanes", "blip_touchtrk", "blip_pl2_bydeadwire", "blip_proxtrkdist",
+    "filetype",
+    "wc_reco_showerMomentum", "wc_reco_showervtxX", "wc_reco_showervtxY", "wc_reco_showervtxZ",
+    "wc_reco_nuvtxX", "wc_reco_nuvtxY", "wc_reco_nuvtxZ",
+    "pandora_reco_nu_vtx_sce_x", "pandora_reco_nu_vtx_sce_y", "pandora_reco_nu_vtx_sce_z",
+    "glee_reco_vertex_x", "glee_reco_vertex_y", "glee_reco_vertex_z",
+    "lantern_vtxX", "lantern_vtxY", "lantern_vtxZ",
+    "wc_reco_pdg", "wc_reco_startMomentum", "wc_reco_startXYZT",
+    "wc_2shw_vtx_x", "wc_2shw_vtx_y", "wc_2shw_vtx_z",
+]
+
+
+def do_blip_postprocessing_with_deex(df):
+    """Nominal blip postprocessing plus the de-excitation-added universe.
+
+    Runs do_blip_postprocessing once on the nominal blip lists, then injects
+    simulated de-excitation photon blips (see deex_blip_injection.py) and
+    runs the identical counting again, storing every produced variable with a
+    "_deexadded" suffix. Events with no injected blips (data, ext, coherent,
+    ...) get _deexadded values identical to the nominal ones. Per-event
+    injection bookkeeping columns (deex_*) are added for donor-usage checks.
+    """
+    # deferred import: deex_blip_injection imports constants from this module
+    from deex_blip_injection import build_deexadded_blip_lists, BLIP_AUG_COLUMNS
+
+    aug_lists, bookkeeping = build_deexadded_blip_lists(df)
+
+    cols_before = set(df.columns)
+    df = do_blip_postprocessing(df)
+    produced_nominal = [c for c in df.columns if c not in cols_before]
+
+    if aug_lists is None or bookkeeping["deex_n_blips_injected"].sum() == 0:
+        # nothing injected anywhere in this chunk: skip the second (identical)
+        # counting pass and copy the nominal values
+        print("    no de-excitation blips injected in this chunk; "
+              "copying nominal blip variables to _deexadded")
+        copied = df[produced_nominal].rename(
+            columns={c: c + "_deexadded" for c in produced_nominal})
+        return pd.concat([df, copied, bookkeeping], axis=1)
+
+    print("    recomputing blip variables with injected de-excitation blips "
+          "(-> *_deexadded)...")
+    aug_df = df[POSTPROCESSING_INPUT_COLUMNS].copy()
+    for col in BLIP_AUG_COLUMNS:
+        aug_df[col] = aug_lists[col]
+    aug_df = do_blip_postprocessing(aug_df)
+
+    produced = [c for c in aug_df.columns if c not in POSTPROCESSING_INPUT_COLUMNS]
+    renamed = aug_df[produced].rename(columns={c: c + "_deexadded" for c in produced})
+    return pd.concat([df, renamed, bookkeeping], axis=1)

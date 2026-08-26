@@ -21,6 +21,7 @@ from src.signal_categories import topological_category_labels, train_category_la
 from src.ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars, glee_training_vars, pandora_training_vars, pandora_scalar_training_vars, combined_postprocessing_training_vars
 
 from src.file_locations import intermediate_files_location
+from src.df_helpers import format_duration
 
 if __name__ == "__main__":
     main_start_time = time.time()
@@ -461,4 +462,4 @@ if __name__ == "__main__":
     print(f"Saved predictions to: {output_dir / 'predictions.parquet'}")
 
     main_end_time = time.time()
-    print(f"Total time to train and analyze the BDT: {main_end_time - main_start_time:.2f} seconds")
+    print(f"Total time to train and analyze the BDT: {format_duration(main_end_time - main_start_time)}")

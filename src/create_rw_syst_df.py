@@ -16,6 +16,7 @@ if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
 from src.file_locations import data_files_location, intermediate_files_location
+from src.df_helpers import format_duration
 from src.check_ntuple_alignment import assert_ntuple_trees_aligned
 
 from src.memory_monitoring import start_memory_logger
@@ -498,6 +499,6 @@ if __name__ == "__main__":
         os.remove(p)
     end_time = time.time()
     file_size_gb = os.path.getsize(presel_out) / 1024**3
-    print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
+    print(f"done, {file_size_gb:.2f} GB, {format_duration(end_time - start_time)}")
     main_end_time = time.time()
-    print(f"Total time to create weights dataframe: {main_end_time - main_start_time:.2f} seconds")
+    print(f"Total time to create weights dataframe: {format_duration(main_end_time - main_start_time)}")

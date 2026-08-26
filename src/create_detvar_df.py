@@ -23,7 +23,7 @@ from check_ntuple_alignment import assert_ntuple_trees_aligned
 
 from create_df import _arrays_filling_missing
 
-from df_helpers import align_columns_for_concat
+from df_helpers import align_columns_for_concat, format_duration
 from memory_monitoring import start_memory_logger
 
 
@@ -544,7 +544,7 @@ if __name__ == "__main__":
     )
     end_time = time.time()
     file_size_gb = os.path.getsize(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet") / 1024**3
-    print(f"done, {file_size_gb:.2f} GB, {end_time - start_time:.2f} seconds")
+    print(f"done, {file_size_gb:.2f} GB, {format_duration(end_time - start_time)}")
 
     main_end_time = time.time()
-    print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
+    print(f"Total time to create the dataframes: {format_duration(main_end_time - main_start_time)}")

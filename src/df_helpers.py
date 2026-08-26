@@ -1,6 +1,18 @@
 import polars as pl
 import numpy as np
 
+
+def format_duration(seconds):
+    """Format a duration in seconds as e.g. '2h 13m 05s', '3m 12s', or '42.1s'."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    m, sec = divmod(int(round(seconds)), 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h}h {m:02d}m {sec:02d}s"
+    return f"{m}m {sec:02d}s"
+
+
 def lazy_height(lf):
     return lf.select(pl.len()).collect().item()
 

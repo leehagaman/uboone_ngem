@@ -16,7 +16,7 @@ from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, glee_
 from postprocessing import do_orthogonalization_and_POT_weighting, apply_rootino_correction, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories, verify_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from postprocessing import add_afro_1mu1p_sel
-from blip_postprocessing import do_blip_postprocessing
+from blip_postprocessing import do_blip_postprocessing_with_deex
 from postprocessing import remove_vector_variables, change_dtypes
 from postprocessing import apply_1g1mu_rad_corr_reweighting, apply_nc_coh_1g_reweighting
 from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
@@ -25,6 +25,7 @@ from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dal
 from pion_fsi_reweighting import compute_pion_fsi_weights_from_arrays
 
 from file_locations import data_files_location, intermediate_files_location
+from df_helpers import format_duration
 from check_ntuple_alignment import assert_ntuple_trees_aligned
 
 from pot_and_trigger_numbers import (
@@ -414,7 +415,7 @@ def process_root_file(filename, frac_events=1):
         f"\nloaded {meta['filetype']:<30}   Run {meta['detailed_run_period']:<4} "
         f"{all_df.shape[0]:>10,d} events {meta['file_POT']:>10.2e} POT "
         f"{events_per_POT:>6.2f} events / 1e19 POT "
-        f"{meta['root_file_size_gb']:>6.2f} GB {end_time - start_time:>6.2f} s"
+        f"{meta['root_file_size_gb']:>6.2f} GB {format_duration(end_time - start_time):>10s}"
     )
     if frac_events < 1.0:
         progress_str += f" (f={frac_events})"
@@ -590,6 +591,11 @@ if __name__ == "__main__":
                 os.remove(f"{intermediate_files_location}/{file}")
         print("Deleted intermediate df parquet files")
 
+        # rebuild the de-excitation donor libraries from the raw generator and
+        # iso1g ROOT files, so the whole production starts from scratch
+        from deex_blip_injection import rebuild_libraries
+        rebuild_libraries()
+
         print(f"Starting loop over root files (chunk_size={args.chunk_size:,})...")
 
         filenames_with_unused = os.listdir(data_files_location)
@@ -654,7 +660,7 @@ if __name__ == "__main__":
                 curr_df = add_extra_true_photon_variables(curr_df)
                 curr_df = do_spacepoint_postprocessing(curr_df)
                 curr_df = do_pandora_postprocessing(curr_df)
-                curr_df = do_blip_postprocessing(curr_df)
+                curr_df = do_blip_postprocessing_with_deex(curr_df)
                 curr_df = do_lantern_postprocessing(curr_df)
                 curr_df = do_glee_postprocessing(curr_df)
                 curr_df = add_afro_1mu1p_sel(curr_df)
@@ -729,7 +735,7 @@ if __name__ == "__main__":
                 f"\nloaded {filetype:<30}   Run {detailed_run_period:<4} "
                 f"{n_events:>10,d} events {file_POT:>10.2e} POT "
                 f"{events_per_POT:>6.2f} events / 1e19 POT "
-                f"{meta['root_file_size_gb']:>6.2f} GB {file_end_time - file_start_time:>6.2f} s"
+                f"{meta['root_file_size_gb']:>6.2f} GB {format_duration(file_end_time - file_start_time):>10s}"
             )
             if args.frac_events < 1.0:
                 progress_str += f" (f={args.frac_events})"
@@ -950,7 +956,7 @@ if __name__ == "__main__":
             _cp = f"{intermediate_files_location}/_chunk_proc_{_k}.parquet"
             all_df.write_parquet(_cp)
             chunk_paths.append(_cp)
-            print(f"  batch {_k + 1}/{len(batches)} -> {all_df.height} rows, {time.time() - _t0:.1f}s")
+            print(f"  batch {_k + 1}/{len(batches)} -> {all_df.height} rows, {format_duration(time.time() - _t0)}")
             del all_df
             gc.collect()
             try:
@@ -1075,7 +1081,7 @@ if __name__ == "__main__":
             .filter(pl.col("wc_kine_reco_Enu") > 0) \
             .sink_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
         file_size_gb = os.path.getsize(f"{intermediate_files_location}/presel_df_train_vars.parquet") / 1024**3
-        print(f"done, {file_size_gb:.2f} GB, {time.time() - start_time:.2f} seconds")
+        print(f"done, {file_size_gb:.2f} GB, {format_duration(time.time() - start_time)}")
 
         # all_df: drop the WC training-only vars and stream-combine all parts to disk.
         print(f"saving {intermediate_files_location}/all_df.parquet...", end="", flush=True)
@@ -1088,7 +1094,7 @@ if __name__ == "__main__":
             .drop(remove_columns) \
             .sink_parquet(f"{intermediate_files_location}/all_df.parquet")
         file_size_gb = os.path.getsize(f"{intermediate_files_location}/all_df.parquet") / 1024**3
-        print(f"done, {file_size_gb:.2f} GB, {time.time() - start_time:.2f} seconds")
+        print(f"done, {file_size_gb:.2f} GB, {format_duration(time.time() - start_time)}")
 
         # Clean up per-batch intermediates.
         for _p in chunk_paths + [_rad_path, _coh_path] + final_parts:
@@ -1096,7 +1102,7 @@ if __name__ == "__main__":
                 os.remove(_p)
 
         main_end_time = time.time()
-        print(f"Total time to create the dataframes: {main_end_time - main_start_time:.2f} seconds")
+        print(f"Total time to create the dataframes: {format_duration(main_end_time - main_start_time)}")
 
         print("done merging file-level dataframes into a single dataframe")
     

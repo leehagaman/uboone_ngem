@@ -29,6 +29,7 @@ import xgboost as xgb
 from tqdm import tqdm
 
 from file_locations import intermediate_files_location
+from df_helpers import format_duration
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
 
@@ -727,7 +728,7 @@ def main():
         save_nominal(args.training, args.output_dir)
     if not args.no_detvar:
         save_detvar(args.training, args.output_dir)
-    print(f"Done in {time.time() - start:.1f} s", flush=True)
+    print(f"Done in {format_duration(time.time() - start)}", flush=True)
     # All ROOT files are written and closed; skip Python/polars teardown, which can
     # segfault while ROOT is loaded (ROOT's signal handlers vs polars' Rust threads).
     os._exit(0)

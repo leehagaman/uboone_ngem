@@ -29,6 +29,7 @@ from src.signal_categories import train_category_labels, train_category_labels_l
 
 from src.ntuple_variables.pandora_variables import pandora_scalar_second_half_training_vars
 from src.file_locations import intermediate_files_location
+from src.df_helpers import format_duration
 from src.plot_helpers import make_histogram_plot
 from src.ntuple_variables.variables import combined_training_vars
 from src.systematics import get_significance_from_p_value
@@ -183,4 +184,4 @@ if __name__ == "__main__":
         pickle.dump(all_p_value_info, f)
 
     main_end_time = time.time()
-    print(f"Total time to create plots: {main_end_time - main_start_time:.2f} seconds ({((main_end_time - main_start_time) / 60):.2f} minutes, {((main_end_time - main_start_time) / 3600):.2f} hours)")
+    print(f"Total time to create plots: {format_duration(main_end_time - main_start_time)}")

@@ -20,7 +20,7 @@ from pypdf import PdfWriter
 from src.file_locations import intermediate_files_location
 from src.plot_helpers import make_det_variation_histogram, auto_binning
 from src.ntuple_variables.variables import combined_training_vars
-from src.df_helpers import get_vals
+from src.df_helpers import get_vals, format_duration
 
 from src.ntuple_variables.pandora_variables import blip_postprocessing_vars
 
@@ -163,4 +163,4 @@ if __name__ == "__main__":
     print(f"Final PDF saved to {final_pdf_path}")
 
     main_end_time = time.time()
-    print(f"Total time to create plots: {main_end_time - main_start_time:.2f} seconds ({((main_end_time - main_start_time) / 60):.2f} minutes, {((main_end_time - main_start_time) / 3600):.2f} hours)")
+    print(f"Total time to create plots: {format_duration(main_end_time - main_start_time)}")
