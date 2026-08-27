@@ -185,6 +185,7 @@ def main():
 
     plot_response_vs_energy(E, clean, n_blips, sum_blip_E)
     plot_efficiency(E, clean, n_blips, n_blips_sphere, n_blips_3pl)
+    plot_multiplicity_fractions_vs_energy(E, clean, n_blips)
     plot_deex_multiplicity_and_energy(E, clean, n_blips, sum_blip_E, w_genie)
     plot_blip_distances(E, clean, dist_lists, w_genie)
     plot_blip_3d_and_projections(E, clean, df, n_blips)
@@ -225,10 +226,15 @@ def plot_response_vs_energy(E, clean, n_blips, sum_blip_E):
         if h.sum() >= 10:
             meanE[i], meanE_err[i] = weighted_mean_sem(sum_blip_E[h])
 
-    eff_big, ns_big = big_sample_turnon(bins)
-    axes[0].errorbar(centers, eff_big, yerr=wilson_yerr(eff_big, ns_big),
-                     marker="s", markersize=4, color="#999999",
-                     label="big run-4/5 sample (clean)")
+    # the big-sample overlay needs all_df.parquet (for the photon directions);
+    # skip the comparison gracefully while a production is in flux
+    try:
+        eff_big, ns_big = big_sample_turnon(bins)
+        axes[0].errorbar(centers, eff_big, yerr=wilson_yerr(eff_big, ns_big),
+                         marker="s", markersize=4, color="#999999",
+                         label="big run-4/5 sample (clean)")
+    except Exception as e:
+        print(f"  skipping big-sample comparison overlay ({type(e).__name__}: {e})")
     axes[0].errorbar(centers, p1, yerr=wilson_yerr(p1, ns), marker="o",
                      markersize=4, color="#009E73", label="low-E sample (clean)")
     axes[0].set_ylabel("P(>= 1 truth-matched blip)")
@@ -252,6 +258,56 @@ def plot_response_vs_energy(E, clean, n_blips, sum_blip_E):
                  f"{RAY_IN_TPC_MIN_CM:.0f} cm in TPC)")
     fig.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "lowE_iso1g_response_vs_energy.png"), dpi=150)
+    plt.close(fig)
+
+
+
+def plot_multiplicity_fractions_vs_energy(E, clean, n_blips):
+    """How often a true photon reconstructs as 0, 1, 2, 3, or >= 4
+    truth-matched blips, as a function of true photon energy."""
+    bins = np.arange(0, E_MAX_MEV + 1e-9, 1.0)
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    categories = [(0, "0 blips", "#999999"), (1, "1 blip", "#0072B2"),
+                  (2, "2 blips", "#E69F00"), (3, "3 blips", "#009E73"),
+                  (4, ">= 4 blips", "#D55E00")]
+    n_capped = np.minimum(n_blips, 4)
+
+    fracs = {n: np.full(len(centers), np.nan) for n, _, _ in categories}
+    ns_bin = np.full(len(centers), np.nan)
+    for i in range(len(centers)):
+        sel = clean & (E >= bins[i]) & (E < bins[i + 1])
+        if sel.sum() < 20:
+            continue
+        ns_bin[i] = sel.sum()
+        for n, _, _ in categories:
+            fracs[n][i] = (n_capped[sel] == n).mean()
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), sharex=True)
+    for n, label, color in categories:
+        axes[0].errorbar(centers, fracs[n], yerr=wilson_yerr(fracs[n], ns_bin),
+                         marker="o", markersize=4, color=color, label=label)
+    axes[0].set_xlabel("True photon energy [MeV]")
+    axes[0].set_ylabel("Fraction of photons")
+    axes[0].set_ylim(0, 1.05)
+    axes[0].legend(fontsize=9)
+
+    bottom = np.zeros(len(centers))
+    for n, label, color in categories:
+        vals = np.nan_to_num(fracs[n])
+        axes[1].bar(centers, vals, width=np.diff(bins), bottom=bottom,
+                    color=color, label=label, edgecolor="white", linewidth=0.4)
+        bottom += vals
+    axes[1].set_xlabel("True photon energy [MeV]")
+    axes[1].set_ylabel("Fraction of photons (stacked)")
+    axes[1].set_ylim(0, 1.0)
+    axes[1].legend(fontsize=9, loc="center right")
+
+    fig.suptitle("Truth-matched blip multiplicity fractions vs true photon "
+                 "energy, low-E isotropic 1$\\gamma$ production (clean truth "
+                 "selection)")
+    fig.tight_layout()
+    fig.savefig(os.path.join(PLOT_DIR, "lowE_iso1g_multiplicity_vs_energy.png"),
+                dpi=150)
     plt.close(fig)
 
 
