@@ -4152,8 +4152,16 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
             pl.lit(False).alias("normal_overlay"),
             pl.lit(False).alias("del1g_overlay"),
             pl.lit(False).alias("iso1g_overlay"),
+            # the photon-gun parent has no neutrino (its wc_truth_nuEnergy is the photon
+            # energy and wc_truth_nuPdg is 22); replace with the true nu energy sampled
+            # from the reference coherent simulation in compute_nc_coh_1g_reweighting,
+            # and describe the event as an NC numu interaction.  create_rw_syst_df.py
+            # uses this wc_truth_nuEnergy to borrow flux weights from nu_overlay events.
+            pl.col("coherent_1g_true_nuEnergy").cast(pl.Float32).alias("wc_truth_nuEnergy"),
+            pl.lit(14).cast(pl.Int32).alias("wc_truth_nuPdg"),
+            pl.lit(False).alias("wc_truth_isCC"),
         ])
-        .drop("coherent_1g_weight_per_pot")
+        .drop(["coherent_1g_weight_per_pot", "coherent_1g_true_nuEnergy"])
     )
 
     def _spread_coherent_run_periods(cdf):

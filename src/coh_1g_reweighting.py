@@ -6,10 +6,17 @@ This module replicates the weight-producing logic of
 main dataframe-creation pipeline instead of by hand.
 
 The produced parquet has columns:
-    run, subrun, event, coherent_1g_weight_per_pot, coherent_1g_keep
+    run, subrun, event, coherent_1g_weight_per_pot, coherent_1g_keep,
+    coherent_1g_true_nuEnergy
 The weight is POT-independent (events per POT); the target normalizing POT is
 applied later by apply_nc_coh_1g_reweighting.  Only events with
 coherent_1g_weight_per_pot > 0 are saved.
+
+coherent_1g_true_nuEnergy (MeV) is a true neutrino energy assigned to each iso1g
+event: the photon-gun events carry no neutrino, so one is drawn at random from the
+reference NC coherent simulation events in the same (costheta, E_gamma) reweighting
+bin.  Downstream (create_rw_syst_df.py) this is used to borrow flux multisim weights
+from nu_overlay events of matching true neutrino energy.
 """
 
 import os
@@ -58,25 +65,41 @@ bins_energy   = np.concatenate([np.linspace(0, 2000, 101), [1e6]])
 
 
 def _load_nc_coherent_simulation():
-    """Load the NC coherent single-photon truth gamma energy/costheta (cell 2)."""
+    """Load the NC coherent single-photon truth gamma energy/costheta and
+    the incoming true neutrino energy.
+
+    The reference file's mctruth_nu_E branch is unfilled (-99), but every event's
+    mctruth_daughters list is [gamma, nu_in, Ar40, nu_out] with status codes
+    [1, 0, 2, 2], so the incoming neutrino is daughter index 1 (pdg 14, status 0).
+    Energy conservation (E_nu_in ~= E_gamma + E_nu_out) was checked by hand.
+
+    Returns (costheta, gamma_energy_MeV, nu_energy_MeV) as numpy arrays."""
     f = uproot.open(
         os.path.join(other_files_location, _NC_COHERENT_ROOT)
     )["singlephotonana/vertex_tree"]
     daughters_pdg = f["mctruth_daughters_pdg"].array(library="np")
     daughters_E = f["mctruth_daughters_E"].array(library="np")
     daughters_pz = f["mctruth_daughters_pz"].array(library="np")
+    daughters_status = f["mctruth_daughters_status_code"].array(library="np")
 
     nc_coherent_gamma_energy = []
     nc_coherent_gamma_costheta = []
+    nc_coherent_nu_energy = []
     for i in range(len(daughters_pdg)):
         if daughters_pdg[i][0] != 22:
             raise Exception(
                 "PROBLEM! First daughter particle isn't a photon in the nc coherent 1g simulation",
                 daughters_pdg[i])
+        if abs(daughters_pdg[i][1]) != 14 or daughters_status[i][1] != 0:
+            raise Exception(
+                "PROBLEM! Second daughter particle isn't the incoming (status 0) muon neutrino in the nc coherent 1g simulation",
+                daughters_pdg[i], daughters_status[i])
         nc_coherent_gamma_energy.append(daughters_E[i][0] * 1000)
         nc_coherent_gamma_costheta.append(daughters_pz[i][0] / daughters_E[i][0])
+        nc_coherent_nu_energy.append(daughters_E[i][1] * 1000)
 
-    return np.array(nc_coherent_gamma_costheta), np.array(nc_coherent_gamma_energy)
+    return (np.array(nc_coherent_gamma_costheta), np.array(nc_coherent_gamma_energy),
+            np.array(nc_coherent_nu_energy))
 
 
 def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_weight_open_data"):
@@ -100,9 +123,11 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
     os.makedirs(_PLOT_DIR, exist_ok=True)
 
     # ── NC coherent simulation target shape (cell 2) ──────────────────────────
-    nc_coherent_gamma_costheta, nc_coherent_gamma_energy = _load_nc_coherent_simulation()
+    nc_coherent_gamma_costheta, nc_coherent_gamma_energy, nc_coherent_nu_energy = _load_nc_coherent_simulation()
     num_coherent_simulated_events = len(nc_coherent_gamma_energy)
     print(f"  NC coherent simulated events: {num_coherent_simulated_events:,}")
+    print(f"  NC coherent true nu energy: mean {nc_coherent_nu_energy.mean():.0f} MeV, "
+          f"range [{nc_coherent_nu_energy.min():.0f}, {nc_coherent_nu_energy.max():.0f}] MeV")
 
     # ── Iso1g events from the dataframe (cell 5) ──────────────────────────────
     iso1g_df = (
@@ -190,6 +215,31 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
     keep_mask = rng.random(iso1g_df.height) < event_keep_prob
 
     iso1g_df = iso1g_df.with_columns(pl.Series("coherent_1g_keep", keep_mask))
+
+    # ── True neutrino energy assignment ───────────────────────────────────────
+    # Each iso1g event with positive weight draws one true E_nu at random from the
+    # reference coherent events in the same (costheta, E_gamma) bin.  Those bins are
+    # non-empty by construction (positive weight <=> H_coherent > 0). E_nu is
+    # strongly correlated with E_gamma for coherent scattering, so this reproduces the
+    # E_nu distribution of the reference simulation conditional on the photon
+    # kinematics. Same rng as the keep-mask draw, so the result is reproducible.
+    coh_i_cos = np.clip(np.digitize(nc_coherent_gamma_costheta, bins_costheta) - 1, 0, len(bins_costheta) - 2)
+    coh_i_E   = np.clip(np.digitize(nc_coherent_gamma_energy,   bins_energy)   - 1, 0, len(bins_energy)   - 2)
+    coh_bin_key = coh_i_cos * (len(bins_energy) - 1) + coh_i_E
+    coh_order = np.argsort(coh_bin_key, kind="stable")
+    coh_key_sorted = coh_bin_key[coh_order]
+    iso_bin_key = i_cos_all * (len(bins_energy) - 1) + i_E_all
+    lo_idx = np.searchsorted(coh_key_sorted, iso_bin_key, side="left")
+    hi_idx = np.searchsorted(coh_key_sorted, iso_bin_key, side="right")
+    n_in_bin = hi_idx - lo_idx
+    if np.any(n_in_bin[mask_positive] == 0):
+        raise Exception("PROBLEM! iso1g event with positive coherent weight but no reference coherent event in its bin")
+    pick = lo_idx + np.floor(rng.random(iso1g_df.height) * np.maximum(n_in_bin, 1)).astype(np.int64)
+    pick = np.minimum(pick, np.maximum(hi_idx - 1, 0))
+    assigned_nu_energy = np.where(mask_positive, nc_coherent_nu_energy[coh_order[pick]], np.nan).astype(np.float32)
+    iso1g_df = iso1g_df.with_columns(pl.Series("coherent_1g_true_nuEnergy", assigned_nu_energy))
+    print(f"  assigned true nu energy to {int(mask_positive.sum()):,} iso1g events "
+          f"(mean {np.nanmean(assigned_nu_energy):.0f} MeV vs reference {nc_coherent_nu_energy.mean():.0f} MeV)")
     print(f"  Target fraction: {target_fraction:.2f}  ({target_kept:,.0f} events)")
     print(f"  Events kept:     {keep_mask.sum():,} / {n_positive:,}  ({keep_mask.sum() / n_positive:.3f})")
 
@@ -224,7 +274,8 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
     # ── Save weights (cell 9) ─────────────────────────────────────────────────
     weights_to_save = iso1g_df.filter(
         pl.col("coherent_1g_weight_per_pot") > 0
-    ).select(["run", "subrun", "event", "coherent_1g_weight_per_pot", "coherent_1g_keep"])
+    ).select(["run", "subrun", "event", "coherent_1g_weight_per_pot", "coherent_1g_keep",
+              "coherent_1g_true_nuEnergy"])
 
     out_path = f"{intermediate_files_location}/coh_1g_reweighting.parquet"
     weights_to_save.write_parquet(out_path)

@@ -22,6 +22,7 @@ from src.check_ntuple_alignment import assert_ntuple_trees_aligned
 from src.memory_monitoring import start_memory_logger
 
 from src.pyroot_loading import get_rw_sys_weights_dic
+from src.flux_weight_donor_matching import borrow_flux_weights_by_true_nu_energy, flux_weight_columns
 from src.zexp_reweighting import (
     ZEXP_CV_BRANCHES,
     ZEXP_VARIATION_BRANCHES,
@@ -326,7 +327,7 @@ if __name__ == "__main__":
             if file.endswith(".parquet") and (
                 file.startswith("presel_weights_df") or file.startswith("chunk_weights_")
                 or file.startswith("spline_weights_df") or file.startswith("chunk_splines_")
-                or file == "_derived_weights.parquet"
+                or file in ("_derived_weights.parquet", "_derived_splines.parquet")
             ):
                 os.remove(f"{intermediate_files_location}/{file}")
         print("Deleted intermediate weight/spline parquet files")
@@ -438,57 +439,98 @@ if __name__ == "__main__":
         raise ValueError("No events in the dataframe!")
     print(f"  {len(weight_parts)} weight parts, {len(spline_parts)} spline parts")
 
-    # ── spline_weights_df.parquet: stream-concat the per-file spline parts ──
-    spline_out = f"{intermediate_files_location}/spline_weights_df.parquet"
-    print(f"saving {spline_out}...", end="", flush=True)
-    _merge_parquet_parts(spline_parts, spline_out)
-    for p in spline_parts:
-        os.remove(p)
-    print(f"done, {os.path.getsize(spline_out) / 1024**3:.2f} GB")
-
-    # ── presel_weights_df.parquet: derived rad/coherent rows + stream-concat ──
+    # ── derived rad/coherent rows for BOTH output parquets ──
     # numuCC_rad_corrected (from delete_one_gamma_overlay) and NC_coherent_1g_reweighted
-    # (from isotropic_one_gamma_overlay) have no GENIE weight trees, so they get unit CV
-    # weights and unit systematic-weight lists (matching the existing list columns'
-    # shapes).  Written to their own small parquet and streamed in alongside the rest, so
-    # the full weights dataframe is never materialized in memory.
-    derived_part = None
+    # (from isotropic_one_gamma_overlay) have no GENIE weight trees, so they are absent
+    # from every per-file part.  They are appended to both presel_weights_df and
+    # spline_weights_df with unit CV weights and unit systematic lists/scalars (matching
+    # the existing columns' shapes), so that downstream consumers -- systematics.py and
+    # the PROfit ROOT writer, which streams spline_weights_df and inner-joins the MC --
+    # see them at all.  Written to their own small parquets and streamed in alongside
+    # the rest, so the full dataframes are never materialized in memory.
+    #
+    # Exception: the NC_coherent_1g_reweighted rows get real *flux* universes.  Each
+    # carries a true neutrino energy sampled from the reference coherent simulation
+    # (see coh_1g_reweighting.py / apply_nc_coh_1g_reweighting), and the BNB flux
+    # uncertainty depends essentially only on flavor and true E_nu, so every flux column
+    # (flux_all/ppfx_all in the weight parts; the 13 per-knob FluxUnisim/PrimaryHadron
+    # columns in the spline parts) is copied from an energy-matched numu nu_overlay donor
+    # event (flux_weight_donor_matching.py).  GENIE and reinteraction columns stay unity.
     presel_df_path = f"{intermediate_files_location}/presel_df_train_vars.parquet"
+    derived_events = None
     if os.path.exists(presel_df_path):
         derived_events = pl.scan_parquet(presel_df_path).filter(
             pl.col("filetype").is_in(["numuCC_rad_corrected", "NC_coherent_1g_reweighted"])
-        ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu"]).collect()
-        print(f"Adding {derived_events.height} derived events (rad_corrected, coherent_1g) with unit systematic weights...")
-
-        if derived_events.height > 0:
-            # Union of list (systematic) columns across all weight parts, with one example
-            # list length each (parts can in principle differ in which knobs they carry).
-            list_col_len = {}
-            for wp in weight_parts:
-                sch = pl.scan_parquet(wp).collect_schema()
-                need = [c for c, t in sch.items() if isinstance(t, pl.List) and c not in list_col_len]
-                if need:
-                    first = pl.scan_parquet(wp).select(need).head(1).collect()
-                    for c in need:
-                        list_col_len[c] = len(first[c][0])
-
-            derived_events = derived_events.with_columns([
-                pl.lit(1.0).cast(pl.Float32).alias("weightSpline"),
-                pl.lit(1.0).cast(pl.Float32).alias("weightTune"),
-                pl.lit(1.0).cast(pl.Float32).alias("weightSplineTimesTune"),
-            ])
-            n = derived_events.height
-            for col, list_len in list_col_len.items():
-                derived_events = derived_events.with_columns(
-                    pl.Series(col, [[1.0] * list_len] * n, dtype=pl.List(pl.Float32))
-                )
-
-            derived_part = f"{intermediate_files_location}/_derived_weights.parquet"
-            derived_events.write_parquet(derived_part)
-        else:
+        ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu",
+                  "wc_truth_nuEnergy"]).collect()
+        print(f"Found {derived_events.height} derived events (rad_corrected, coherent_1g) to append to both parquets")
+        if derived_events.height == 0:
             print("  WARNING: no derived events found; skipping extension")
+            derived_events = None
     else:
         print(f"  WARNING: {presel_df_path} not found; skipping derived event extension")
+
+    def _build_derived_part(parts, out_path, keep_diagnostics):
+        """Derived rows shaped like `parts`: unit-filled copies of every list/float
+        column (one example per column, since parts can differ in which knobs they
+        carry), then flux columns of the coherent rows replaced by donor universes."""
+        example_lists, float_cols, union_cols = {}, {}, set()
+        for wp in parts:
+            sch = pl.scan_parquet(wp).collect_schema()
+            union_cols.update(sch.names())
+            need = [c for c, t in sch.items() if isinstance(t, pl.List) and c not in example_lists
+                    and c not in derived_events.columns]
+            if need:
+                first = pl.scan_parquet(wp).select(need).head(1).collect()
+                for c in need:
+                    example_lists[c] = (len(first[c][0]), sch[c])
+            float_cols.update({c: t for c, t in sch.items()
+                               if t in (pl.Float32, pl.Float64) and c not in derived_events.columns})
+        rows = derived_events.with_columns([pl.lit(1.0).cast(t).alias(c) for c, t in sorted(float_cols.items())])
+        n = rows.height
+        for col, (list_len, dtype) in example_lists.items():
+            rows = rows.with_columns(pl.Series(col, [[1.0] * list_len] * n, dtype=dtype))
+
+        flux_cols = flux_weight_columns(example_lists)
+        is_coh = pl.col("filetype") == "NC_coherent_1g_reweighted"
+        coh_rows, other_rows = rows.filter(is_coh), rows.filter(~is_coh)
+        if coh_rows.height > 0 and flux_cols:
+            print(f"  borrowing {flux_cols} for {coh_rows.height:,} NC coherent 1g events from "
+                  "true-E_nu-matched numu nu_overlay donors...")
+            coh_rows = borrow_flux_weights_by_true_nu_energy(
+                coh_rows.drop(flux_cols), parts, presel_df_path,
+                donor_filetype="nu_overlay", donor_nu_pdg=14, weight_cols=flux_cols,
+                nu_energy_col="wc_truth_nuEnergy", k_nearest=20, seed=42, keep_diagnostics=keep_diagnostics,
+            )
+            rows = pl.concat([other_rows, coh_rows], how="diagonal_relaxed")
+        elif coh_rows.height > 0:
+            print(f"  WARNING: no flux columns found in {os.path.basename(parts[0])}-style parts; "
+                  "NC coherent 1g events keep unit flux weights there")
+        # only columns the parts themselves carry (plus the donor diagnostics): e.g. the
+        # spline parts have no wc_kine_reco_Enu, and the PROfit writer would otherwise
+        # see it twice (spline side + MC side)
+        rows = rows.select([c for c in rows.columns if c in union_cols or c.startswith("flux_donor_")])
+        rows.write_parquet(out_path)
+        return out_path
+
+    # ── spline_weights_df.parquet: derived rows + stream-concat the per-file parts ──
+    derived_spline_part = None
+    if derived_events is not None and spline_parts:
+        derived_spline_part = _build_derived_part(
+            spline_parts, f"{intermediate_files_location}/_derived_splines.parquet", keep_diagnostics=False)
+    spline_out = f"{intermediate_files_location}/spline_weights_df.parquet"
+    all_spline_parts = spline_parts + ([derived_spline_part] if derived_spline_part else [])
+    print(f"saving {spline_out}...", end="", flush=True)
+    _merge_parquet_parts(all_spline_parts, spline_out)
+    for p in all_spline_parts:
+        os.remove(p)
+    print(f"done, {os.path.getsize(spline_out) / 1024**3:.2f} GB")
+
+    # ── presel_weights_df.parquet: derived rows + stream-concat the per-file parts ──
+    derived_part = None
+    if derived_events is not None:
+        derived_part = _build_derived_part(
+            weight_parts, f"{intermediate_files_location}/_derived_weights.parquet", keep_diagnostics=True)
 
     presel_out = f"{intermediate_files_location}/presel_weights_df.parquet"
     all_weight_parts = weight_parts + ([derived_part] if derived_part else [])

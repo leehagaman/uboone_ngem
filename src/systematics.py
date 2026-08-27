@@ -138,9 +138,14 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     if "filetype" in col_names:
         derived_counts = mc_pred_df.filter(pl.col("filetype").is_in(derived_filetypes)).group_by("filetype").agg(pl.len().alias("count"))
         for row in derived_counts.collect().iter_rows(named=True):
-            print(f"WARNING: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
-                  "These events have no flux, cross-section, or re-interaction systematics available,"
-                  " so they are assigned unit weights for all reweightable systematics.")
+            if row["filetype"] == "NC_coherent_1g_reweighted":
+                print(f"NOTE: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
+                      "Their flux universes are borrowed from true-E_nu-matched numu nu_overlay events "
+                      "(flux_weight_donor_matching.py); cross-section and re-interaction systematics are unit weights.")
+            else:
+                print(f"WARNING: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
+                      "These events have no flux, cross-section, or re-interaction systematics available,"
+                      " so they are assigned unit weights for all reweightable systematics.")
 
     # Filter mc_pred_df to events present in weights, fetching only key columns from weights
     # so no List[Float32] universe columns are loaded yet.
