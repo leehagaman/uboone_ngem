@@ -1854,26 +1854,6 @@ def add_signal_categories(all_df, verify=True):
 
     print("Adding extra columns for truth categories...")
 
-    # TEMPORARY canary for the upstream input-file truth-matching failures
-    # worked around in the wc_truth_numuCC definition below.
-    names = (all_df.collect_schema().names() if hasattr(all_df, "collect_schema")
-             else all_df.columns)
-    if "wc_truth_nuPdg" in names:
-        n_badpdg = int(
-            all_df.lazy().select((pl.col("wc_truth_nuPdg") == -1).sum().alias("n"))
-            .collect(engine="streaming")["n"][0]
-        )
-        if n_badpdg > 0:
-            print("!" * 79)
-            print(f"!!! WARNING: {n_badpdg} events have invalid truth_nuPdg == -1 (failed WC")
-            print("!!! truth-neutrino matching in the input checkout root files, e.g. the")
-            print("!!! Run123 nu_overlay hist_2_v2 file).  TEMPORARY WORKAROUND: these CC")
-            print("!!! events are counted as numuCC for signal categorization so the")
-            print("!!! category partitions stay exhaustive.  THIS NEEDS TO BE FIXED")
-            print("!!! UPSTREAM in the input root files -- when fixed files arrive, remove")
-            print("!!! this warning and the truth_nuPdg == -1 clause in wc_truth_numuCC.")
-            print("!" * 79)
-
     # Add overlay type columns using Polars expressions
     all_df = all_df.with_columns([
         (
@@ -1903,16 +1883,7 @@ def add_signal_categories(all_df, verify=True):
         (pl.col("wc_true_max_prim_neutron_energy") < 35).alias("wc_truth_0n"),
         
         # CC/NC types
-        # TEMPORARY (needs upstream fix, see the loud warning in
-        # add_signal_categories): WC truth-neutrino matching failed for a few
-        # events in some input checkout files, leaving the sentinel
-        # truth_nuPdg == -1 (with truth_nuEnergy == -1, but vertex/particle
-        # truth filled normally; e.g. 58 events in Run123 nu_overlay
-        # hist_2_v2).  Such CC events would be neither numuCC, nueCC, nor NC
-        # and would fall out of every signal category, so count them as numuCC
-        # (BNB CC is overwhelmingly numu) to keep the partitions exhaustive.
-        (pl.col("wc_truth_isCC").cast(pl.Boolean)
-         & ((pl.col("wc_truth_nuPdg").abs() == 14) | (pl.col("wc_truth_nuPdg") == -1))).alias("wc_truth_numuCC"),
+        (pl.col("wc_truth_isCC").cast(pl.Boolean) & (pl.col("wc_truth_nuPdg").abs() == 14)).alias("wc_truth_numuCC"),
         (pl.col("wc_truth_isCC").cast(pl.Boolean) & (pl.col("wc_truth_nuPdg").abs() == 12)).alias("wc_truth_nueCC"),
         pl.col("wc_truth_isCC").cast(pl.Boolean).alias("wc_truth_isCC"),
         
