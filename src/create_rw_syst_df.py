@@ -1,4 +1,5 @@
 
+import re
 import uproot
 import numpy as np
 import pandas as pd
@@ -114,36 +115,40 @@ def _get_file_metadata(filename, frac_events=1):
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
+    # strip a trailing version tag (e.g. "..._hist_2_v3.root" -> "..._hist_2.root"),
+    # otherwise the "_v3.root" suffix would be mistaken for run 3
+    filename_for_period = re.sub(r"_v\d+\.root$", ".root", filename)
+
     detailed_run_period = "?"
-    if "1.root" in filename:
+    if "1.root" in filename_for_period:
         detailed_run_period = "1"
-    elif "2.root" in filename:
+    elif "2.root" in filename_for_period:
         detailed_run_period = "2"
-    elif "3.root" in filename:
+    elif "3.root" in filename_for_period:
         detailed_run_period = "3"
-    elif "4a.root" in filename:
+    elif "4a.root" in filename_for_period:
         detailed_run_period = "4a"
-    elif "4b.root" in filename:
+    elif "4b.root" in filename_for_period:
         detailed_run_period = "4b"
-    elif "4c.root" in filename:
+    elif "4c.root" in filename_for_period:
         detailed_run_period = "4c"
-    elif "4d.root" in filename:
+    elif "4d.root" in filename_for_period:
         detailed_run_period = "4d"
-    elif "4bcd.root" in filename:
+    elif "4bcd.root" in filename_for_period:
         detailed_run_period = "4bcd"
-    elif "5.root" in filename:
+    elif "5.root" in filename_for_period:
         detailed_run_period = "5"
-    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+    elif "4a" in filename_for_period.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
         detailed_run_period = "4a"
-    elif "run4b" in filename.lower():
+    elif "run4b" in filename_for_period.lower():
         detailed_run_period = "4b"
-    elif "run4c" in filename.lower():
+    elif "run4c" in filename_for_period.lower():
         detailed_run_period = "4c"
-    elif "run4d" in filename.lower():
+    elif "run4d" in filename_for_period.lower():
         detailed_run_period = "4d"
-    elif "run4bcd" in filename.lower():
+    elif "run4bcd" in filename_for_period.lower():
         detailed_run_period = "4bcd"
-    elif "run5" in filename.lower():
+    elif "run5" in filename_for_period.lower():
         detailed_run_period = "5"
     else:
         raise ValueError("Invalid detailed run period!", filename)

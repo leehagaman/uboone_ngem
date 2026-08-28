@@ -1,4 +1,5 @@
 
+import re
 import gc
 import ctypes
 import uproot
@@ -127,6 +128,10 @@ def _detailed_run_period_from_filename(filename):
         return "1"
     if "_3_1e19opendata.root" in filename:
         return "3"
+
+    # strip a trailing version tag (e.g. "..._hist_2_v3.root" -> "..._hist_2.root"),
+    # otherwise the "_v3.root" suffix would be mistaken for run 3
+    filename = re.sub(r"_v\d+\.root$", ".root", filename)
 
     if "1.root" in filename:
         return "1"
