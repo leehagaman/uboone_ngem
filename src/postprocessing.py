@@ -878,7 +878,8 @@ def do_wc_postprocessing(df):
                         true_num_prim_protons_35 += 1
                     if truth_startMomentum_list[j][3] * 1000. - 938.272088 > max_true_prim_proton_energy:
                         max_true_prim_proton_energy = truth_startMomentum_list[j][3] * 1000. - 938.272088
-                        max_true_prim_proton_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
+                        max_true_prim_proton_costheta = truth_startMomentum_list[j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| ([3] is the total energy, dividing by it would squash costheta)
                         max_true_prim_proton_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
                     sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
 
@@ -888,7 +889,8 @@ def do_wc_postprocessing(df):
                         true_num_prim_neutrons_35 += 1
                     if truth_startMomentum_list[j][3] * 1000. - 939.565422 > max_true_prim_neutron_energy:
                         max_true_prim_neutron_energy = truth_startMomentum_list[j][3] * 1000. - 939.565422
-                        max_true_prim_neutron_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                        tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
+                        max_true_prim_neutron_costheta = truth_startMomentum_list[j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| ([3] is the total energy, dividing by it would squash costheta)
                         max_true_prim_neutron_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
                     sum_true_prim_neutron_energy += truth_startMomentum_list[j][3] * 1000. - 939.565422
 
@@ -1094,6 +1096,7 @@ def do_wc_postprocessing(df):
     max_prim_proton_energies = []
     max_prim_proton_costhetas = []
     max_prim_proton_phis = []
+    sum_prim_proton_energies = []
     max_prim_other_track_energies = []
     max_prim_other_track_costhetas = []
     max_prim_other_track_phis = []
@@ -1321,6 +1324,7 @@ def do_wc_postprocessing(df):
             max_prim_proton_energies.append(np.nan)
             max_prim_proton_costhetas.append(np.nan)
             max_prim_proton_phis.append(np.nan)
+            sum_prim_proton_energies.append(np.nan)
             max_prim_other_track_energies.append(np.nan)
             max_prim_other_track_costhetas.append(np.nan)
             max_prim_other_track_phis.append(np.nan)
@@ -1332,6 +1336,7 @@ def do_wc_postprocessing(df):
         max_prim_proton_energy = -1.
         max_prim_proton_costheta = -2.
         max_prim_proton_phi = -999.
+        sum_prim_proton_energy = 0.
         max_prim_other_track_energy = -1.
         max_prim_other_track_costheta = -2.
         max_prim_other_track_phi = -999.
@@ -1339,7 +1344,7 @@ def do_wc_postprocessing(df):
         vtx_valid = {k: not (isinstance(vx[i], float) and np.isnan(vx[i]))
                      for k, (vx, vy, vz) in proton_vtx_defs.items()}
         for j in range(num_particles):
-            if reco_pdg[i][j] == 2212 and reco_startMomentum[i][j][3] > 35: # proton (any, not just primary)
+            if reco_pdg[i][j] == 2212 and reco_startMomentum[i][j][3] * 1000. - 938.272088 > 35.: # proton (any, not just primary); [3] is the total energy in GeV, so cut on KE in MeV like the truth version above
                 for k, (vx, vy, vz) in proton_vtx_defs.items():
                     if vtx_valid[k]:
                         dist = np.sqrt((reco_startXYZT[i][j][0] - vx[i])**2 +
@@ -1349,19 +1354,26 @@ def do_wc_postprocessing(df):
                             num_protons_35_MeV_75cm[k] += 1
             if reco_mother[i][j] == 0: # primary
                 if reco_pdg[i][j] == 2212: # proton
-                    if reco_startMomentum[i][j][3] > max_prim_proton_energy:
-                        max_prim_proton_energy = reco_startMomentum[i][j][3]
-                        max_prim_proton_costheta = reco_startMomentum[i][j][2] / reco_startMomentum[i][j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                    ke = reco_startMomentum[i][j][3] * 1000. - 938.272088 # [3] is the total energy in GeV, store KE in MeV like the truth version
+                    if ke > 0.:
+                        sum_prim_proton_energy += ke # summed primary proton KE in MeV, mirroring wc_true_sum_prim_proton_energy
+                    if ke > max_prim_proton_energy:
+                        tot_momentum = np.sqrt(reco_startMomentum[i][j][0]**2 + reco_startMomentum[i][j][1]**2 + reco_startMomentum[i][j][2]**2)
+                        max_prim_proton_energy = ke
+                        max_prim_proton_costheta = reco_startMomentum[i][j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| (dividing by [3] would squash costheta)
                         max_prim_proton_phi = np.arctan2(reco_startMomentum[i][j][0], reco_startMomentum[i][j][1]) * 180. / np.pi
                 elif reco_pdg[i][j] == 13: # other track (I think 13 is the only one)
-                    if reco_startMomentum[i][j][3] > max_prim_other_track_energy:
-                        max_prim_other_track_energy = reco_startMomentum[i][j][3]
-                        max_prim_other_track_costheta = reco_startMomentum[i][j][2] / reco_startMomentum[i][j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
+                    ke = reco_startMomentum[i][j][3] * 1000. - 105.6583755 # [3] is the total energy in GeV, store KE in MeV under the muon hypothesis
+                    if ke > max_prim_other_track_energy:
+                        tot_momentum = np.sqrt(reco_startMomentum[i][j][0]**2 + reco_startMomentum[i][j][1]**2 + reco_startMomentum[i][j][2]**2)
+                        max_prim_other_track_energy = ke
+                        max_prim_other_track_costheta = reco_startMomentum[i][j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| (dividing by [3] would squash costheta)
                         max_prim_other_track_phi = np.arctan2(reco_startMomentum[i][j][0], reco_startMomentum[i][j][1]) * 180. / np.pi
 
         max_prim_proton_energies.append(max_prim_proton_energy)
         max_prim_proton_costhetas.append(max_prim_proton_costheta)
         max_prim_proton_phis.append(max_prim_proton_phi)
+        sum_prim_proton_energies.append(sum_prim_proton_energy)
         max_prim_other_track_energies.append(max_prim_other_track_energy)
         max_prim_other_track_costhetas.append(max_prim_other_track_costheta)
         max_prim_other_track_phis.append(max_prim_other_track_phi)
@@ -1374,6 +1386,7 @@ def do_wc_postprocessing(df):
         "wc_reco_max_prim_proton_energy": max_prim_proton_energies,
         "wc_reco_max_prim_proton_costheta": max_prim_proton_costhetas,
         "wc_reco_max_prim_proton_phi": max_prim_proton_phis,
+        "wc_reco_sum_prim_proton_energy": sum_prim_proton_energies,
         "wc_reco_max_prim_other_track_energy": max_prim_other_track_energies,
         "wc_reco_max_prim_other_track_costheta": max_prim_other_track_costhetas,
         "wc_reco_max_prim_other_track_phi": max_prim_other_track_phis,

@@ -137,7 +137,9 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     col_names = mc_pred_df.collect_schema().names() if isinstance(mc_pred_df, pl.LazyFrame) else mc_pred_df.columns
     if "filetype" in col_names:
         derived_counts = mc_pred_df.filter(pl.col("filetype").is_in(derived_filetypes)).group_by("filetype").agg(pl.len().alias("count"))
-        for row in derived_counts.collect().iter_rows(named=True):
+        if isinstance(derived_counts, pl.LazyFrame):
+            derived_counts = derived_counts.collect()
+        for row in derived_counts.iter_rows(named=True):
             print(f"WARNING: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
                   "These events have no flux, cross-section, or re-interaction systematics available,"
                   " so they are assigned unit weights for all reweightable systematics.")
@@ -180,8 +182,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     # we use these weights when we consider a new weight independent of the GENIE CV weights
     normal_weights = base_merged.get_column(net_weight_var).to_numpy()
 
-    def _get_universe_weights(col_name):
-        """Fetch a single List[Float32] universe column, joining only that column."""
+    def _fetch_universe_weights(col_name):
         if weights_df is None:
             return (
                 base_merged.select(join_keys).lazy()
@@ -196,6 +197,38 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
                 .collect()
                 .get_column(col_name).to_numpy()
             )
+
+    def _get_universe_weights(col_name):
+        """Fetch a single List[Float32] universe column, joining only that column.
+
+        The result is validated for a uniform universe count across events: polars has been
+        seen returning corrupted results under heavy memory/CPU load in this project (see the
+        streaming-race notes in save_PROfit_rootfiles.py), and a ragged universe column crashes
+        create_universe_histograms with an "inhomogeneous shape" ValueError hours into a
+        plotting run.  A ragged result is refetched once (a transient race gives a clean second
+        read); if it is still ragged, the anomalous events fall back to unit weights with a loud
+        warning instead of crashing.
+        """
+        for attempt in range(2):
+            uni = _fetch_universe_weights(col_name)
+            lengths = np.array([len(a) if a is not None else -1 for a in uni])
+            values, counts = np.unique(lengths, return_counts=True)
+            if len(values) == 1 and values[0] > 0:
+                return uni
+            print(f"WARNING: non-uniform universe weight lengths for '{col_name}' "
+                  f"(attempt {attempt + 1}): length counts {dict(zip(values.tolist(), counts.tolist()))}"
+                  + (", refetching..." if attempt == 0 else ""))
+        num_unis = int(values[np.argmax(counts)])
+        if num_unis <= 0:
+            raise ValueError(f"universe weights for '{col_name}' are entirely null/empty, cannot recover")
+        bad_indices = np.where(lengths != num_unis)[0]
+        print(f"WARNING: universe weights for '{col_name}' still non-uniform after refetch; "
+              f"assigning unit weights to {len(bad_indices)} of {len(uni)} events "
+              f"(possible polars data corruption under load, treat this covariance with caution)")
+        uni = np.array(list(uni), dtype=object)
+        for idx in bad_indices:
+            uni[idx] = np.ones(num_unis, dtype=np.float32)
+        return uni
 
     for sys_name, col_name, event_weights in [
         ("All_UBGenie", "All_UBGenie", non_genie_cv_weights),
