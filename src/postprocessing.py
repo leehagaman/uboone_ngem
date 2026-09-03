@@ -192,8 +192,10 @@ def _compute_config_pot_dics(pot_dic, config):
                 scale = config["total_pot"] / total
                 norm_goal_pot_dic = {k: v * scale for k, v in norm_goal_pot_dic.items()}
         else:
-            # no goal-filetype POT present (e.g. DetVar processing with no data):
-            # normalize each group to its nu_overlay CV POT instead
+            # no goal-filetype POT present at all: normalize each group to its
+            # nu_overlay CV POT instead.  (DetVar used to rely on this; it now passes
+            # an explicit goal_pot.)  Groups without nu_overlay POT stay at 0 here and
+            # are caught by the zero-goal check in _add_config_weight_columns.
             for (filetype, nrp), v in normalizing_run_period_pot_dic.items():
                 if filetype == 'nu_overlay':
                     norm_goal_pot_dic[nrp] += v
@@ -291,6 +293,24 @@ def _add_config_weight_columns(df, pot_dic, masks, config):
             print(f"    {eventtype_pot_col}={zeros_df[eventtype_pot_col][i]}, filetype={zeros_df['filetype'][i]}, "
                   f"detailed_run_period={zeros_df['detailed_run_period'][i]}, {nrp_col}={zeros_df[nrp_col][i]}")
         raise ValueError(f"config '{name}': {eventtype_pot_col} has {num_null} null and {num_zero} zero values!")
+
+    # validate the goal POT on the rows that should have a weight: a zero (or null)
+    # goal would silently give every event in that normalizing run period weight 0
+    # (e.g. a period with no goal-filetype POT, or with no nu_overlay POT in the
+    # nu_overlay-fallback case), which no other check catches
+    zero_goal_df = check_df.filter(pl.col(goal_col).is_null() | (pl.col(goal_col) <= 0))
+    if zero_goal_df.height > 0:
+        combos = (
+            zero_goal_df.group_by(["filetype", "detailed_run_period", nrp_col])
+            .agg(pl.len().alias("n_events"))
+            .sort(["filetype", "detailed_run_period"])
+            .to_dicts()
+        )
+        raise ValueError(
+            f"config '{name}': {zero_goal_df.height} rows that should be weighted have a zero/null goal POT "
+            f"({goal_col}), so they would all silently get weight 0! Affected (filetype, detailed_run_period, "
+            f"{nrp_col}): {combos}. norm_goal_pot_dic={dict(sorted(norm_goal_pot_dic.items()))}"
+        )
 
     # net weight = base (cv*spline, or 1.0 for data/ext/nuwro) * goal/denominator,
     # null where the row has no weight in this config

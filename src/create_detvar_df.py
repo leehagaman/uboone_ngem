@@ -20,6 +20,7 @@ from postprocessing import remove_vector_variables
 
 from file_locations import data_files_location, intermediate_files_location
 from check_ntuple_alignment import assert_ntuple_trees_aligned
+from pot_and_trigger_numbers import expected_full_dataset_data_POT
 
 from create_df import _arrays_filling_missing
 
@@ -262,6 +263,17 @@ def _load_chunk(filename, filetype, vartype, detvar_sample, detailed_run_period,
     all_df["vartype"] = vartype
     all_df["detvar_sample"] = np.int32(detvar_sample)
 
+    # nue_overlay: the nominal pipeline (create_df.add_nue_flux_sampling_weight)
+    # reweights the intrinsic-nue flux sampling per file and postprocessing requires
+    # the column for any nue_overlay rows.  DetVar does NOT apply that correction:
+    # the covariance is a fractional (CV-var)/CV difference on RSE-matched events, so
+    # the reweight would only slightly reshape the nue energy mix, and a per-file
+    # computation here (after the reco preselection above) would give matched CV and
+    # variation events different weights, faking a detector effect.  Unit weights
+    # keep the column contract; the warning is printed per file in the main loop.
+    if filetype == "nue_overlay":
+        all_df["nue_flux_sampling_weight"] = np.float32(1.0)
+
     return all_df
 
 
@@ -335,6 +347,11 @@ if __name__ == "__main__":
         if not "detvar" in filename.lower():
             continue
 
+        # The v10_04_07_19 run 4d nu_overlay DetVar files have a misaligned
+        # singlephotonana/vertex_tree (re-confirmed 2026-09-03: only 97.5% of entries
+        # match T_eval, first mismatch at entry 19273), and assert_ntuple_trees_aligned
+        # would refuse them anyway.  Remove this skip once fixed run 4d files replace
+        # them in download_input_files.sh.
         if (_filetype_from_filename(filename) == "nu_overlay"
                 and ("4d.root" in filename or "run4d" in filename.lower())):
             print(f"TEMPORARY, SKIPPING RUN 4D NU_OVERLAY DETVAR, "
@@ -499,12 +516,18 @@ if __name__ == "__main__":
         all_df = all_df.with_columns([pl.col(c).clip(int32_min, int32_max).cast(pl.Int32) for c in int64_cols[i:i + 50]])
         gc.collect()
 
-    # DetVar has no beam-on data, so the weighting normalizes each group to its
-    # nu_overlay CV POT (the goal_pot_filetypes=["data"] sum is zero -> nu_overlay
-    # fallback inside _compute_config_pot_dics).  total_pot is therefore ignored.
-    # The detvar covariance is a fractional (CV - var)/CV difference, so the
-    # absolute normalization cancels; the single "wc_net_weight" column matches
-    # what create_detvar_frac_cov_matrices reads.
+    # DetVar has no beam-on data, so each normalizing run period is scaled to the
+    # expected full-dataset data POT (the same explicit goal_pot as the nominal
+    # "full_pred" config).  This makes the run-period mix of the DetVar CV data-like,
+    # and keeps the relative nu_overlay / nue_overlay weighting right within a period
+    # (both are scaled to the same goal; the summed-POT denominators for the shared
+    # true-nueCC class are handled by the orthogonalization).  An explicit goal also
+    # means a period that has nue_overlay but no nu_overlay DetVar (currently 4nota,
+    # while run 4d nu_overlay is skipped) still gets a non-zero weight; postprocessing
+    # raises if any weighted period ends up with a zero goal POT.  The detvar
+    # covariance is a fractional (CV - var)/CV difference, so the absolute
+    # normalization cancels; the single "wc_net_weight" column matches what
+    # create_detvar_frac_cov_matrices reads.
     detvar_weight_configs = [
         dict(
             name="detvar",
@@ -513,8 +536,8 @@ if __name__ == "__main__":
                 "1": "1", "2": "2", "3": "3", "3a": "3", "3b1": "3", "3b2": "3", "4a": "4a",
                 "4b": "4nota", "4c": "4nota", "4d": "4nota", "4bcd": "4nota", "5": "5",
             },
-            goal_pot=None,
-            goal_pot_filetypes=["data"],
+            goal_pot=expected_full_dataset_data_POT,
+            goal_pot_filetypes=None,
             total_pot=None,
             exclude_filetypes=[],
         ),

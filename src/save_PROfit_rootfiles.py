@@ -39,15 +39,45 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Configuration
 # ============================================================================
 
-DEFAULT_TRAINING = "all_vars_r15_jul202026"
+DEFAULT_TRAINING = "all_vars_r15_2026_09_01"
 
 # Runs 1-5 open-data POT weighting (all run periods) for the nominal prediction.
 NET_WEIGHT_COL = "wc_net_weight_open_data"
 
 # DetVar has its own single weighting config (create_detvar_df.py) whose column is
-# "wc_net_weight"; the detvar covariance is a fractional (CV-var)/CV difference so the
-# absolute normalization cancels.
+# "wc_net_weight" (each run period scaled to the expected full-dataset data POT); the
+# detvar covariance is a fractional (CV-var)/CV difference so the absolute
+# normalization cancels.
 DETVAR_NET_WEIGHT_COL = "wc_net_weight"
+
+# Integer code for the filetype string, written as the `filetype_code` branch so PROfit
+# can use it in cv_variation_matching_vars (TTreeFormula can't match on a string
+# branch).  Needed since the DetVar files mix nu_overlay and nue_overlay samples, whose
+# (detvar_sample, run, subrun, event) keys are not guaranteed to be distinct.  Append
+# only -- existing codes are baked into written ROOT files.
+FILETYPE_CODES = {
+    "nu_overlay": 1,
+    "nue_overlay": 2,
+    "nc_pi0_overlay": 3,
+    "numucc_pi0_overlay": 4,
+    "dirt_overlay": 5,
+    "ext": 6,
+    "data": 7,
+    "nuwro_fake_data": 8,
+    "delete_one_gamma_overlay": 9,
+    "isotropic_one_gamma_overlay": 10,
+    "fullosc_overlay": 11,
+}
+
+
+def _filetype_code_expr():
+    """Polars expression mapping the filetype string column to its FILETYPE_CODES int
+    (Int32, 0 for anything not in the table)."""
+    return (
+        pl.col("filetype")
+        .replace_strict(FILETYPE_CODES, default=0, return_dtype=pl.Int32)
+        .alias("filetype_code")
+    )
 
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the
 # covariance).  Only these get a ROOT file; any other vartype value (e.g. the empty
@@ -70,11 +100,14 @@ TRAINING_VARS = combined_training_vars
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
-# and for each DETVAR file: filetype, vartype, detvar_sample, run, subrun, event,
-#     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+# and for each DETVAR file: filetype, filetype_code, vartype, detvar_sample, run,
+#     subrun, event, isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight,
+#     prob_<category>.
 #     (detvar_sample distinguishes the two overlapping run 3b CV samples: 0 = 1mil,
 #     matched by all run 3b variations except SCE/Recomb2; 1 = 500k, matched by
-#     SCE/Recomb2.)
+#     SCE/Recomb2.  filetype_code (FILETYPE_CODES) separates the nu_overlay and
+#     nue_overlay DetVar samples; PROfit's cv_variation_matching_vars should be
+#     "filetype_code,detvar_sample,run,subrun,event".)
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
@@ -685,13 +718,18 @@ def save_detvar(training, output_dir):
     )
     presel = presel.with_columns(_reco_category_expr().alias("reco_category"))
     presel = presel.with_columns([
+        _filetype_code_expr(),
         (pl.col("filetype") == "data").alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
     ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
 
+    unknown_filetypes = presel.filter(pl.col("filetype_code") == 0)["filetype"].unique().to_list()
+    if unknown_filetypes:
+        raise ValueError(f"filetypes {unknown_filetypes} are missing from FILETYPE_CODES -- add them (append only)")
+
     detvar_minimal = presel.select(
-        ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "isdata", "isext", "isdirt",
+        ["filetype", "filetype_code", "vartype", "detvar_sample", "run", "subrun", "event", "isdata", "isext", "isdirt",
          "reco_category", "wc_kine_reco_Enu", "net_weight"] + prob_cols
     )
 

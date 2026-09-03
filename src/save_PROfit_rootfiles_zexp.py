@@ -56,6 +56,24 @@ UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
 # absolute normalization cancels.
 DETVAR_NET_WEIGHT_COL = "wc_net_weight"
 
+# Integer filetype code written as the `filetype_code` branch of the DetVar files so
+# PROfit's cv_variation_matching_vars can separate the nu_overlay and nue_overlay DetVar
+# samples (TTreeFormula can't match on a string branch).  Keep in sync with
+# save_PROfit_rootfiles.FILETYPE_CODES; append only.
+FILETYPE_CODES = {
+    "nu_overlay": 1,
+    "nue_overlay": 2,
+    "nc_pi0_overlay": 3,
+    "numucc_pi0_overlay": 4,
+    "dirt_overlay": 5,
+    "ext": 6,
+    "data": 7,
+    "nuwro_fake_data": 8,
+    "delete_one_gamma_overlay": 9,
+    "isotropic_one_gamma_overlay": 10,
+    "fullosc_overlay": 11,
+}
+
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the
 # covariance).  Only these get a ROOT file; any other vartype value (e.g. the empty
 # "" that create_detvar_df.py mislabels some events with) is skipped with a warning.
@@ -766,10 +784,15 @@ def save_detvar(training, output_dir):
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
         (pl.col("filetype") == "nuwro_fake_data").alias("isnuwro"),
+        pl.col("filetype").replace_strict(FILETYPE_CODES, default=0, return_dtype=pl.Int32).alias("filetype_code"),
     ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
 
+    unknown_filetypes = presel.filter(pl.col("filetype_code") == 0)["filetype"].unique().to_list()
+    if unknown_filetypes:
+        raise ValueError(f"filetypes {unknown_filetypes} are missing from FILETYPE_CODES -- add them (append only)")
+
     detvar_minimal = presel.select(
-        OUTPUT_SCALAR_COLUMNS[:1] + ["vartype", "detvar_sample"] + OUTPUT_SCALAR_COLUMNS[1:]
+        OUTPUT_SCALAR_COLUMNS[:1] + ["filetype_code", "vartype", "detvar_sample"] + OUTPUT_SCALAR_COLUMNS[1:]
         + ["isdata", "isext", "isdirt", "isnuwro", "net_weight"] + prob_cols
     )
 
