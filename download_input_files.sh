@@ -143,8 +143,8 @@ FILES_TO_COPY=(
 
     # nue_overlay, runs 4-5
     # CV
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_cv_surprise_hist_4d.root"
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_cv_surprise_hist_5.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_cv_surprise_hist_4d.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_cv_surprise_reco2_hist_5.root"
     # LYA
     "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lya_surprise_reco2_hist_4d.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lya_surprise_reco2_hist_5.root"
