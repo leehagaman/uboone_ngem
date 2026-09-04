@@ -51,7 +51,7 @@ FILES_TO_COPY=(
     "/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_24_BNB_NCpi0_overlay_retuple_retuple_hist_5.root"
 
     # numuCCpi0 overlay files
-    "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4ab.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4a.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4b.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4c.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_5.root"
