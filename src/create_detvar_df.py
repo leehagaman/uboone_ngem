@@ -128,10 +128,18 @@ def _get_file_metadata(filename, frac_events=1):
     # this nanosecond timing variable only exists in the CV and merged files
     curr_wc_T_pf_vars = [var for var in wc_T_pf_vars if var != "evtTimeNS_cor"]
 
+    # Some productions lack the WCPMTInfo* branches in T_BDTvars; detect that from the
+    # tree itself rather than by filename (same logic as create_df.py).
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
-    if "v10_04_07_09" in filename:
-        print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
-        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
+    bdt_keys = set(f["wcpselection"]["T_BDTvars"].keys())
+    missing_bdt_vars = [var for var in wc_T_BDT_including_training_vars if var not in bdt_keys]
+    if missing_bdt_vars:
+        if any("WCPMTInfo" not in var for var in missing_bdt_vars):
+            raise KeyError(f"{filename}: T_BDTvars is missing non-WCPMTInfo branches: "
+                           f"{[v for v in missing_bdt_vars if 'WCPMTInfo' not in v]}")
+        print(f"    WARNING: {filename} has no WCPMTInfo branches in T_BDTvars, NOT LOADING "
+              f"{len(missing_bdt_vars)} WCPMTInfo VARIABLES FOR {filetype} (they will be null)")
+        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if var in bdt_keys]
 
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     f.close()

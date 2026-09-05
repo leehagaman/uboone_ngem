@@ -220,11 +220,19 @@ def _get_file_metadata(filename, frac_events=1):
     assert_ntuple_trees_aligned(f, filename)
 
     curr_wc_T_pf_vars = wc_T_pf_vars
+    # Some productions (v10_04_07_09, and every Run4b v10_04_07_20/24 retuple file) lack
+    # the WCPMTInfo* branches in T_BDTvars.  Detect that from the tree itself rather than
+    # by filename; the columns are null-filled by the diagonal concat downstream.
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
-    if (("v10_04_07_09" in filename) or (filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root")
-                 or (filename == "checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root")):
-        print(f"    TEMPORARY: NOT LOADING WCPMTInfo VARIABLES FOR {filetype}")
-        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if "WCPMTInfo" not in var]
+    bdt_keys = set(f["wcpselection"]["T_BDTvars"].keys())
+    missing_bdt_vars = [var for var in wc_T_BDT_including_training_vars if var not in bdt_keys]
+    if missing_bdt_vars:
+        if any("WCPMTInfo" not in var for var in missing_bdt_vars):
+            raise KeyError(f"{filename}: T_BDTvars is missing non-WCPMTInfo branches: "
+                           f"{[v for v in missing_bdt_vars if 'WCPMTInfo' not in v]}")
+        print(f"    WARNING: {filename} has no WCPMTInfo branches in T_BDTvars, NOT LOADING "
+              f"{len(missing_bdt_vars)} WCPMTInfo VARIABLES FOR {filetype} (they will be null)")
+        curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if var in bdt_keys]
 
     detailed_run_period = _detailed_run_period_from_filename(filename)
 
