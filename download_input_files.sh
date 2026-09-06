@@ -86,7 +86,7 @@ FILES_TO_COPY=(
     # Data files
     "/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_on_data_surprise_reco2_hist_1_5e19opendata.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_on_data_surprise_reco2_hist_3_1e19opendata.root"
-    "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_on_retuple_retuple_hist_4a.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_on_retuple_retuple_hist_opendata_19550.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root"
 
     # NuWro fake data files
