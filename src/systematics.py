@@ -176,11 +176,22 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     cv_hist = np.histogram(pred_vals, weights=base_merged.get_column(net_weight_var).to_numpy(), bins=bins)[0]
     cv_hist = np.maximum(cv_hist, 1e-3) # avoiding nans when we divide in the next step, this bin will have large stat uncertainty anyway
 
-    # we use these weights when we replace GENIE weight_cv with the new systematic weight
-    non_genie_cv_weights = base_merged.get_column(net_weight_var).to_numpy() / base_merged.get_column("wc_weight_cv").to_numpy()
-
     # we use these weights when we consider a new weight independent of the GENIE CV weights
     normal_weights = base_merged.get_column(net_weight_var).to_numpy()
+
+    # we use these weights when we replace GENIE weight_cv with the new systematic weight (the stored
+    # GENIE universe weights are weight_cv * knob ratio, so weight_cv is divided out of the net weight).
+    # Only divide where weight_cv is a valid weight (same validity as the postprocessing clamp and the
+    # universe-weight clamp in create_universe_histograms): rows from samples with no GENIE weight tree
+    # (delete_one_gamma / isotropic_one_gamma, hence the derived numuCC_rad_corrected and
+    # NC_coherent_1g_reweighted rows, and nuwro) carry the -1 sentinel in wc_weight_cv and unit universe
+    # weights, so for them the universe weight has to multiply the net weight unchanged.  Dividing by
+    # the -1 sentinel flipped their sign in every universe, giving every knob (even dead ones) an
+    # identical spurious deviation of 2x their share of the prediction (seen 2026-09-07 as a >100%
+    # GENIE band on the 1gNp1mu selection).
+    cv_arr = base_merged.get_column("wc_weight_cv").to_numpy().astype(np.float64)
+    valid_cv = np.isfinite(cv_arr) & (cv_arr > 0) & (cv_arr <= 30)
+    non_genie_cv_weights = normal_weights / np.where(valid_cv, cv_arr, 1.0)
 
     def _fetch_universe_weights(col_name):
         if weights_df is None:
@@ -345,7 +356,9 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
                 bootstrap_cv_var_diffs.append(bootstrap_var_counts - bootstrap_cv_counts)
             
             # building a covariance matrix to describe the statistical uncertainty on the CV-var difference, called M_R in the note
-            bootstrap_cv_var_diff_cov = np.cov(bootstrap_cv_var_diffs, rowvar=False)
+            # np.atleast_2d: np.cov squeezes a single-bin covariance to a 0-d scalar, which
+            # multivariate_normal below rejects (one-bin total-count grids use a single bin)
+            bootstrap_cv_var_diff_cov = np.atleast_2d(np.cov(bootstrap_cv_var_diffs, rowvar=False))
 
             # drawing samples from the bootstrap_cv_var_diff_cov covariance matrix, each called V_D in the note
             bootstrap_cv_var_diff_samples = np.random.multivariate_normal(nominal_cv_var_diff, bootstrap_cv_var_diff_cov, size=num_bootstrap_samples_detvar)
@@ -356,7 +369,7 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             bootstrap_scaled_cv_var_diff_samples = normal_distribution_samples[:, None] * bootstrap_cv_var_diff_samples
 
             # called M_D in the note
-            curr_cov = np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False)
+            curr_cov = np.atleast_2d(np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False))
 
             denom = np.outer(matching_cv_counts, matching_cv_counts)
             curr_frac_cov = np.divide(curr_cov, denom, out=np.zeros_like(curr_cov), where=(denom != 0))

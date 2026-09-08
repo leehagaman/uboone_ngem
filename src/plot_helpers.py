@@ -405,6 +405,8 @@ def make_histogram_plot(
         include_ratio=True, include_decomposition=False,
         legend_fontsize=6,
         legend_ncol=2,
+        legend_loc='upper right',
+        vertical_lines=None,  # x positions of dashed black guide lines (e.g. a BDT cut), drawn on the main and ratio panels
         ylim=None,
         yticks=None,
 
@@ -772,7 +774,7 @@ def make_histogram_plot(
     if yticks is not None:
         ax1.set_yticks(yticks)
     if include_legend:
-        ax1.legend(ncol=legend_ncol, loc='upper right', fontsize=legend_fontsize)
+        ax1.legend(ncol=legend_ncol, loc=legend_loc, fontsize=legend_fontsize)
     
     if include_ratio:
         ax1.set_xticklabels([])
@@ -896,8 +898,12 @@ def make_histogram_plot(
             ax3.text(-0.1, -0.3, f"{page_num}", transform=ax3.transAxes, fontsize=8, ha="left", va="bottom")
         else:
             ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
-    
-    
+    if vertical_lines is not None:
+        for x_line in vertical_lines:
+            ax1.axvline(x_line, color="k", ls="--", lw=1)
+            if include_ratio:
+                ax2.axvline(x_line, color="k", ls="--", lw=1)
+
     if savename is not None:
         plt.savefig(f"../plots/{savename}.pdf")
         plt.savefig(f"../plots/{savename}.png")
