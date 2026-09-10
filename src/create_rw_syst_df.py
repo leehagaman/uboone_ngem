@@ -65,6 +65,90 @@ def _merge_parquet_parts(paths, out_path, batch_size=32_768):
             writer.close()
 
 
+DERIVED_FILETYPES = ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
+
+
+def _load_derived_events():
+    """The derived (appended) rows -- numuCC_rad_corrected (from delete_one_gamma_overlay)
+    and NC_coherent_1g_reweighted (from isotropic_one_gamma_overlay) -- read from the
+    preselected training df.  They have no GENIE weight trees, so they get unit CV weights
+    and unit systematic-weight lists; PROfit / the notebooks then see them with no
+    reweightable systematic variation.  Returns None when the presel df is missing."""
+    presel_df_path = f"{intermediate_files_location}/presel_df_train_vars.parquet"
+    if not os.path.exists(presel_df_path):
+        print(f"  WARNING: {presel_df_path} not found; skipping derived event extension")
+        return None
+    derived_events = pl.scan_parquet(presel_df_path).filter(
+        pl.col("filetype").is_in(DERIVED_FILETYPES)
+    ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu"]).collect()
+    print(f"Adding {derived_events.height} derived events (rad_corrected, coherent_1g) with unit systematic weights...")
+    if derived_events.height == 0:
+        print("  WARNING: no derived events found; skipping extension")
+        return None
+    return derived_events
+
+
+def _build_unit_derived_part(derived_events, template_parts, out_path):
+    """Write derived_events to out_path in the column layout of template_parts (parquet
+    paths sharing one schema family, e.g. the weight parts or the spline parts): every
+    list (universe-weight) column becomes a list of 1.0 of that column's length (taken
+    from the first row of the first part carrying it), every numeric scalar column the
+    derived rows lack (weightTune, the zexp weight_* scalars, ...) becomes 1.0, and
+    columns of derived_events that the template does not have are dropped, so the
+    merged parquet keeps exactly the template's columns."""
+    template_schema = {}
+    list_col_len = {}
+    for tp in template_parts:
+        sch = pl.scan_parquet(tp).collect_schema()
+        for c, t in sch.items():
+            template_schema.setdefault(c, t)
+        need = [c for c, t in sch.items() if isinstance(t, pl.List) and c not in list_col_len]
+        if need:
+            first = pl.scan_parquet(tp).select(need).head(1).collect()
+            for c in need:
+                list_col_len[c] = len(first[c][0])
+
+    keep = [c for c in derived_events.columns if c in template_schema]
+    part = derived_events.select(keep)
+    n = part.height
+    for c, t in template_schema.items():
+        if c in part.columns:
+            continue
+        if isinstance(t, pl.List):
+            part = part.with_columns(pl.Series(c, [[1.0] * list_col_len[c]] * n, dtype=pl.List(pl.Float32)))
+        elif t.is_numeric():
+            part = part.with_columns(pl.lit(1.0).cast(t).alias(c))
+        else:
+            part = part.with_columns(pl.lit(None).cast(t).alias(c))
+    part = part.select(list(template_schema.keys()))
+    part.write_parquet(out_path)
+    print(f"  wrote {n} unit-weight derived rows ({len(list_col_len)} unit list columns) to {os.path.basename(out_path)}")
+    return out_path
+
+
+def append_derived_rows_to_spline_weights():
+    """Patch an existing spline_weights_df.parquet in place by appending the derived rows
+    with unit weights (for spline parquets written before this step existed).  Rewrites
+    the whole file once via the streaming merge; refuses to run if derived rows are
+    already present."""
+    spline_out = f"{intermediate_files_location}/spline_weights_df.parquet"
+    present = (pl.scan_parquet(spline_out).select(pl.col("filetype").unique()).collect(engine="streaming")["filetype"].to_list())
+    already = sorted(set(present) & set(DERIVED_FILETYPES))
+    if already:
+        raise ValueError(f"{spline_out} already contains derived filetypes {already}; nothing to do")
+    derived_events = _load_derived_events()
+    if derived_events is None:
+        raise ValueError("no derived events to append")
+    derived_part = _build_unit_derived_part(derived_events, [spline_out], f"{intermediate_files_location}/_derived_splines.parquet")
+    tmp_out = spline_out + ".tmp"
+    print(f"rewriting {spline_out} with the derived rows appended...", end="", flush=True)
+    start_time = time.time()
+    _merge_parquet_parts([spline_out, derived_part], tmp_out)
+    os.replace(tmp_out, spline_out)
+    os.remove(derived_part)
+    print(f"done, {os.path.getsize(spline_out) / 1024**3:.2f} GB, {format_duration(time.time() - start_time)}")
+
+
 def _get_file_metadata(filename, frac_events=1):
     """Collect per-file metadata without reading any weight data.
 
@@ -318,7 +402,16 @@ if __name__ == "__main__":
     parser.add_argument("--merge_only", action="store_true", default=False,
                         help="Skip the ROOT file loop and only merge existing per-file parquet parts "
                              "(resume after a failure in the final merge stage)")
+    parser.add_argument("--append_derived_splines_only", action="store_true", default=False,
+                        help="Do not process anything; append the derived rad-corr / coherent-1g rows with unit "
+                             "weights to the EXISTING spline_weights_df.parquet (one-off patch for spline parquets "
+                             "written before those rows were included there)")
     args = parser.parse_args()
+
+    if args.append_derived_splines_only:
+        append_derived_rows_to_spline_weights()
+        print(f"Done in {format_duration(time.time() - main_start_time)}")
+        sys.exit(0)
 
     if args.memory_logger:
         start_memory_logger(10)
@@ -331,7 +424,7 @@ if __name__ == "__main__":
             if file.endswith(".parquet") and (
                 file.startswith("presel_weights_df") or file.startswith("chunk_weights_")
                 or file.startswith("spline_weights_df") or file.startswith("chunk_splines_")
-                or file == "_derived_weights.parquet"
+                or file in ("_derived_weights.parquet", "_derived_splines.parquet")
             ):
                 os.remove(f"{intermediate_files_location}/{file}")
         print("Deleted intermediate weight/spline parquet files")
@@ -444,56 +537,29 @@ if __name__ == "__main__":
     print(f"  {len(weight_parts)} weight parts, {len(spline_parts)} spline parts")
 
     # ── spline_weights_df.parquet: stream-concat the per-file spline parts ──
+    # The derived rad-corr / coherent-1g rows go into BOTH output parquets with unit
+    # weights (see _load_derived_events); without them in spline_weights_df,
+    # save_PROfit_rootfiles' inner join against it silently drops those samples from
+    # the PROfit files.
+    derived_events = _load_derived_events()
     spline_out = f"{intermediate_files_location}/spline_weights_df.parquet"
+    all_spline_parts = list(spline_parts)
+    if derived_events is not None:
+        all_spline_parts.append(_build_unit_derived_part(
+            derived_events, spline_parts, f"{intermediate_files_location}/_derived_splines.parquet"))
     print(f"saving {spline_out}...", end="", flush=True)
-    _merge_parquet_parts(spline_parts, spline_out)
-    for p in spline_parts:
+    _merge_parquet_parts(all_spline_parts, spline_out)
+    for p in all_spline_parts:
         os.remove(p)
     print(f"done, {os.path.getsize(spline_out) / 1024**3:.2f} GB")
 
     # ── presel_weights_df.parquet: derived rad/coherent rows + stream-concat ──
-    # numuCC_rad_corrected (from delete_one_gamma_overlay) and NC_coherent_1g_reweighted
-    # (from isotropic_one_gamma_overlay) have no GENIE weight trees, so they get unit CV
-    # weights and unit systematic-weight lists (matching the existing list columns'
-    # shapes).  Written to their own small parquet and streamed in alongside the rest, so
-    # the full weights dataframe is never materialized in memory.
+    # Same unit-weight derived rows, in the weight parts' column layout (weightSpline /
+    # weightTune / weightSplineTimesTune scalars + every systematic list column).
     derived_part = None
-    presel_df_path = f"{intermediate_files_location}/presel_df_train_vars.parquet"
-    if os.path.exists(presel_df_path):
-        derived_events = pl.scan_parquet(presel_df_path).filter(
-            pl.col("filetype").is_in(["numuCC_rad_corrected", "NC_coherent_1g_reweighted"])
-        ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu"]).collect()
-        print(f"Adding {derived_events.height} derived events (rad_corrected, coherent_1g) with unit systematic weights...")
-
-        if derived_events.height > 0:
-            # Union of list (systematic) columns across all weight parts, with one example
-            # list length each (parts can in principle differ in which knobs they carry).
-            list_col_len = {}
-            for wp in weight_parts:
-                sch = pl.scan_parquet(wp).collect_schema()
-                need = [c for c, t in sch.items() if isinstance(t, pl.List) and c not in list_col_len]
-                if need:
-                    first = pl.scan_parquet(wp).select(need).head(1).collect()
-                    for c in need:
-                        list_col_len[c] = len(first[c][0])
-
-            derived_events = derived_events.with_columns([
-                pl.lit(1.0).cast(pl.Float32).alias("weightSpline"),
-                pl.lit(1.0).cast(pl.Float32).alias("weightTune"),
-                pl.lit(1.0).cast(pl.Float32).alias("weightSplineTimesTune"),
-            ])
-            n = derived_events.height
-            for col, list_len in list_col_len.items():
-                derived_events = derived_events.with_columns(
-                    pl.Series(col, [[1.0] * list_len] * n, dtype=pl.List(pl.Float32))
-                )
-
-            derived_part = f"{intermediate_files_location}/_derived_weights.parquet"
-            derived_events.write_parquet(derived_part)
-        else:
-            print("  WARNING: no derived events found; skipping extension")
-    else:
-        print(f"  WARNING: {presel_df_path} not found; skipping derived event extension")
+    if derived_events is not None:
+        derived_part = _build_unit_derived_part(
+            derived_events, weight_parts, f"{intermediate_files_location}/_derived_weights.parquet")
 
     presel_out = f"{intermediate_files_location}/presel_weights_df.parquet"
     all_weight_parts = weight_parts + ([derived_part] if derived_part else [])
