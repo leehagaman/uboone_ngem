@@ -20,6 +20,7 @@ from postprocessing import add_afro_1mu1p_sel
 from blip_postprocessing import do_blip_postprocessing_with_deex
 from postprocessing import remove_vector_variables, change_dtypes
 from postprocessing import apply_1g1mu_rad_corr_reweighting, apply_nc_coh_1g_reweighting
+from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL
 from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
 from coh_1g_reweighting import compute_nc_coh_1g_reweighting
 from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dalitz_reweighting
@@ -458,8 +459,10 @@ def add_nue_flux_sampling_weight(df, file_POT, filename=None, detailed_run_perio
     weight_cv_weight_spline) this column is folded into the net weights as an
     additional factor on top of weight_cv*weight_spline, which stay applied -- so
     the cv*spline-weighted spectrum times this weight matches the target exactly.
-    wc_weight_cv/wc_weight_spline are untouched here, so e.g. GENIE universe
-    weights formed relative to weight_cv still work.  Events outside the table's
+    The cv*spline used here is the Pandora weightTune*weightSpline (the same source
+    as postprocessing's base weight, see postprocessing.GENIE_CV_WEIGHT_COL); the
+    weight columns themselves are untouched, so e.g. GENIE universe weights formed
+    relative to the tune weight still work.  Events outside the table's
     energy range get weight 0, matching the table's own zero edge bins.  Needs the
     whole file at once (the histogram), so it runs on the combined per-file
     dataframe, not per chunk.
@@ -498,7 +501,8 @@ def add_nue_flux_sampling_weight(df, file_POT, filename=None, detailed_run_perio
     # weights (e.g. ~1e-40..1e-8 in the Run4a4c4d5 nue files) pass the standard
     # clamp, but here cv*spline enters the denominator histogram, where a single
     # such event alone in a sparse bin would blow up that bin's ratio
-    cv_spline = (df["wc_weight_cv"] * df["wc_weight_spline"]).to_numpy().astype(np.float64)
+    # same CV-weight source as postprocessing's base weight (Pandora weightTune*weightSpline)
+    cv_spline = (df[GENIE_CV_WEIGHT_COL] * df[GENIE_SPLINE_WEIGHT_COL]).to_numpy().astype(np.float64)
     invalid = ~np.isfinite(cv_spline) | (cv_spline < 1e-3) | (cv_spline > 30.0)
     cv_spline = np.where(invalid, 1.0, cv_spline)
 

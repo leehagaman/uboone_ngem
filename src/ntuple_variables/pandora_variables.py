@@ -34,6 +34,16 @@ blip_postprocessing_vars = [
 ]
 
 pandora_non_BDT_vars = [
+    # GENIE MicroBooNE-tune CV weight and the spline (tune-correction) weight as written by
+    # the Pandora ntuple code, alongside its `weights` universe map.  These -- not WC's
+    # T_eval weight_cv / weight_spline -- are the CV weights postprocessing.py uses (see
+    # postprocessing.GENIE_CV_WEIGHT_COL): in events with more than one GENIE interaction
+    # WC's values belong to a different MCTruth than the neutrino every tree reports, while
+    # the Pandora values are consistent with it and with the stored universes
+    # (ipynb_notebooks/genie_tune_weight_mismatch.ipynb, 2026-09-10).  WC's weight_cv /
+    # weight_spline stay in the dataframes (wc_weight_cv / wc_weight_spline) for debugging.
+    "weightTune",
+    "weightSpline",
     "crtveto",
     "crthitpe",
     "_closestNuCosmicDist", # this uses the CRT (run dependent), and has bad data-MC agreement!

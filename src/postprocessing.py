@@ -140,6 +140,69 @@ def _orthogonalization_masks():
 # null weight instead.
 UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
 
+# Source of the GENIE CV (MicroBooNE tune) and spline weights that form the base weight.
+#
+# Since 2026-09-10 these are the Pandora ntuple's `weightTune` / `weightSpline`
+# (nuselection/NeutrinoSelectionFilter, loaded with the pandora_ prefix), NOT WC's
+# T_eval weight_cv / weight_spline.  In events with more than one GENIE interaction
+# (pile-up in one spill; ~79% of dirt events, ~0.3% of nu_overlay) WC's weight_cv (and,
+# in Runs 1-3, weight_spline) is taken from a different MCTruth than the neutrino that
+# WC's own truth_nu* branches -- and every other tree -- report, ~60% of the time.  The
+# Pandora values are consistent with that neutrino (tune != 1 exactly for CC QE / CC MEC,
+# == 1 otherwise) and with the stored GENIE universes, whose universe 0 IS weightTune.
+# See ipynb_notebooks/genie_tune_weight_mismatch.ipynb.  The WC columns are kept
+# untouched in the dataframes (wc_weight_cv, wc_weight_spline) for comparison; the
+# validity clamp below (non-finite, <= 0 or > 30 -> 1.0) also covers the raw Pandora
+# pathologies (0, inf, negative values), which WC sanitizes to 1.0 on its side.
+GENIE_CV_WEIGHT_COL = "pandora_weightTune"
+GENIE_SPLINE_WEIGHT_COL = "pandora_weightSpline"
+WC_CV_WEIGHT_COL = "wc_weight_cv"
+WC_SPLINE_WEIGHT_COL = "wc_weight_spline"
+
+
+def genie_base_weight_expr():
+    """Polars expression for the sanitized GENIE base weight: cv*spline from the
+    GENIE_CV_WEIGHT_COL / GENIE_SPLINE_WEIGHT_COL columns, forced to 1.0 for the
+    UNIT_BASE_WEIGHT_FILETYPES and wherever the product is null, non-finite, <= 0 or > 30
+    (invalid or sentinel values)."""
+    weight_temp = pl.col(GENIE_CV_WEIGHT_COL) * pl.col(GENIE_SPLINE_WEIGHT_COL)
+    return (
+        pl.when(pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES)))
+        .then(pl.lit(1.0))
+        .when(
+            weight_temp.is_null() | weight_temp.is_nan() | weight_temp.is_infinite() |
+            (weight_temp <= 0.0) | (weight_temp > 30.0)
+        )
+        .then(pl.lit(1.0))
+        .otherwise(weight_temp)
+    )
+
+
+def report_cv_weight_source_mismatch(df, tol=0.05):
+    """Print, per filetype, how often the Pandora tune weight (used) and WC's weight_cv
+    (kept for debugging) disagree by more than `tol`, among rows where both are valid.
+    Large fractions are expected for dirt (multi-interaction events); anything
+    substantial elsewhere would point at a misaligned nuselection tree."""
+    if WC_CV_WEIGHT_COL not in df.columns or GENIE_CV_WEIGHT_COL not in df.columns:
+        return
+    valid = (
+        pl.col(WC_CV_WEIGHT_COL).is_finite() & (pl.col(WC_CV_WEIGHT_COL) > 0)
+        & pl.col(GENIE_CV_WEIGHT_COL).is_finite() & (pl.col(GENIE_CV_WEIGHT_COL) > 0)
+        & ~pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES))
+    )
+    rep = (
+        df.filter(valid)
+        .group_by("filetype")
+        .agg([
+            pl.len().alias("n_valid"),
+            (((pl.col(GENIE_CV_WEIGHT_COL) / pl.col(WC_CV_WEIGHT_COL)) - 1).abs() > tol).mean().alias("frac_mismatch"),
+        ])
+        .sort("filetype")
+    )
+    print(f"  CV weight source check ({GENIE_CV_WEIGHT_COL} vs {WC_CV_WEIGHT_COL}, |ratio-1| > {tol:.0%}):")
+    for row in rep.iter_rows(named=True):
+        print(f"    {row['filetype']:<28} n={row['n_valid']:>9,}  mismatch fraction = {row['frac_mismatch']:.4f}")
+
 
 def _build_normalizing_run_period_expr(run_period_map):
     """when/then chain mapping detailed_run_period -> normalizing_run_period (else null)."""
@@ -381,19 +444,16 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
     df = df.filter(combined_mask)
     gc.collect()
 
-    # ── Base weight: cv*spline, forced to 1.0 for data/ext/nuwro and invalid ──
-    print("adding base weight_cv_weight_spline...")
-    weight_temp = pl.col("wc_weight_cv") * pl.col("wc_weight_spline")
-    weight_temp = (
-        pl.when(pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES)))
-        .then(pl.lit(1.0))
-        .when(
-            weight_temp.is_null() | weight_temp.is_nan() | weight_temp.is_infinite() |
-            (weight_temp <= 0.0) | (weight_temp > 30.0)
-        )
-        .then(pl.lit(1.0))
-        .otherwise(weight_temp)
-    )
+    # ── Base weight: cv*spline (Pandora weightTune*weightSpline, see GENIE_CV_WEIGHT_COL),
+    #    forced to 1.0 for data/ext/nuwro and invalid ──
+    print(f"adding base weight_cv_weight_spline (from {GENIE_CV_WEIGHT_COL} * {GENIE_SPLINE_WEIGHT_COL})...")
+    missing = [c for c in (GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL) if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"columns {missing} are missing: the per-file dataframes predate the switch of the GENIE CV "
+            f"weight source to the Pandora tree (2026-09-10) -- recreate them with create_df.py --create_file_dfs")
+    report_cv_weight_source_mismatch(df)
+    weight_temp = genie_base_weight_expr()
     # nue_overlay: fold in the flux-sampling reweight
     # (create_df.add_nue_flux_sampling_weight), the target/sample ratio of the
     # cv*spline-weighted events/POT spectrum, on top of cv*spline (so the product
