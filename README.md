@@ -72,7 +72,8 @@ nohup python -u src/hyperparameter_tuning.py --study_name first_test_xgb_hp --n_
 
 ## Creating PROfit root file
 ```
-python src/save_PROfit_rootfiles.py
+python src/save_PROfit_rootfiles.py            # runs 1-5 open data: minimal_withspline_df.root + minimal_detvar_<vartype>_df.root
+python src/save_PROfit_rootfiles.py --nuwro    # NuWro fake-data study: minimal_withspline_nuwro_df.root + minimal_detvar_nuwro_<vartype>_df.root
 ```
 
 ## Creating Many Plots

@@ -30,6 +30,7 @@ from tqdm import tqdm
 
 from file_locations import intermediate_files_location
 from df_helpers import format_duration
+from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
 
@@ -46,8 +47,8 @@ NET_WEIGHT_COL = "wc_net_weight_open_data"
 NUWRO_WEIGHT_COL = "wc_net_weight_nuwro"
 NON_GENIE_NET_WEIGHT_COL = "non_genie_net_weight"
 
-# postprocessing.py builds NET_WEIGHT_COL with a sanitized
-# wc_weight_cv*wc_weight_spline factor.  These are the file types for which that
+# postprocessing.py builds NET_WEIGHT_COL with a sanitized cv*spline factor from the
+# Pandora weightTune*weightSpline columns.  These are the file types for which that
 # factor is explicitly replaced by one there.
 UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
 
@@ -96,7 +97,7 @@ TRAINING_VARS = combined_training_vars
 #                                      zero for filetypes excluded from that config)
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
-#     non_genie_net_weight           (net_weight with the valid GENIE wc_weight_cv
+#     non_genie_net_weight           (net_weight with the valid GENIE tune weight
 #                                      factor removed, for replacement-model weights)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
 # and for each DETVAR file: the scalar analysis columns plus vartype, detvar_sample,
@@ -614,19 +615,21 @@ def build_minimal_df(training):
 
     # Replace only the GENIE CV factor while retaining flux, POT, tune-spline,
     # selection-independent, and train/test normalization factors.  The base
-    # weight construction in postprocessing.py replaces the entire
-    # wc_weight_cv*wc_weight_spline product by one when it is invalid; in that
-    # case wc_weight_cv was never applied and must not be divided out here.
-    raw_genie_base = pl.col("wc_weight_cv") * pl.col("wc_weight_spline")
+    # weight construction in postprocessing.py builds cv*spline from the Pandora
+    # weightTune*weightSpline (GENIE_CV_WEIGHT_COL / GENIE_SPLINE_WEIGHT_COL; WC's
+    # wc_weight_cv belongs to a different MCTruth in multi-interaction events) and
+    # replaces the whole product by one when it is invalid; in that case the tune
+    # weight was never applied and must not be divided out here.
+    raw_genie_base = pl.col(GENIE_CV_WEIGHT_COL) * pl.col(GENIE_SPLINE_WEIGHT_COL)
     valid_genie_base = (
         ~pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES))
         & raw_genie_base.is_not_null()
         & raw_genie_base.is_finite()
         & (raw_genie_base > 0.0)
         & (raw_genie_base <= 30.0)
-        & pl.col("wc_weight_cv").is_not_null()
-        & pl.col("wc_weight_cv").is_finite()
-        & (pl.col("wc_weight_cv") > 0.0)
+        & pl.col(GENIE_CV_WEIGHT_COL).is_not_null()
+        & pl.col(GENIE_CV_WEIGHT_COL).is_finite()
+        & (pl.col(GENIE_CV_WEIGHT_COL) > 0.0)
     )
     finite_net_weight = (
         pl.col(NET_WEIGHT_COL).fill_null(0.0).fill_nan(0.0)
@@ -644,7 +647,7 @@ def build_minimal_df(training):
         pl.col("wc_mcflux_dk2gen").alias("mcflux_dk2gen"),
         pl.col("wc_mcflux_gen2vtx").alias("mcflux_gen2vtx"),
         pl.when(valid_genie_base)
-        .then(finite_net_weight / pl.col("wc_weight_cv"))
+        .then(finite_net_weight / pl.col(GENIE_CV_WEIGHT_COL))
         .otherwise(finite_net_weight)
         .alias(NON_GENIE_NET_WEIGHT_COL),
     ])

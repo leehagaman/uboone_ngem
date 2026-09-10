@@ -5,16 +5,30 @@ This is the command-line, plot-free version of ipynb_notebooks/save_PROfit_rootf
 It produces two kinds of output (both written with the PyROOT std::vector<double>
 writer that PROfit's SetBranchAddress pattern expects):
 
-  * nominal MC + data with GENIE spline weights ->  minimal_withspline_df.root
-  * one detector-variation file per vartype     ->  minimal_detvar_<vartype>_df.root
+  * nominal MC + data with GENIE spline weights ->  minimal_withspline[_nuwro]_df.root
+  * one detector-variation file per vartype     ->  minimal_detvar[_nuwro]_<vartype>_df.root
 
-The nominal prediction uses the runs 1-5 open-data POT weighting
-(wc_net_weight_open_data) across all run periods.  (The notebook was hard-coded to
-Run 4b because that was the only sample with spline weights; splines now exist for
-every prediction file, so we use all runs.)
+Two "studies" share every writer and differ only in what plays prediction and data
+(see STUDIES):
+
+  * default:  runs 1-5 open-data weighting (wc_net_weight_open_data).  Prediction =
+              overlays + EXT + dirt (+ the reweighted rad-corr / coherent-1g samples),
+              data = real data.
+  * --nuwro:  NuWro fake-data study (wc_net_weight_nuwro).  Prediction = overlays (+
+              the reweighted samples) normalized per run period to the NuWro POT with the
+              run 4b/4d/4bcd overlays folded into the 4c group; EXT and dirt have no
+              weight in that config and are left out.  Data = the NuWro fake data,
+              written with isdata == 1 (and isnuwro == 1) so an open-data PROfit XML
+              applies unchanged; it keeps its own NuWro-config weight, gets unit spline
+              branches like real data, and is kept whole (never in the train/test
+              split).  The DetVar weights are rescaled per run period from the
+              expected-full-dataset POT to the NuWro POT so the CV / variation mix
+              matches the prediction.  The total NuWro POT (for the XML pot attributes)
+              is printed.
 
 Usage:
-    python src/save_PROfit_rootfiles.py                    # splines + detvar
+    python src/save_PROfit_rootfiles.py                    # open data: splines + detvar
+    python src/save_PROfit_rootfiles.py --nuwro            # NuWro fake-data study
     python src/save_PROfit_rootfiles.py --no-detvar        # nominal only
     python src/save_PROfit_rootfiles.py --training all_vars
 """
@@ -41,14 +55,84 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULT_TRAINING = "all_vars_r15_2026_09_01"
 
-# Runs 1-5 open-data POT weighting (all run periods) for the nominal prediction.
-NET_WEIGHT_COL = "wc_net_weight_open_data"
+# Filetypes that are never in the BDT train/test split but are usable as prediction
+# (nothing was trained on them): kept whole, left out of the frac_test counts, and not
+# test-half upweighted, if a study lists them among its prediction filetypes.
+WHOLE_SAMPLE_FILETYPES = ["fullosc_overlay"]
+
+# Filetypes with no GENIE spline weights that are written with constant unit spline
+# branches (the data role of each study, and EXT when it is part of the prediction).
+NO_SPLINE_FILETYPES = ["data", "ext", "nuwro_fake_data"]
+
+# DetVar detailed_run_period -> NuWro normalizing run period, for the --nuwro DetVar
+# rescale.  The DetVar config groups {3, 3a, 3b1, 3b2} -> "3" and {4b, 4c, 4d, 4bcd} ->
+# "4nota"; the NuWro config groups the same detailed periods as "3" and "4c".  Because
+# both configs pool identical detailed periods, the per-(filetype, group) denominator
+# POTs are the same and only the goal POT differs, so
+# net_weight_nuwro = net_weight * goal_nuwro / goal_detvar exactly.
+DETVAR_TO_NUWRO_RUN_PERIOD = {
+    "1": "1", "2": "2",
+    "3": "3", "3a": "3", "3b1": "3", "3b2": "3",
+    "4a": "4a",
+    "4b": "4c", "4c": "4c", "4d": "4c", "4bcd": "4c",
+    "5": "5",
+}
+
+# The two studies.  Prediction / excluded filetypes are explicit allowlists: every
+# filetype found in all_df must be in one of prediction_filetypes, excluded_filetypes
+# or be the data_filetype, otherwise the script raises -- so a new sample has to be
+# classified on purpose.  The raw 1g overlays are excluded everywhere (kept only through
+# their reweighted filetypes).  To include fullosc, move it into a prediction list.
+STUDIES = {
+    "open_data": dict(
+        label="runs 1-5 open-data weighting",
+        net_weight_col="wc_net_weight_open_data",
+        weight_config_name="open_data",     # suffix of the normalizing_run_period_* / norm_goal_pot_* helper columns
+        data_filetype="data",
+        prediction_filetypes=[
+            "nu_overlay", "nue_overlay", "nc_pi0_overlay", "numucc_pi0_overlay",
+            "dirt_overlay", "ext",
+            "numuCC_rad_corrected", "NC_coherent_1g_reweighted",
+        ],
+        excluded_filetypes=[
+            "nuwro_fake_data",               # only in the --nuwro study
+            "isotropic_one_gamma_overlay",   # raw 1g overlay, kept as NC_coherent_1g_reweighted
+            "delete_one_gamma_overlay",      # raw 1g overlay, kept as numuCC_rad_corrected
+            "fullosc_overlay",               # evaluation-only sample
+        ],
+        nominal_output="minimal_withspline_df.root",
+        detvar_prefix="minimal_detvar_",
+        detvar_run_period_map=None,          # DetVar weights used as written by create_detvar_df.py
+    ),
+    "nuwro": dict(
+        label="NuWro fake-data weighting",
+        net_weight_col="wc_net_weight_nuwro",
+        weight_config_name="nuwro",
+        data_filetype="nuwro_fake_data",
+        prediction_filetypes=[
+            "nu_overlay", "nue_overlay", "nc_pi0_overlay", "numucc_pi0_overlay",
+            "numuCC_rad_corrected", "NC_coherent_1g_reweighted",
+        ],
+        excluded_filetypes=[
+            "data",                          # real data: not part of the fake-data study
+            "ext",                           # no weight in the NuWro config (no beam-off in the fake data)
+            "dirt_overlay",                  # no weight in the NuWro config (no dirt in the fake data)
+            "isotropic_one_gamma_overlay",
+            "delete_one_gamma_overlay",
+            "fullosc_overlay",
+        ],
+        nominal_output="minimal_withspline_nuwro_df.root",
+        detvar_prefix="minimal_detvar_nuwro_",
+        detvar_run_period_map=DETVAR_TO_NUWRO_RUN_PERIOD,   # rescale DetVar weights to the NuWro POT per group
+    ),
+}
 
 # DetVar has its own single weighting config (create_detvar_df.py) whose column is
 # "wc_net_weight" (each run period scaled to the expected full-dataset data POT); the
 # detvar covariance is a fractional (CV-var)/CV difference so the absolute
-# normalization cancels.
+# normalization cancels.  norm_goal_pot_detvar is that config's per-group goal POT.
 DETVAR_NET_WEIGHT_COL = "wc_net_weight"
+DETVAR_GOAL_POT_COL = "norm_goal_pot_detvar"
 
 # Integer code for the filetype string, written as the `filetype_code` branch so PROfit
 # can use it in cv_variation_matching_vars (TTreeFormula can't match on a string
@@ -67,6 +151,8 @@ FILETYPE_CODES = {
     "delete_one_gamma_overlay": 9,
     "isotropic_one_gamma_overlay": 10,
     "fullosc_overlay": 11,
+    "numuCC_rad_corrected": 12,
+    "NC_coherent_1g_reweighted": 13,
 }
 
 
@@ -96,7 +182,8 @@ TRAINING_VARS = combined_training_vars
 # always appends, for the NOMINAL file:
 #     prob_<category>                (one BDT score per reco category)
 #     isdata, isext, isdirt          (filetype flags)
-#     <NET_WEIGHT_COL>               (raw open-data net weight)
+#     <study net_weight_col>         (raw POT net weight of the study, e.g. wc_net_weight_open_data)
+#     filetype_code, isnuwro         (see FILETYPE_CODES; isnuwro flags the NuWro fake data)
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
@@ -417,7 +504,7 @@ def _fill_root_batch(tree, batch, out_cols, kinds, fixed_len, buffers, views, de
         tree.Fill()
 
 
-def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=131_072):
+def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_col, batch_size=131_072):
     """Write the nominal minimal_withspline tree with bounded memory.
 
     Instead of sinking the whole MC<->spline join to one intermediate parquet (whose
@@ -430,6 +517,8 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
 
     mc_df must already carry fraction_with_spline_weights / spline_processed_fraction_weight
     (from the per-filetype fractions join); data_df is the untouched data/ext minimal df.
+    net_weight_col names the POT-weight column (in both dfs) that becomes net_weight
+    (the study's STUDIES[...]["net_weight_col"]).
     """
     import pyarrow.parquet as pq
 
@@ -480,7 +569,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
             .join(mc_df, on=keys, how="inner")
             .with_columns([
                 pl.lit(True).alias("has_spline_weights"),
-                (pl.col(NET_WEIGHT_COL) * pl.col("spline_processed_fraction_weight")).alias("net_weight"),
+                (pl.col(net_weight_col) * pl.col("spline_processed_fraction_weight")).alias("net_weight"),
             ])
             .select(out_cols)
         )
@@ -528,7 +617,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
             data_extract[c] = ("int", s.to_numpy().astype(np.int32))
         else:
             data_extract[c] = ("float", s.to_numpy().astype(np.float64))
-    net = data_df[NET_WEIGHT_COL].to_numpy().astype(np.float64)
+    net = data_df[net_weight_col].to_numpy().astype(np.float64)
 
     for i in tqdm(range(data_df.height), desc="nominal data/ext"):
         for c in update_cols:
@@ -539,7 +628,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
                 buffers[c][0] = bool(arr[i])
             else:
                 buffers[c][0] = arr[i]
-        buffers["net_weight"][0] = net[i]   # data/ext net_weight = the open-data weight
+        buffers["net_weight"][0] = net[i]   # data/ext net_weight = the POT weight itself
         tree.Fill()
 
     tree.Write()
@@ -548,18 +637,39 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
     print(f"  wrote {total} events ({n_mc_written} MC + {data_df.height} data/ext) to {output_path}")
 
 
+
 # ============================================================================
 # Nominal MC + data (with spline weights)
 # ============================================================================
 
-def build_minimal_df(training):
-    """Return the lazy minimal nominal df (MC test events + data), scored and with a
-    reco_category, before spline merging."""
+def _check_filetypes(present, study):
+    """Every filetype in all_df must be classified by the study (prediction / excluded /
+    data); warn about listed prediction filetypes that are absent."""
+    known = set(study["prediction_filetypes"]) | set(study["excluded_filetypes"]) | {study["data_filetype"]}
+    unknown = sorted(set(present) - known)
+    if unknown:
+        raise ValueError(
+            f"filetypes {unknown} are in all_df but not in this study's prediction_filetypes / "
+            f"excluded_filetypes / data_filetype -- decide where they belong and add them to STUDIES")
+    missing = sorted(set(study["prediction_filetypes"]) - set(present))
+    if missing:
+        print(f"  WARNING: prediction filetypes {missing} are not present in all_df")
+    if study["data_filetype"] not in present:
+        raise ValueError(f"no {study['data_filetype']} rows in all_df")
+
+
+def build_minimal_df(training, study):
+    """Return the lazy minimal nominal df (prediction test events + the data-role
+    sample), scored and with a reco_category, before spline merging."""
     prob_cols = _prob_cols()
+    net_weight_col = study["net_weight_col"]
 
     all_df = pl.scan_parquet(f"{intermediate_files_location}/all_df.parquet")
     preds = pl.scan_parquet(f"{PROJECT_ROOT}/training_outputs/{training}/predictions.parquet")
     merged = all_df.join(preds, on=["filetype", "run", "subrun", "event"], how="left")
+
+    present = merged.select(pl.col("filetype").unique()).collect(engine="streaming")["filetype"].to_list()
+    _check_filetypes(present, study)
 
     # BDT scores: fill missing with -1, then the per-event argmax over the prob columns
     merged = merged.with_columns([pl.col(p).fill_null(-1) for p in prob_cols])
@@ -567,49 +677,52 @@ def build_minimal_df(training):
         pl.concat_list(prob_cols).list.arg_max().alias("reco_category_argmax_index")
     )
 
-    # prediction (drop raw 1g overlays, kept as their reweighted filetypes) vs real data
-    # If you want fullosc overlay in your PROfit rootfile, remove fullosc_overlay from this list!
-    pred = merged.filter(~pl.col("filetype").is_in(
-        ["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay", "fullosc_overlay"]))
-    data = merged.filter(pl.col("filetype") == "data")
+    pred = merged.filter(pl.col("filetype").is_in(study["prediction_filetypes"]))
+    data = merged.filter(pl.col("filetype") == study["data_filetype"])
 
-    # generic preselection + only events with a valid open-data weight
-    pred = pred.filter((pl.col("wc_kine_reco_Enu") > 0) & pl.col(NET_WEIGHT_COL).is_not_null())
+    # generic preselection; every prediction row must carry a weight in this config
+    pred = pred.filter(pl.col("wc_kine_reco_Enu") > 0)
+    n_unweighted = pred.filter(pl.col(net_weight_col).is_null()).select(pl.len()).collect(engine="streaming").item()
+    if n_unweighted:
+        raise ValueError(f"{n_unweighted} prediction rows have a null {net_weight_col}; the weighting config "
+                         f"does not cover one of {study['prediction_filetypes']}")
 
     # Use only test events (the BDT trained on the train half), weighted up by
-    # 1/frac_test so the total normalization is preserved.  Both counts in one pass.
-    # fullosc is evaluation-only: train.py never puts it in the train/test split
-    # (both flags False), but nothing was trained on it either, so every event is
-    # usable here.  Keep the whole sample, leave it out of the frac_test counts,
-    # and don't apply the test-half upweight to it.
-    filetype_used_for_training = pl.col("filetype") != "fullosc_overlay"
-    counts = pred.filter(filetype_used_for_training).select([
+    # 1/frac_test so the total normalization is preserved.  WHOLE_SAMPLE_FILETYPES are
+    # never in the split: kept whole, left out of the counts, not upweighted.
+    in_split = ~pl.col("filetype").is_in(WHOLE_SAMPLE_FILETYPES)
+    counts = pred.filter(in_split).select([
         pl.col("used_for_training").sum().alias("n_train"),
         pl.col("used_for_testing").sum().alias("n_test"),
-    ]).collect()
+    ]).collect(engine="streaming")
     num_train, num_test = counts["n_train"][0], counts["n_test"][0]
     frac_test = num_test / (num_train + num_test)
     print(f"  train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}")
     pred = pred.with_columns(
-        pl.when(pl.col("used_for_testing") & filetype_used_for_training)
-        .then(pl.col(NET_WEIGHT_COL) / frac_test)
-        .otherwise(pl.col(NET_WEIGHT_COL))
-        .alias(NET_WEIGHT_COL)
-    ).filter(pl.col("used_for_testing") | ~filetype_used_for_training)
+        pl.when(pl.col("used_for_testing") & in_split)
+        .then(pl.col(net_weight_col) / frac_test)
+        .otherwise(pl.col(net_weight_col))
+        .alias(net_weight_col)
+    ).filter(pl.col("used_for_testing") | ~in_split)
 
+    # the data role is kept whole (real data or NuWro fake data: never in the split)
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
     combined = pl.concat([pred, data], how="vertical")
     combined = combined.with_columns(_reco_category_expr().alias("reco_category"))
 
-    minimal = combined.select(OUTPUT_SCALAR_COLUMNS + [NET_WEIGHT_COL] + prob_cols).with_columns([
-        (pl.col("filetype") == "data").alias("isdata"),
+    # isdata flags the study's data role (real data, or the NuWro fake data in --nuwro)
+    # so the same PROfit XML (isdata == 1 data section; isdata==0 && isext==0 &&
+    # isdirt==0 overlays) applies to both studies.
+    minimal = combined.select(OUTPUT_SCALAR_COLUMNS + [net_weight_col] + prob_cols).with_columns([
+        _filetype_code_expr(),
+        (pl.col("filetype") == study["data_filetype"]).alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
+        (pl.col("filetype") == "nuwro_fake_data").alias("isnuwro"),
     ])
-    # all_df.parquet made before postprocessing.py zero-filled
-    # the fullosc-only branches: null here becomes NaN in ROOT, where wc_fullosc==0 is
-    # always false.
+    # all_df.parquet files made before postprocessing.py zero-filled the fullosc-only
+    # branches: null here becomes NaN in ROOT, where wc_fullosc==0 is always false.
     fullosc_cols = [c for c in ("wc_fullosc", "wc_fullosc_cv_weight")
                     if c in minimal.collect_schema().names()]
     if fullosc_cols:
@@ -635,23 +748,60 @@ def compute_spline_fractions(mc_df, spline_path):
     )
 
 
-def save_nominal(training, output_dir):
-    """Nominal MC + data with spline weights -> minimal_withspline_df.root.
+def get_goal_pot(study):
+    """{normalizing_run_period: goal POT} of the study's weighting config, read from
+    all_df's norm_goal_pot_<config> helper column on the data-role rows (one value per
+    group), so nothing is hardcoded.  Raises if a group carries more than one value."""
+    name = study["weight_config_name"]
+    nrp_col, goal_col = f"normalizing_run_period_{name}", f"norm_goal_pot_{name}"
+    table = (
+        pl.scan_parquet(f"{intermediate_files_location}/all_df.parquet")
+        .filter(pl.col("filetype") == study["data_filetype"])
+        .group_by(nrp_col)
+        .agg([pl.col(goal_col).min().alias("mn"), pl.col(goal_col).max().alias("mx")])
+        .sort(nrp_col)
+        .collect(engine="streaming")
+    )
+    goal = {}
+    for row in table.iter_rows(named=True):
+        nrp, mn, mx = row[nrp_col], row["mn"], row["mx"]
+        if nrp is None or mn is None or mn <= 0 or mn != mx:
+            raise ValueError(f"inconsistent {goal_col} for normalizing run period {nrp!r}: min={mn}, max={mx}")
+        goal[nrp] = float(mn)
+    if not goal:
+        raise ValueError(f"no {study['data_filetype']} rows with a {nrp_col} found in all_df")
+    return goal
 
-    The minimal df (30 scalar columns) is small enough to hold in memory; only the
+
+def print_goal_pot(goal, study):
+    print(f"  {study['data_filetype']} POT per normalizing run period:")
+    for nrp, pot in goal.items():
+        print(f"    {nrp:>4}: {pot:.4e}")
+    print(f"  total POT (for the PROfit XML pot attributes): {sum(goal.values()):.4e}")
+
+
+def save_nominal(training, output_dir, study):
+    """Prediction + data role with spline weights -> study['nominal_output'].
+
+    The minimal df (~30 scalar columns) is small enough to hold in memory; only the
     spline parquet with its 1000-wide list columns is big, and write_withspline_root
     streams that in bounded batches.  MC events without spline weights are dropped
-    (inner join) and each filetype is weighted up by 1/fraction_with_spline_weights,
-    exactly as the old lazy merge_splines/sink pipeline did -- but without ever
-    materializing the ~40 GB joined output, which drove polars' streaming sink past
-    100 GB RSS on runs 1-5."""
+    (inner join) and each filetype is weighted up by 1/fraction_with_spline_weights;
+    the data role and EXT (no spline weights) are written with unit spline branches."""
     spline_path = f"{intermediate_files_location}/spline_weights_df.parquet"
+    net_weight_col = study["net_weight_col"]
 
-    print("Building nominal minimal df (runs 1-5 open-data weighting)...")
-    minimal_df = build_minimal_df(training)
-    mc_df = minimal_df.filter(~pl.col("filetype").is_in(["data", "ext"])).collect(engine="streaming")
-    data_df = minimal_df.filter(pl.col("filetype").is_in(["data", "ext"])).collect(engine="streaming")
-    print(f"  {mc_df.height} MC events, {data_df.height} data/ext events")
+    print(f"Building nominal minimal df ({study['label']})...")
+    minimal_df = build_minimal_df(training, study)
+    unit_spline = [ft for ft in NO_SPLINE_FILETYPES
+                   if ft == study["data_filetype"] or ft in study["prediction_filetypes"]]
+    mc_df = minimal_df.filter(~pl.col("filetype").is_in(unit_spline)).collect(engine="streaming")
+    data_df = minimal_df.filter(pl.col("filetype").is_in(unit_spline)).collect(engine="streaming")
+    print(f"  {mc_df.height} MC events, {data_df.height} events written with unit spline branches ({unit_spline})")
+    print(f"  preselected prediction total (before spline-fraction weighting): "
+          f"{mc_df[net_weight_col].sum() + data_df.filter(pl.col('filetype') != study['data_filetype'])[net_weight_col].sum():.1f}")
+    print(f"  preselected {study['data_filetype']} total: "
+          f"{data_df.filter(pl.col('filetype') == study['data_filetype'])[net_weight_col].sum():.1f}")
 
     print("Merging spline weights...")
     fractions = compute_spline_fractions(mc_df, spline_path)
@@ -661,15 +811,21 @@ def save_nominal(training, output_dir):
               f"{frac if frac is None else f'{frac:.4f}'}")
     mc_df = mc_df.join(fractions, on="filetype", how="left")
 
-    output_path = f"{output_dir}/minimal_withspline_df.root"
-    write_withspline_root(mc_df, data_df, spline_path, output_path)
+    output_path = f"{output_dir}/{study['nominal_output']}"
+    write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_col=net_weight_col)
+
+    print_goal_pot(get_goal_pot(study), study)
 
 
 # ============================================================================
 # Detector variations
 # ============================================================================
 
-def save_detvar(training, output_dir):
+def score_detvar_df(training, extra_cols=()):
+    """Return the scored DetVar minimal df (all vartypes): ids, flags, reco_category,
+    wc_kine_reco_Enu, net_weight (= DETVAR_NET_WEIGHT_COL) and the prob_ columns, plus any
+    extra_cols carried through untouched (the --nuwro DetVar rescale uses these to
+    rescale the run-period mix)."""
     print("Building DetVar minimal dfs...")
     prob_cols = _prob_cols()
 
@@ -695,7 +851,7 @@ def save_detvar(training, output_dir):
     # (e.g. wc_kine_reco_Enu is in TRAINING_VARS), which .select would reject as duplicate.
     keep = list(dict.fromkeys(
         ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_NET_WEIGHT_COL]
-        + TRAINING_VARS))
+        + TRAINING_VARS + list(extra_cols)))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
         .select(keep)
@@ -730,9 +886,13 @@ def save_detvar(training, output_dir):
 
     detvar_minimal = presel.select(
         ["filetype", "filetype_code", "vartype", "detvar_sample", "run", "subrun", "event", "isdata", "isext", "isdirt",
-         "reco_category", "wc_kine_reco_Enu", "net_weight"] + prob_cols
+         "reco_category", "wc_kine_reco_Enu", "net_weight"] + prob_cols + list(extra_cols)
     )
+    return detvar_minimal
 
+
+def write_detvar_files(detvar_minimal, output_dir, file_prefix="minimal_detvar_"):
+    """Write one <file_prefix><vartype>_df.root per DETVAR_VARTYPES from the scored df."""
     present = detvar_minimal["vartype"].unique().to_list()
     unexpected = [v for v in present if v not in DETVAR_VARTYPES]
     if unexpected:
@@ -745,8 +905,58 @@ def save_detvar(training, output_dir):
         if df_to_save.height == 0:
             print(f"  WARNING: no events for detvar vartype '{vartype}'; skipping")
             continue
-        output_path = f"{output_dir}/minimal_detvar_{vartype}_df.root"
+        output_path = f"{output_dir}/{file_prefix}{vartype}_df.root"
         write_df_to_root(df_to_save, output_path, desc=f"detvar {vartype}")
+
+
+
+def rescale_detvar_weights(detvar_minimal, run_period_map, goal):
+    """Multiply each DetVar event's net_weight by (goal POT of its mapped group) /
+    (the DetVar config's goal POT of its own group), see DETVAR_TO_NUWRO_RUN_PERIOD."""
+    present = detvar_minimal["detailed_run_period"].unique().to_list()
+    unmapped = sorted(p for p in present if p not in run_period_map)
+    if unmapped:
+        raise ValueError(f"DetVar detailed_run_period(s) {unmapped} are missing from the run-period map")
+    missing_goal = sorted({run_period_map[p] for p in present} - set(goal))
+    if missing_goal:
+        raise ValueError(f"DetVar events map to run period(s) {missing_goal} that have no goal POT")
+    if detvar_minimal.filter(pl.col(DETVAR_GOAL_POT_COL).is_null() | (pl.col(DETVAR_GOAL_POT_COL) <= 0)).height:
+        raise ValueError(f"DetVar rows with a null/zero {DETVAR_GOAL_POT_COL}")
+
+    mapped = pl.col("detailed_run_period").replace_strict(run_period_map, return_dtype=pl.String)
+    scale = mapped.replace_strict(goal, return_dtype=pl.Float64) / pl.col(DETVAR_GOAL_POT_COL).cast(pl.Float64)
+
+    summary = (
+        detvar_minimal.with_columns(scale.alias("_scale"))
+        .group_by(["filetype", "detailed_run_period"])
+        .agg([pl.len().alias("n"), pl.col("_scale").min().alias("scale_min"), pl.col("_scale").max().alias("scale_max")])
+        .sort(["filetype", "detailed_run_period"])
+    )
+    print("  DetVar weight rescale (expected-full-dataset POT -> study POT), per filetype / detailed_run_period:")
+    for row in summary.iter_rows(named=True):
+        print(f"    {row['filetype']:<12} {row['detailed_run_period']:<5} -> group "
+              f"{run_period_map[row['detailed_run_period']]:<3} x{row['scale_min']:.4f}  ({row['n']} events)")
+        if abs(row["scale_min"] - row["scale_max"]) > 1e-6 * abs(row["scale_min"]):
+            raise ValueError(f"non-constant rescale within {row['filetype']} {row['detailed_run_period']}: "
+                             f"{row['scale_min']} .. {row['scale_max']}")
+
+    return (
+        detvar_minimal
+        .with_columns((pl.col("net_weight") * scale).alias("net_weight"))
+        .drop(["detailed_run_period", DETVAR_GOAL_POT_COL])
+    )
+
+
+def save_detvar(training, output_dir, study):
+    run_period_map = study["detvar_run_period_map"]
+    if run_period_map is None:
+        detvar_minimal = score_detvar_df(training)
+    else:
+        detvar_minimal = score_detvar_df(training, extra_cols=["detailed_run_period", DETVAR_GOAL_POT_COL])
+        goal = get_goal_pot(study)
+        print_goal_pot(goal, study)
+        detvar_minimal = rescale_detvar_weights(detvar_minimal, run_period_map, goal)
+    write_detvar_files(detvar_minimal, output_dir, file_prefix=study["detvar_prefix"])
 
 
 # ============================================================================
@@ -757,15 +967,20 @@ def main():
                         help=f"training_outputs/<name> to read predictions + BDT from (default: {DEFAULT_TRAINING})")
     parser.add_argument("--output-dir", default=intermediate_files_location,
                         help="directory to write the ROOT files into (default: intermediate_files_location)")
+    parser.add_argument("--nuwro", action="store_true",
+                        help="NuWro fake-data study: NuWro-POT weighting, NuWro fake data as the data role "
+                             "(isdata == 1), DetVar weights rescaled to the NuWro POT; writes the *_nuwro_* files")
     parser.add_argument("--no-splines", action="store_true", help="skip the nominal MC+data spline ROOT file")
     parser.add_argument("--no-detvar", action="store_true", help="skip the per-vartype detvar ROOT files")
     args = parser.parse_args()
+    study = STUDIES["nuwro" if args.nuwro else "open_data"]
+    print(f"Study: {study['label']} ({study['net_weight_col']}, data role = {study['data_filetype']})")
 
     start = time.time()
     if not args.no_splines:
-        save_nominal(args.training, args.output_dir)
+        save_nominal(args.training, args.output_dir, study)
     if not args.no_detvar:
-        save_detvar(args.training, args.output_dir)
+        save_detvar(args.training, args.output_dir, study)
     print(f"Done in {format_duration(time.time() - start)}", flush=True)
     # All ROOT files are written and closed; skip Python/polars teardown, which can
     # segfault while ROOT is loaded (ROOT's signal handlers vs polars' Rust threads).
