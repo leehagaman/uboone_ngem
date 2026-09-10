@@ -21,9 +21,19 @@ ZEXP_MINERVA_K7_BRANCHES = tuple(
     f"weight_spline_FAzexpMinervaK7PCA{i}" for i in range(1, 4)
 )
 
+ZEXP_LQCD_K7_FA_BRANCH = "weight_lqcd_k7_FA"
+ZEXP_LQCD_K7_BRANCHES = tuple(
+    f"weight_spline_FAzexpLQCDK7PCA{i}" for i in range(1, 4)
+)
+
 ZEXP_LQCD_K6_FA_BRANCH = "weight_lqcd_k6_FA"
 ZEXP_LQCD_K6_BRANCHES = tuple(
     f"weight_spline_FAzexpLQCDK6PCA{i}" for i in range(1, 3)
+)
+
+ZEXP_MINERVA_LQCD_K7_FA_BRANCH = "weight_minerva_lqcd_k7_FA"
+ZEXP_MINERVA_LQCD_K7_BRANCHES = tuple(
+    f"weight_spline_FAzexpMinervaLQCDK7PCA{i}" for i in range(1, 4)
 )
 
 ZEXP_MINERVA_LQCD_K6_FA_BRANCH = "weight_minerva_lqcd_k6_FA"
@@ -37,10 +47,16 @@ T_CUT_GEV2 = 9.0 * PION_MASS_GEV * PION_MASS_GEV
 AXIAL_FORM_FACTOR_Q2_ZERO = -1.2723
 MINERVA_T0_GEV2 = -0.75
 
-# Used in arXiv:2512.14097 (2025)
+# Used in arXiv:2512.14097 (2026)
 ZEXP_T0_GEV2 = -0.50
 ZEXP_T_CUT_GEV2 = 9.0 * 0.134**2
 ZEXP_FA_Q2_ZERO = -1.2754
+
+# F_A(0) of the GENIE dipole behind the MaCCQE_UBGenie spline weights.
+# G18_10a_02_11a resolves DipoleAxialFormFactorModel/Default through
+# CommonParam[QuasiElastic], where QEL-FA0 = -1.2670 (the tune only changes
+# QEL-Ma).  Use this, not a prior's F_A(0), wherever the dipole grid is built.
+GENIE_DIPOLE_FA_Q2_ZERO = -1.2670
 
 @dataclass(frozen=True)
 class ZExpPrior:
@@ -126,7 +142,7 @@ MINERVA_LEGACY_PRIOR = ZExpPrior(
 )
 
 MINERVA_K7_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2025 kmax=7",
+    name="MINERvA hydrogen 2026 kmax=7",
     free_a_values=_negative_fa_coefficients(
         [-1.69373431, 0.80639393, 0.87442257]
     ),
@@ -149,7 +165,7 @@ MINERVA_K7_PRIOR = ZExpPrior(
 )
 
 MINERVA_K6_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2025 kmax=6",
+    name="MINERvA hydrogen 2026 kmax=6",
     free_a_values=_negative_fa_coefficients([-1.64778080, 0.94181417]),
     covariance=np.array(
         [[0.05554150, -0.03262482], [-0.03262482, 0.09151761]], dtype=float
@@ -165,6 +181,26 @@ MINERVA_K6_PRIOR = ZExpPrior(
 )
 
 # A.S. Meyer, arXiv:2601.02676 (2026), Eqs. (53)--(55).
+LQCD_K7_PRIOR = ZExpPrior(
+    name="LQCD 2026 kmax=7",
+    free_a_values=_negative_fa_coefficients([-1.65806627, 0.43099261, 1.06243035]),
+    covariance=np.array(
+        [
+            [ 0.00910412,  0.02592048, -0.08986544],
+            [ 0.02592048,  0.12033231, -0.30490195],
+            [-0.08986544, -0.30490195,  0.93874891]
+        ], dtype=float
+    ),
+    full_a_values=_negative_fa_coefficients(
+        [
+            0.72240694, -1.65806627, 0.43099261, 1.06243035,
+            -0.68256510, 1.06363538, -1.59271086, 0.65387696
+        ]
+    ),
+    cv_branch=ZEXP_LQCD_K7_FA_BRANCH,
+    variation_branches=ZEXP_LQCD_K7_BRANCHES,
+)
+
 LQCD_K6_PRIOR = ZExpPrior(
     name="LQCD 2026 kmax=6",
     free_a_values=_negative_fa_coefficients([-1.70104640, 0.26324902]),
@@ -181,8 +217,28 @@ LQCD_K6_PRIOR = ZExpPrior(
     variation_branches=ZEXP_LQCD_K6_BRANCHES,
 )
 
+MINERVA_LQCD_K7_PRIOR = ZExpPrior(
+    name="MINERvA+LQCD 2026 kmax=7",
+    free_a_values=_negative_fa_coefficients([-1.77604402, 0.04912094, 2.27409531]),
+    covariance=np.array(
+        [
+            [ 0.00576457,  0.01550765, -0.05596858],
+            [ 0.01550765,  0.08687614, -0.19816291],
+            [-0.05596858, -0.19816291,  0.59358115]
+        ], dtype=float
+    ),
+    full_a_values=_negative_fa_coefficients(
+        [
+            0.71531031, -1.77604402, 0.04912094, 2.27409531,
+            0.89742871, -5.20892371, 4.03266727, -0.98365481
+        ]
+    ),
+    cv_branch=ZEXP_MINERVA_LQCD_K7_FA_BRANCH,
+    variation_branches=ZEXP_MINERVA_LQCD_K7_BRANCHES,
+)
+
 MINERVA_LQCD_K6_PRIOR = ZExpPrior(
-    name="MINERvA+LQCD 2025 kmax=6",
+    name="MINERvA+LQCD 2026 kmax=6",
     free_a_values=_negative_fa_coefficients([-1.71743430, 0.31652883]),
     covariance=np.array(
         [[0.00165493, -0.00268883], [-0.00268883, 0.00737483]], dtype=float
@@ -201,7 +257,9 @@ ZEXP_PRIORS = (
     MINERVA_LEGACY_PRIOR, # MINERvA Nature result with covariance, in PCA
     MINERVA_K6_PRIOR, # MINERvA k=6 result with covariance, in PCA
     MINERVA_K7_PRIOR, # MINERvA k=7 result with covariance, in PCA
+    LQCD_K7_PRIOR, # LQCD k=7 result with covariance, in PCA
     LQCD_K6_PRIOR, # LQCD k=6 result with covariance, in PCA
+    MINERVA_LQCD_K7_PRIOR, # MINERvA + LQCD k=7 with covariance, in PCA
     MINERVA_LQCD_K6_PRIOR, # MINERvA + LQCD k=6 with covariance, in PCA
 )
 
@@ -219,8 +277,8 @@ ZEXP_ALL_BRANCHES = (*ZEXP_CV_BRANCHES, *ZEXP_VARIATION_BRANCHES)
 def axial_form_factor_zexp(
     q2_gev2,
     a_values,
-    t0_gev2=MINERVA_T0_GEV2,
-    t_cut_gev2=T_CUT_GEV2,
+    t0_gev2,
+    t_cut_gev2,
 ):
     """Evaluate the z-expansion axial form factor F_A(Q^2)."""
     q2 = np.asarray(q2_gev2, dtype=float)
@@ -243,7 +301,7 @@ def effective_axial_mass_gev(q2_gev2, axial_form_factor):
     f_a = np.asarray(axial_form_factor, dtype=float)
 
     with np.errstate(invalid="ignore", divide="ignore"):
-        ratio = AXIAL_FORM_FACTOR_Q2_ZERO / f_a
+        ratio = GENIE_DIPOLE_FA_Q2_ZERO / f_a
         denom = np.sqrt(ratio) - 1.0
         return np.where(
             (ratio > 0.0) & (denom > 1e-10),
@@ -291,7 +349,7 @@ def interpolate_fa_spline_weights(q2_gev2, target_fa, ma_weights):
     if q2.shape != target.shape or weights.shape != (len(q2), len(MA_CCQE_GRID_GEV)):
         raise ValueError("q2, target_fa, and ma_weights have incompatible shapes")
 
-    fa_grid = AXIAL_FORM_FACTOR_Q2_ZERO / (
+    fa_grid = GENIE_DIPOLE_FA_Q2_ZERO / (
         1.0 + q2[:, None] / MA_CCQE_GRID_GEV[None, :] ** 2
     ) ** 2
     # F_A becomes more negative as M_A increases, so reverse into ascending
@@ -335,7 +393,7 @@ def _prepare_quadratic_fa_splines(q2_gev2, ma_weights):
     if q2.ndim != 1 or weights.shape != expected_shape:
         raise ValueError("q2 and ma_weights have incompatible shapes")
 
-    fa_grid = AXIAL_FORM_FACTOR_Q2_ZERO / (
+    fa_grid = GENIE_DIPOLE_FA_Q2_ZERO / (
         1.0 + q2[:, None] / MA_CCQE_GRID_GEV[None, :] ** 2
     ) ** 2
     center = fa_grid[:, 3]
@@ -377,10 +435,15 @@ def complete_zexp_a_values(
     kmax,
     t0_gev2,
     *,
-    t_cut_gev2=T_CUT_GEV2,
-    fa_q2_zero=AXIAL_FORM_FACTOR_Q2_ZERO,
+    t_cut_gev2,
+    fa_q2_zero,
 ):
-    """Complete a1...a[kmax-4] using F_A(0) and four sum rules."""
+    """Complete a1...a[kmax-4] using F_A(0) and four sum rules.
+
+    ``t0_gev2``, ``t_cut_gev2`` and ``fa_q2_zero`` must all be given
+    explicitly: the correct values depend on the prior (MINERvA 2023 vs 2026
+    conventions) and there is no safe default.
+    """
     free = np.asarray(free_a_values, dtype=float)
     n_free = kmax - 4
     if kmax < 5 or free.shape != (n_free,):
@@ -468,8 +531,8 @@ def _weights_for_a_values(
     true_q2_gev2,
     ma_spline_weights,
     a_values,
-    t0_gev2=MINERVA_T0_GEV2,
-    t_cut_gev2=T_CUT_GEV2,
+    t0_gev2,
+    t_cut_gev2,
     quadratic_model=None,
 ):
     f_a = axial_form_factor_zexp(
@@ -491,9 +554,9 @@ def compute_zexp_weight_set(
     variation_branches,
     *,
     use_pca,
-    t0_gev2=MINERVA_T0_GEV2,
-    t_cut_gev2=T_CUT_GEV2,
-    fa_q2_zero=AXIAL_FORM_FACTOR_Q2_ZERO,
+    t0_gev2,
+    t_cut_gev2,
+    fa_q2_zero,
     kmax=None,
     full_cv_a_values=None,
     _quadratic_model=None,
