@@ -250,6 +250,13 @@ def _load_weight_grid():
     return mee_edges, cos_edges, W2
 
 
+# Filetypes that never get the Dalitz shape correction (weight fixed at 1.0).  The
+# NuWro sample plays the *data* role in the fake-data study, and a fake dataset must
+# stay unweighted (integer counts) -- it is what the corrected prediction is compared
+# against.  Real data / EXT have no truth and never satisfy the Dalitz mask anyway.
+NO_DALITZ_REWEIGHT_FILETYPES = ("nuwro_fake_data",)
+
+
 def apply_pi0_dalitz_reweighting(df, make_plots=True):
     """Apply the pi0 Dalitz Geant4->EvtGen reweighting to existing events in-place.
 
@@ -261,7 +268,9 @@ def apply_pi0_dalitz_reweighting(df, make_plots=True):
     Unlike the rad-corr / coherent-1g reweightings (which APPEND new derived rows),
     this is a pure shape correction to events already in the df, so it adds no rows.
     It adds a standalone ``pi0_dalitz_reweight_weight`` column (1.0 for non-Dalitz
-    events).  The caller is responsible for folding that factor into each per-config
+    events and for every row of NO_DALITZ_REWEIGHT_FILETYPES, i.e. the NuWro fake
+    data, which is kept unweighted as the data-role sample; those rows are also left
+    out of the monitoring plots).  The caller is responsible for folding that factor into each per-config
     net-weight column (create_df multiplies it into every wc_net_weight_* column),
     since there is no single canonical net-weight column anymore.
     The lookup is per-row from each event's own truth invariants -- no join -- so
@@ -290,6 +299,12 @@ def apply_pi0_dalitz_reweighting(df, make_plots=True):
     mee = df[_MEE_COL].to_numpy()
     cos = df[_COS_COL].to_numpy()
     is_dalitz = df["wc_true_has_pi0_dalitz_decay"].to_numpy() & (mee > 0)
+    if "filetype" in df.columns:
+        excluded = df["filetype"].is_in(list(NO_DALITZ_REWEIGHT_FILETYPES)).to_numpy()
+        n_excluded = int((is_dalitz & excluded).sum())
+        if n_excluded:
+            print(f"  leaving {n_excluded:,} Dalitz events in {NO_DALITZ_REWEIGHT_FILETYPES} unweighted")
+        is_dalitz = is_dalitz & ~excluded
     weight = np.where(is_dalitz, weight_of(mee, cos), 1.0)
     print(f"  weighted {int(is_dalitz.sum()):,} Dalitz events "
           f"(weight range {weight[is_dalitz].min():.3f} .. {weight[is_dalitz].max():.3f})"

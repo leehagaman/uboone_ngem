@@ -1043,7 +1043,8 @@ if __name__ == "__main__":
                     all_df = all_df.with_columns(pl.lit(1.0).alias(_col))
                 all_df = all_df.with_columns(pl.col(_col).fill_null(1.0).cast(pl.Float32))
             # pi0 Dalitz shape reweight: adds standalone pi0_dalitz_reweight_weight (1.0
-            # for non-Dalitz events).  Per-row lookup, so safe per part.
+            # for non-Dalitz events, and always 1.0 for the NuWro fake data, which must
+            # stay unweighted as the data-role sample).  Per-row lookup, so safe per part.
             all_df = apply_pi0_dalitz_reweighting(all_df, make_plots=False)
             # Fold the per-event pi0-Dalitz and hA2025 pion-FSI factors into every
             # per-config net-weight column (1.0 where not applicable; null stays null).
