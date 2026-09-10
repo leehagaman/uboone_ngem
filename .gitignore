@@ -42,3 +42,5 @@ BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/*
 !BuildEventGenerators/Generator/data/evgen/intranuke/tot_xsec/pipA_pipro_frac/
 
 ipynb_notebooks/run_subrun_lists/*
+ipynb_notebooks/genie_tune_mismatch_cache/*
+ipynb_notebooks/eta_decay_check_cache/*
