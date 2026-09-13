@@ -24,8 +24,10 @@ from src.memory_monitoring import start_memory_logger
 
 from src.pyroot_loading import get_rw_sys_weights_dic
 from src.zexp_reweighting import (
+    ZEXP_CROSS_BRANCHES,
     ZEXP_CV_BRANCHES,
     ZEXP_VARIATION_BRANCHES,
+    compute_zexp_cross_weights,
     compute_zexp_weights,
 )
 
@@ -167,7 +169,9 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     syst_df : run/subrun/event + CV weights + the GENIE/flux/reint multisim systematic
               weights (the `weights` map), preselected to wc_kine_reco_Enu > 0.
     spline_df : run/subrun/event + the per-knob spline weights (the file's
-              spline_weights tree) + weightsReint, preselected identically.
+              spline_weights tree) + weightsReint + the z-expansion axial-form-factor
+              branches (CV, seven-knot PCA variations and the two-parameter CROSS
+              design points of every ZExpPrior), preselected identically.
 
     The spline loading used to live in the standalone create_splines_df.py and read a
     handful of special run-4b spline files; it is folded in here now that every overlay
@@ -250,9 +254,25 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
             spline_dict[col] = zexp_weights[col]
             continue
         spline_dict[col] = [row.tolist() for row in zexp_weights[col]]
+
+    # Two-parameter design points for the z-expansion response (the CROSS branches).
+    #
+    # PROfit multiplies its one-dimensional splines together, which cannot represent
+    # the cross terms of the exactly-quadratic per-bin response
+    #     R_b(eta) = 1 + sum_i b_i eta_i + sum_i d_i eta_i^2 + sum_{i<j} e_ij eta_i eta_j.
+    # The seven-knot PCA branches fix b_i and d_i but say nothing about e_ij, so one
+    # extra design point per parameter pair is written per prior:
+    #     entry 0     : eta = 0 (equals the prior's CV branch, so force_0_cv normalises it)
+    #     entry 1 + p : eta = e_i + e_j for the p-th pair of zexp_cross_pairs(n)
+    # from which PROfit (type="spline_cross_quad") recovers
+    #     e_ij = R(e_i+e_j) - s_i(1) - s_j(1) + 1.
+    print("  computing z-expansion CROSS design-point weights...")
+    zexp_cross = compute_zexp_cross_weights(q2_data["GTruth_gQ2"], spline_data["MaCCQE_UBGenie"])
+    for col in ZEXP_CROSS_BRANCHES:
+        spline_dict[col] = [row.tolist() for row in zexp_cross[col].astype(np.float64)]
     spline_df = pl.DataFrame(spline_dict)
 
-    del f, dic, all_event_weights, spline_data, reint_data, q2_data, zexp_weights
+    del f, dic, all_event_weights, spline_data, reint_data, q2_data, zexp_weights, zexp_cross
 
     # identical preselection on both dfs (same entry slice -> same row order, so the
     # boolean mask from one applies to the other).
