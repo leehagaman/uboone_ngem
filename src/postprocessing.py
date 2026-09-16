@@ -2097,13 +2097,7 @@ def do_pandora_postprocessing(df):
 
 
 def add_afro_1mu1p_sel(df):
-    """Append the Afro 1mu1p columns: the reco selection flag and reco STVs
-    (afro_1mu1p_sel, afro_1mu1p_<X>) from the Pandora muon and proton candidates, and
-    the true 1mu1p flag and true STVs (afro_1mu1p_true, afro_1mu1p_true_<X>) from the
-    true muon and the single signal proton.  The per-event loop only decides the
-    selection and hands back the two 3-momenta; the STVs are then computed for all
-    events in one vectorised pass.  Runs before remove_vector_variables so the full WC
-    truth particle list is available."""
+    """Append the Afro 1mu1p columns"""
     missing_columns = [col for col in REQUIRED_RECO_SELECTION_COLUMNS if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing columns needed for add_afro_1mu1p_sel: {missing_columns}")
