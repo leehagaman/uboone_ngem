@@ -6,6 +6,11 @@ import polars as pl
 from .file_locations import intermediate_files_location, covariance_cache_location
 from .df_helpers import get_vals
 
+# The GENIE tune CV weight column the stored universes are relative to (universe 0 of every
+# tune-scaled knob).  Keep in sync with postprocessing.GENIE_CV_WEIGHT_COL (not imported:
+# this module uses package-relative imports, postprocessing.py absolute ones).
+GENIE_CV_WEIGHT_COL = "pandora_weightTune"
+
 from scipy.special import erfinv, erfcinv, erfc
 from scipy.stats import chi2
 from scipy.stats import poisson
@@ -147,7 +152,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     # Filter mc_pred_df to events present in weights, fetching only key columns from weights
     # so no List[Float32] universe columns are loaded yet.
     join_keys = ["filename", "run", "subrun", "event"]
-    pred_vars = list(dict.fromkeys(join_keys + [net_weight_var, "wc_weight_cv", "wc_weight_spline", var]))
+    pred_vars = list(dict.fromkeys(join_keys + [net_weight_var, GENIE_CV_WEIGHT_COL, var]))
     weights_parquet_path = f"{intermediate_files_location}/presel_weights_df.parquet"
 
     print("filtering mc_pred_df to events present in weights...")
@@ -179,17 +184,21 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     # we use these weights when we consider a new weight independent of the GENIE CV weights
     normal_weights = base_merged.get_column(net_weight_var).to_numpy()
 
-    # we use these weights when we replace GENIE weight_cv with the new systematic weight (the stored
-    # GENIE universe weights are weight_cv * knob ratio, so weight_cv is divided out of the net weight).
-    # Only divide where weight_cv is a valid weight (same validity as the postprocessing clamp and the
+    # we use these weights when we replace the GENIE tune CV weight with the new systematic weight (the
+    # stored GENIE universe weights are tune * knob ratio, so the tune weight is divided out of the net
+    # weight).  The tune weight is the Pandora weightTune (postprocessing.GENIE_CV_WEIGHT_COL) -- the same
+    # column the base weight is built from and, event by event, exactly universe 0 of the stored knobs; WC's
+    # wc_weight_cv is NOT used here because in multi-interaction events it belongs to a different MCTruth
+    # (ipynb_notebooks/genie_tune_weight_mismatch.ipynb).
+    # Only divide where the tune weight is a valid weight (same validity as the postprocessing clamp and the
     # universe-weight clamp in create_universe_histograms): rows from samples with no GENIE weight tree
     # (delete_one_gamma / isotropic_one_gamma, hence the derived numuCC_rad_corrected and
-    # NC_coherent_1g_reweighted rows, and nuwro) carry the -1 sentinel in wc_weight_cv and unit universe
+    # NC_coherent_1g_reweighted rows, and nuwro) carry the -1 sentinel and unit universe
     # weights, so for them the universe weight has to multiply the net weight unchanged.  Dividing by
     # the -1 sentinel flipped their sign in every universe, giving every knob (even dead ones) an
     # identical spurious deviation of 2x their share of the prediction (seen 2026-09-07 as a >100%
     # GENIE band on the 1gNp1mu selection).
-    cv_arr = base_merged.get_column("wc_weight_cv").to_numpy().astype(np.float64)
+    cv_arr = base_merged.get_column(GENIE_CV_WEIGHT_COL).to_numpy().astype(np.float64)
     valid_cv = np.isfinite(cv_arr) & (cv_arr > 0) & (cv_arr <= 30)
     non_genie_cv_weights = normal_weights / np.where(valid_cv, cv_arr, 1.0)
 
