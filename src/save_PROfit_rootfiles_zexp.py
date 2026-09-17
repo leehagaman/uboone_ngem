@@ -33,6 +33,7 @@ from df_helpers import format_duration
 from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
+from afro_1mu1p_selection import STV_COLUMN_NAMES, TRUE_STV_COLUMN_NAMES
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -108,24 +109,32 @@ TRAINING_VARS = combined_training_vars
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
-OUTPUT_SCALAR_COLUMNS = [
-    "filetype",
-    "run",
-    "subrun",
-    "event",
-    "reco_category",
-    "wc_kine_reco_Enu",
+EVENT_KEY_COLUMNS = ["filetype", "run", "subrun", "event"]
+
+AFRO_1MU1P_COLUMNS = [
     "afro_1mu1p_sel",
     "afro_1mu1p_true",
-    "afro_1mu1p_PMiss",
-    "afro_1mu1p_Pn",
-    "afro_1mu1p_Pt",
-    "afro_1mu1p_Q2",
-    "GTruth_gQ2",
-    "truth_nuEnergy",
-    "mcflux_dk2gen",
-    "mcflux_gen2vtx"
+    *STV_COLUMN_NAMES.values(),
+    *TRUE_STV_COLUMN_NAMES.values(),
 ]
+
+TRUTH_ALIASES = {
+    "GTruth_gQ2": "glee_GTruth_gQ2",
+    "truth_nuEnergy": "wc_truth_nuEnergy",
+    "mcflux_dk2gen": "wc_mcflux_dk2gen",
+    "mcflux_gen2vtx": "wc_mcflux_gen2vtx",
+}
+
+OUTPUT_SCALAR_COLUMNS = [
+    *EVENT_KEY_COLUMNS,
+    "reco_category",
+    "wc_kine_reco_Enu",
+    *AFRO_1MU1P_COLUMNS,
+    *TRUTH_ALIASES,
+]
+
+def _truth_alias_exprs():
+    return [pl.col(source).alias(branch) for branch, source in TRUTH_ALIASES.items()]
 
 # reco_category selection.  For each category:  (prob threshold on prob_<category>,
 # priority).  A threshold of None means the category is selected by the argmax of the
@@ -435,7 +444,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
     import pyarrow.parquet as pq
 
     ROOT = _import_root()
-    keys = ["filetype", "run", "subrun", "event"]
+    keys = EVENT_KEY_COLUMNS
 
     spline_schema = pl.scan_parquet(spline_path).collect_schema()
     fixed_len, head_len = _spline_list_lengths(spline_path)
@@ -642,10 +651,7 @@ def build_minimal_df(training):
         .fill_nan(0.0)
         .alias("net_weight_nuwro"),
         _reco_category_expr().alias("reco_category"),
-        pl.col("glee_GTruth_gQ2").alias("GTruth_gQ2"),
-        pl.col("wc_truth_nuEnergy").alias("truth_nuEnergy"),
-        pl.col("wc_mcflux_dk2gen").alias("mcflux_dk2gen"),
-        pl.col("wc_mcflux_gen2vtx").alias("mcflux_gen2vtx"),
+        *_truth_alias_exprs(),
         pl.when(valid_genie_base)
         .then(finite_net_weight / pl.col(GENIE_CV_WEIGHT_COL))
         .otherwise(finite_net_weight)
@@ -668,7 +674,7 @@ def compute_spline_fractions(mc_df, spline_path):
     """Per-filetype fraction of MC events that carry spline weights, and its inverse
     (the weight that scales the surviving events back up to the full normalization).
     Keys-only left join against the spline parquet, so no list columns are read."""
-    keys = ["filetype", "run", "subrun", "event"]
+    keys = EVENT_KEY_COLUMNS
     spline_keys = pl.scan_parquet(spline_path).select(keys).with_columns(pl.lit(True).alias("_matched"))
     return (
         mc_df.lazy().select(keys)
@@ -737,16 +743,7 @@ def save_detvar(training, output_dir):
             f"predictions.parquet matches too)."
         )
 
-    detvar_analysis_source_columns = [
-        "afro_1mu1p_sel",
-        "afro_1mu1p_true",
-        "afro_1mu1p_Pn",
-        "afro_1mu1p_Q2",
-        "glee_GTruth_gQ2",
-        "wc_truth_nuEnergy",
-        "wc_mcflux_dk2gen",
-        "wc_mcflux_gen2vtx",
-    ]
+    detvar_analysis_source_columns = [*AFRO_1MU1P_COLUMNS, *TRUTH_ALIASES.values()]
     keep = list(dict.fromkeys([
         "filetype",
         "vartype",
@@ -779,10 +776,7 @@ def save_detvar(training, output_dir):
     )
     presel = presel.with_columns([
         _reco_category_expr().alias("reco_category"),
-        pl.col("glee_GTruth_gQ2").alias("GTruth_gQ2"),
-        pl.col("wc_truth_nuEnergy").alias("truth_nuEnergy"),
-        pl.col("wc_mcflux_dk2gen").alias("mcflux_dk2gen"),
-        pl.col("wc_mcflux_gen2vtx").alias("mcflux_gen2vtx"),
+        *_truth_alias_exprs(),
         (pl.col("filetype") == "data").alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
@@ -795,7 +789,7 @@ def save_detvar(training, output_dir):
         raise ValueError(f"filetypes {unknown_filetypes} are missing from FILETYPE_CODES -- add them (append only)")
 
     detvar_minimal = presel.select(
-        OUTPUT_SCALAR_COLUMNS[:1] + ["filetype_code", "vartype", "detvar_sample"] + OUTPUT_SCALAR_COLUMNS[1:]
+        ["filetype", "filetype_code", "vartype", "detvar_sample"] + OUTPUT_SCALAR_COLUMNS[1:]
         + ["isdata", "isext", "isdirt", "isnuwro", "net_weight"] + prob_cols
     )
 

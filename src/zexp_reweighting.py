@@ -1,6 +1,8 @@
 """Axial-form-factor z-expansion weights."""
 
 from dataclasses import dataclass
+import itertools
+
 import numpy as np
 
 # Constants
@@ -10,26 +12,43 @@ ZEXP_SIGMA_VALUES = np.array([-3, -2, -1, 0, 1, 2, 3], dtype=float)
 # Branch names written to the spline-weights dataframe / output ROOT tree.
 ZEXP_MINERVA_FA_BRANCH = "weight_minerva_FA"
 ZEXP_PCA_BRANCHES = tuple(f"weight_spline_FAzexpPCA{i}" for i in range(1, 5))
+ZEXP_CROSS_BRANCH = "weight_spline_FAzexpCROSS"
 
 ZEXP_MINERVA_K6_FA_BRANCH = "weight_minerva_hydrogen_k6_FA"
 ZEXP_MINERVA_K6_BRANCHES = tuple(
     f"weight_spline_FAzexpMinervaK6PCA{i}" for i in range(1, 3)
 )
+ZEXP_MINERVA_K6_CROSS_BRANCH = "weight_spline_FAzexpMinervaK6CROSS"
 
 ZEXP_MINERVA_K7_FA_BRANCH = "weight_minerva_hydrogen_k7_FA"
 ZEXP_MINERVA_K7_BRANCHES = tuple(
     f"weight_spline_FAzexpMinervaK7PCA{i}" for i in range(1, 4)
 )
+ZEXP_MINERVA_K7_CROSS_BRANCH = "weight_spline_FAzexpMinervaK7CROSS"
+
+ZEXP_LQCD_K7_FA_BRANCH = "weight_lqcd_k7_FA"
+ZEXP_LQCD_K7_BRANCHES = tuple(
+    f"weight_spline_FAzexpLQCDK7PCA{i}" for i in range(1, 4)
+)
+ZEXP_LQCD_K7_CROSS_BRANCH = "weight_spline_FAzexpLQCDK7CROSS"
 
 ZEXP_LQCD_K6_FA_BRANCH = "weight_lqcd_k6_FA"
 ZEXP_LQCD_K6_BRANCHES = tuple(
     f"weight_spline_FAzexpLQCDK6PCA{i}" for i in range(1, 3)
 )
+ZEXP_LQCD_K6_CROSS_BRANCH = "weight_spline_FAzexpLQCDK6CROSS"
+
+ZEXP_MINERVA_LQCD_K7_FA_BRANCH = "weight_minerva_lqcd_k7_FA"
+ZEXP_MINERVA_LQCD_K7_BRANCHES = tuple(
+    f"weight_spline_FAzexpMinervaLQCDK7PCA{i}" for i in range(1, 4)
+)
+ZEXP_MINERVA_LQCD_K7_CROSS_BRANCH = "weight_spline_FAzexpMinervaLQCDK7CROSS"
 
 ZEXP_MINERVA_LQCD_K6_FA_BRANCH = "weight_minerva_lqcd_k6_FA"
 ZEXP_MINERVA_LQCD_K6_BRANCHES = tuple(
     f"weight_spline_FAzexpMinervaLQCDK6PCA{i}" for i in range(1, 3)
 )
+ZEXP_MINERVA_LQCD_K6_CROSS_BRANCH = "weight_spline_FAzexpMinervaLQCDK6CROSS"
 
 # Used in Nature 614, 48-53 (2023)
 PION_MASS_GEV = 0.139570
@@ -37,10 +56,16 @@ T_CUT_GEV2 = 9.0 * PION_MASS_GEV * PION_MASS_GEV
 AXIAL_FORM_FACTOR_Q2_ZERO = -1.2723
 MINERVA_T0_GEV2 = -0.75
 
-# Used in arXiv:2512.14097 (2025)
+# Used in arXiv:2512.14097 (2026)
 ZEXP_T0_GEV2 = -0.50
 ZEXP_T_CUT_GEV2 = 9.0 * 0.134**2
 ZEXP_FA_Q2_ZERO = -1.2754
+
+# F_A(0) of the GENIE dipole behind the MaCCQE_UBGenie spline weights.
+# G18_10a_02_11a resolves DipoleAxialFormFactorModel/Default through
+# CommonParam[QuasiElastic], where QEL-FA0 = -1.2670 (the tune only changes
+# QEL-Ma).  Use this, not a prior's F_A(0), wherever the dipole grid is built.
+GENIE_DIPOLE_FA_Q2_ZERO = -1.2670
 
 @dataclass(frozen=True)
 class ZExpPrior:
@@ -52,6 +77,7 @@ class ZExpPrior:
     full_a_values: np.ndarray
     cv_branch: str
     variation_branches: tuple
+    cross_branch: str
     t0_gev2: float = ZEXP_T0_GEV2
     t_cut_gev2: float = ZEXP_T_CUT_GEV2
     fa_q2_zero: float = ZEXP_FA_Q2_ZERO
@@ -70,6 +96,8 @@ class ZExpPrior:
             raise ValueError("covariance dimension must match the free coefficients")
         if len(branches) != n_free:
             raise ValueError("one variation branch is required per free coefficient")
+        if not self.cross_branch:
+            raise ValueError("a cross_branch name is required")
         if not np.all(np.isfinite(covariance)):
             raise ValueError("covariance must be finite")
         if not np.allclose(covariance, covariance.T):
@@ -120,13 +148,14 @@ MINERVA_LEGACY_PRIOR = ZExpPrior(
     ),
     cv_branch=ZEXP_MINERVA_FA_BRANCH,
     variation_branches=ZEXP_PCA_BRANCHES,
+    cross_branch=ZEXP_CROSS_BRANCH,
     t0_gev2=MINERVA_T0_GEV2,
     t_cut_gev2=T_CUT_GEV2,
     fa_q2_zero=AXIAL_FORM_FACTOR_Q2_ZERO,
 )
 
 MINERVA_K7_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2025 kmax=7",
+    name="MINERvA hydrogen 2026 kmax=7",
     free_a_values=_negative_fa_coefficients(
         [-1.69373431, 0.80639393, 0.87442257]
     ),
@@ -146,10 +175,11 @@ MINERVA_K7_PRIOR = ZExpPrior(
     ),
     cv_branch=ZEXP_MINERVA_K7_FA_BRANCH,
     variation_branches=ZEXP_MINERVA_K7_BRANCHES,
+    cross_branch=ZEXP_MINERVA_K7_CROSS_BRANCH,
 )
 
 MINERVA_K6_PRIOR = ZExpPrior(
-    name="MINERvA hydrogen 2025 kmax=6",
+    name="MINERvA hydrogen 2026 kmax=6",
     free_a_values=_negative_fa_coefficients([-1.64778080, 0.94181417]),
     covariance=np.array(
         [[0.05554150, -0.03262482], [-0.03262482, 0.09151761]], dtype=float
@@ -162,9 +192,31 @@ MINERVA_K6_PRIOR = ZExpPrior(
     ),
     cv_branch=ZEXP_MINERVA_K6_FA_BRANCH,
     variation_branches=ZEXP_MINERVA_K6_BRANCHES,
+    cross_branch=ZEXP_MINERVA_K6_CROSS_BRANCH,
 )
 
 # A.S. Meyer, arXiv:2601.02676 (2026), Eqs. (53)--(55).
+LQCD_K7_PRIOR = ZExpPrior(
+    name="LQCD 2026 kmax=7",
+    free_a_values=_negative_fa_coefficients([-1.65806627, 0.43099261, 1.06243035]),
+    covariance=np.array(
+        [
+            [ 0.00910412,  0.02592048, -0.08986544],
+            [ 0.02592048,  0.12033231, -0.30490195],
+            [-0.08986544, -0.30490195,  0.93874891]
+        ], dtype=float
+    ),
+    full_a_values=_negative_fa_coefficients(
+        [
+            0.72240694, -1.65806627, 0.43099261, 1.06243035,
+            -0.68256510, 1.06363538, -1.59271086, 0.65387696
+        ]
+    ),
+    cv_branch=ZEXP_LQCD_K7_FA_BRANCH,
+    variation_branches=ZEXP_LQCD_K7_BRANCHES,
+    cross_branch=ZEXP_LQCD_K7_CROSS_BRANCH,
+)
+
 LQCD_K6_PRIOR = ZExpPrior(
     name="LQCD 2026 kmax=6",
     free_a_values=_negative_fa_coefficients([-1.70104640, 0.26324902]),
@@ -179,10 +231,32 @@ LQCD_K6_PRIOR = ZExpPrior(
     ),
     cv_branch=ZEXP_LQCD_K6_FA_BRANCH,
     variation_branches=ZEXP_LQCD_K6_BRANCHES,
+    cross_branch=ZEXP_LQCD_K6_CROSS_BRANCH,
+)
+
+MINERVA_LQCD_K7_PRIOR = ZExpPrior(
+    name="MINERvA+LQCD 2026 kmax=7",
+    free_a_values=_negative_fa_coefficients([-1.77604402, 0.04912094, 2.27409531]),
+    covariance=np.array(
+        [
+            [ 0.00576457,  0.01550765, -0.05596858],
+            [ 0.01550765,  0.08687614, -0.19816291],
+            [-0.05596858, -0.19816291,  0.59358115]
+        ], dtype=float
+    ),
+    full_a_values=_negative_fa_coefficients(
+        [
+            0.71531031, -1.77604402, 0.04912094, 2.27409531,
+            0.89742871, -5.20892371, 4.03266727, -0.98365481
+        ]
+    ),
+    cv_branch=ZEXP_MINERVA_LQCD_K7_FA_BRANCH,
+    variation_branches=ZEXP_MINERVA_LQCD_K7_BRANCHES,
+    cross_branch=ZEXP_MINERVA_LQCD_K7_CROSS_BRANCH,
 )
 
 MINERVA_LQCD_K6_PRIOR = ZExpPrior(
-    name="MINERvA+LQCD 2025 kmax=6",
+    name="MINERvA+LQCD 2026 kmax=6",
     free_a_values=_negative_fa_coefficients([-1.71743430, 0.31652883]),
     covariance=np.array(
         [[0.00165493, -0.00268883], [-0.00268883, 0.00737483]], dtype=float
@@ -195,13 +269,16 @@ MINERVA_LQCD_K6_PRIOR = ZExpPrior(
     ),
     cv_branch=ZEXP_MINERVA_LQCD_K6_FA_BRANCH,
     variation_branches=ZEXP_MINERVA_LQCD_K6_BRANCHES,
+    cross_branch=ZEXP_MINERVA_LQCD_K6_CROSS_BRANCH,
 )
 
 ZEXP_PRIORS = (
     MINERVA_LEGACY_PRIOR, # MINERvA Nature result with covariance, in PCA
     MINERVA_K6_PRIOR, # MINERvA k=6 result with covariance, in PCA
     MINERVA_K7_PRIOR, # MINERvA k=7 result with covariance, in PCA
+    LQCD_K7_PRIOR, # LQCD k=7 result with covariance, in PCA
     LQCD_K6_PRIOR, # LQCD k=6 result with covariance, in PCA
+    MINERVA_LQCD_K7_PRIOR, # MINERvA + LQCD k=7 with covariance, in PCA
     MINERVA_LQCD_K6_PRIOR, # MINERvA + LQCD k=6 with covariance, in PCA
 )
 
@@ -214,13 +291,16 @@ ZEXP_VARIATION_BRANCHES = (
         for branch in prior.variation_branches
     ),
 )
-ZEXP_ALL_BRANCHES = (*ZEXP_CV_BRANCHES, *ZEXP_VARIATION_BRANCHES)
+ZEXP_CROSS_BRANCHES = tuple(prior.cross_branch for prior in ZEXP_PRIORS)
+ZEXP_ALL_BRANCHES = (
+    *ZEXP_CV_BRANCHES, *ZEXP_VARIATION_BRANCHES, *ZEXP_CROSS_BRANCHES
+)
 
 def axial_form_factor_zexp(
     q2_gev2,
     a_values,
-    t0_gev2=MINERVA_T0_GEV2,
-    t_cut_gev2=T_CUT_GEV2,
+    t0_gev2,
+    t_cut_gev2,
 ):
     """Evaluate the z-expansion axial form factor F_A(Q^2)."""
     q2 = np.asarray(q2_gev2, dtype=float)
@@ -243,7 +323,7 @@ def effective_axial_mass_gev(q2_gev2, axial_form_factor):
     f_a = np.asarray(axial_form_factor, dtype=float)
 
     with np.errstate(invalid="ignore", divide="ignore"):
-        ratio = AXIAL_FORM_FACTOR_Q2_ZERO / f_a
+        ratio = GENIE_DIPOLE_FA_Q2_ZERO / f_a
         denom = np.sqrt(ratio) - 1.0
         return np.where(
             (ratio > 0.0) & (denom > 1e-10),
@@ -291,7 +371,7 @@ def interpolate_fa_spline_weights(q2_gev2, target_fa, ma_weights):
     if q2.shape != target.shape or weights.shape != (len(q2), len(MA_CCQE_GRID_GEV)):
         raise ValueError("q2, target_fa, and ma_weights have incompatible shapes")
 
-    fa_grid = AXIAL_FORM_FACTOR_Q2_ZERO / (
+    fa_grid = GENIE_DIPOLE_FA_Q2_ZERO / (
         1.0 + q2[:, None] / MA_CCQE_GRID_GEV[None, :] ** 2
     ) ** 2
     # F_A becomes more negative as M_A increases, so reverse into ascending
@@ -335,7 +415,7 @@ def _prepare_quadratic_fa_splines(q2_gev2, ma_weights):
     if q2.ndim != 1 or weights.shape != expected_shape:
         raise ValueError("q2 and ma_weights have incompatible shapes")
 
-    fa_grid = AXIAL_FORM_FACTOR_Q2_ZERO / (
+    fa_grid = GENIE_DIPOLE_FA_Q2_ZERO / (
         1.0 + q2[:, None] / MA_CCQE_GRID_GEV[None, :] ** 2
     ) ** 2
     center = fa_grid[:, 3]
@@ -377,10 +457,15 @@ def complete_zexp_a_values(
     kmax,
     t0_gev2,
     *,
-    t_cut_gev2=T_CUT_GEV2,
-    fa_q2_zero=AXIAL_FORM_FACTOR_Q2_ZERO,
+    t_cut_gev2,
+    fa_q2_zero,
 ):
-    """Complete a1...a[kmax-4] using F_A(0) and four sum rules."""
+    """Complete a1...a[kmax-4] using F_A(0) and four sum rules.
+
+    ``t0_gev2``, ``t_cut_gev2`` and ``fa_q2_zero`` must all be given
+    explicitly: the correct values depend on the prior (MINERvA 2023 vs 2026
+    conventions) and there is no safe default.
+    """
     free = np.asarray(free_a_values, dtype=float)
     n_free = kmax - 4
     if kmax < 5 or free.shape != (n_free,):
@@ -468,8 +553,8 @@ def _weights_for_a_values(
     true_q2_gev2,
     ma_spline_weights,
     a_values,
-    t0_gev2=MINERVA_T0_GEV2,
-    t_cut_gev2=T_CUT_GEV2,
+    t0_gev2,
+    t_cut_gev2,
     quadratic_model=None,
 ):
     f_a = axial_form_factor_zexp(
@@ -482,6 +567,95 @@ def _weights_for_a_values(
     return _evaluate_quadratic_fa_splines(f_a, quadratic_model)
 
 
+def zexp_shift_matrix(covariance, use_pca):
+    """One-sigma shift directions of the free coefficients, as columns.
+
+    Column i is the shift for eta_i = +1: the i-th PCA direction of the prior
+    covariance scaled by sqrt(eigenvalue), ordered by descending eigenvalue, or
+    (use_pca false) sqrt(cov[i, i]) in a_i alone.  Shared by the variation and
+    CROSS branches so the two cannot disagree about ordering or sign.
+    """
+    cov = np.asarray(covariance, dtype=float)
+    if use_pca:
+        eigenvalues, eigenvectors = np.linalg.eigh((cov + cov.T) / 2.0)
+        sort_idx = np.argsort(eigenvalues)[::-1]
+        return (
+            eigenvectors[:, sort_idx]
+            * np.sqrt(np.clip(eigenvalues[sort_idx], 0.0, None))
+        )
+    return np.diag(np.sqrt(np.diag(cov)))
+
+
+def zexp_cross_pairs(n_free):
+    """Parameter pairs (i, j), i < j, in the order used by the CROSS branches.
+
+    (0,1), (0,2), (1,2), ... for n_free = 3.  Part of the on-disk layout PROfit
+    indexes against, so it must not change.
+    """
+    return tuple(itertools.combinations(range(int(n_free)), 2))
+
+
+def compute_zexp_prior_cross_weights(
+    true_q2_gev2,
+    ma_spline_weights,
+    prior,
+    *,
+    _quadratic_model=None,
+):
+    """Weights at the two-parameter points eta = e_i + e_j for one prior.
+
+    The per-event weight is an exact quadratic in F_A and F_A is affine in eta,
+    so the per-bin response is an exact quadratic whose eta_i eta_j terms are
+    a product of one-dimensional splines cannot represent.  
+    
+    The seven-knot branches fix the linear and diagonal terms but say nothing 
+    about the cross terms, which one design point per pair supplies exactly.
+
+    Returns an (n_events, 1 + n_pairs) float32 array:
+      column 0     : eta = 0, identical to prior.cv_branch;
+      column 1 + p : eta = e_i + e_j for the p-th pair of zexp_cross_pairs.
+    """
+    q2 = np.asarray(true_q2_gev2, dtype=float)
+    if _quadratic_model is None:
+        weights = _clean_ma_spline_weights(ma_spline_weights)
+        quadratic_model = _prepare_quadratic_fa_splines(q2, weights)
+    else:
+        weights = np.asarray(ma_spline_weights, dtype=float)
+        quadratic_model = _quadratic_model
+
+    def weights_at(full_a_values):
+        return _weights_for_a_values(
+            q2, weights, full_a_values, prior.t0_gev2, prior.t_cut_gev2, quadratic_model
+        )
+
+    partial_cv = np.asarray(prior.free_a_values, dtype=float)
+    shifts = zexp_shift_matrix(prior.covariance, prior.use_pca)
+    columns = [weights_at(np.asarray(prior.full_a_values, dtype=float))]
+    for i, j in zexp_cross_pairs(partial_cv.size):
+        columns.append(weights_at(complete_zexp_a_values(
+            partial_cv + shifts[:, i] + shifts[:, j],
+            prior.kmax,
+            prior.t0_gev2,
+            t_cut_gev2=prior.t_cut_gev2,
+            fa_q2_zero=prior.fa_q2_zero,
+        )))
+    return np.column_stack(columns).astype(np.float32)
+
+
+def compute_zexp_cross_weights(true_q2_gev2, ma_spline_weights):
+    """CROSS design-point weights for every configured prior, keyed by branch."""
+    q2 = np.asarray(true_q2_gev2, dtype=float)
+    weights = _clean_ma_spline_weights(ma_spline_weights)
+    if len(q2) != weights.shape[0]:
+        raise ValueError("true_q2_gev2 and ma_spline_weights must have same length")
+    quadratic_model = _prepare_quadratic_fa_splines(q2, weights)
+    return {
+        prior.cross_branch: compute_zexp_prior_cross_weights(
+            q2, weights, prior, _quadratic_model=quadratic_model
+        )
+        for prior in ZEXP_PRIORS
+    }
+
 def compute_zexp_weight_set(
     true_q2_gev2,
     ma_spline_weights,
@@ -491,9 +665,9 @@ def compute_zexp_weight_set(
     variation_branches,
     *,
     use_pca,
-    t0_gev2=MINERVA_T0_GEV2,
-    t_cut_gev2=T_CUT_GEV2,
-    fa_q2_zero=AXIAL_FORM_FACTOR_Q2_ZERO,
+    t0_gev2,
+    t_cut_gev2,
+    fa_q2_zero,
     kmax=None,
     full_cv_a_values=None,
     _quadratic_model=None,
@@ -546,15 +720,7 @@ def compute_zexp_weight_set(
     )
     result = {cv_branch: cv_weights.astype(np.float32)}
 
-    if use_pca:
-        eigenvalues, eigenvectors = np.linalg.eigh((cov + cov.T) / 2.0)
-        sort_idx = np.argsort(eigenvalues)[::-1]
-        shifts = (
-            eigenvectors[:, sort_idx]
-            * np.sqrt(np.clip(eigenvalues[sort_idx], 0.0, None))
-        )
-    else:
-        shifts = np.diag(np.sqrt(np.diag(cov)))
+    shifts = zexp_shift_matrix(cov, use_pca)
 
     for variation_i, branch in enumerate(branches):
         shift = shifts[:, variation_i]
