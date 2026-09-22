@@ -201,9 +201,10 @@ def _get_file_metadata(filename, frac_events=1):
 
     print(f"{total_entries=}, {frac_events=}, {n_events=}")
 
-    # strip a trailing version tag (e.g. "..._hist_2_v3.root" -> "..._hist_2.root"),
-    # otherwise the "_v3.root" suffix would be mistaken for run 3
-    filename_for_period = re.sub(r"_v\d+\.root$", ".root", filename)
+    # strip trailing production tags (version "_v3", duplicate-cleaned "_filtered")
+    # so the suffix checks see "..._hist_N.root"; otherwise "_v3.root" would be
+    # mistaken for run 3 and "_filtered.root" would match nothing
+    filename_for_period = re.sub(r"(_v\d+|_filtered)+\.root$", ".root", filename)
 
     detailed_run_period = "?"
     if "1.root" in filename_for_period:

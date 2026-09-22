@@ -53,7 +53,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Configuration
 # ============================================================================
 
-DEFAULT_TRAINING = "all_vars_r15_2026_09_01"
+DEFAULT_TRAINING = "all_vars_r15_2026_09_11"
 
 # Filetypes that are never in the BDT train/test split but are usable as prediction
 # (nothing was trained on them): kept whole, left out of the frac_test counts, and not

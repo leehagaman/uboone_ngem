@@ -41,7 +41,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Configuration
 # ============================================================================
 
-DEFAULT_TRAINING = "all_vars_r15_jul202026"
+DEFAULT_TRAINING = "all_vars_r15_2026_09_11"
 
 # Runs 1-5 open-data POT weighting (all run periods) for the nominal prediction.
 NET_WEIGHT_COL = "wc_net_weight_open_data"

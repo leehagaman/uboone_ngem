@@ -130,9 +130,11 @@ def _detailed_run_period_from_filename(filename):
     if "_3_1e19opendata.root" in filename:
         return "3"
 
-    # strip a trailing version tag (e.g. "..._hist_2_v3.root" -> "..._hist_2.root"),
-    # otherwise the "_v3.root" suffix would be mistaken for run 3
-    filename = re.sub(r"_v\d+\.root$", ".root", filename)
+    # strip trailing production tags so the run-period suffix checks below see
+    # "..._hist_N.root": a version tag ("..._hist_2_v3.root", whose "_v3.root"
+    # would otherwise be mistaken for run 3) and the "_filtered" tag of the
+    # duplicate-cleaned NuWro checkouts ("..._hist_1_filtered.root")
+    filename = re.sub(r"(_v\d+|_filtered)+\.root$", ".root", filename)
 
     if "1.root" in filename:
         return "1"

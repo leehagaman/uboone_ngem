@@ -90,9 +90,9 @@ FILES_TO_COPY=(
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root"
 
     # NuWro fake data files
-    "/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_1.root"
-    "/exp/uboone/data/users/uboonepro/SURPRISE/run2_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_2.root"
-    "/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_3.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run1_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_1_filtered.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run2_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_2_filtered.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/run3_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_3_filtered.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_4a.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_4c.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_5.root"

@@ -152,6 +152,13 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     # Filter mc_pred_df to events present in weights, fetching only key columns from weights
     # so no List[Float32] universe columns are loaded yet.
     join_keys = ["filename", "run", "subrun", "event"]
+    if GENIE_CV_WEIGHT_COL not in col_names:
+        raise ValueError(
+            f"mc_pred_df has no '{GENIE_CV_WEIGHT_COL}' column. Since 2026-09-10 the GENIE tune CV weight used to "
+            f"build the base weight and to divide the stored universes is the Pandora weightTune "
+            f"(postprocessing.GENIE_CV_WEIGHT_COL), not wc_weight_cv -- keep '{GENIE_CV_WEIGHT_COL}' in any "
+            f"column subset you select before calling get_rw_sys_frac_cov_matrices (and recreate the dataframes "
+            f"with create_df.py --create_file_dfs if all_df predates that change).")
     pred_vars = list(dict.fromkeys(join_keys + [net_weight_var, GENIE_CV_WEIGHT_COL, var]))
     weights_parquet_path = f"{intermediate_files_location}/presel_weights_df.parquet"
 
