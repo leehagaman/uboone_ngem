@@ -267,16 +267,17 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
     shw2 = shw_E * shw_costheta / 1000.0
     shw3 = shw_E / 1000.0
 
-    true_muon_costheta = mu2 / mu3
+    mu_p = np.sqrt(mu0 * mu0 + mu1 * mu1 + mu2 * mu2)
+    true_muon_costheta = mu2 / mu_p
 
-    muon_dir = np.stack([mu0 / mu3, mu1 / mu3, mu2 / mu3], axis=1)
+    muon_dir = np.stack([mu0 / mu_p, mu1 / mu_p, mu2 / mu_p], axis=1)
     gamma_dir = np.stack([shw0 / shw3, shw1 / shw3, shw2 / shw3], axis=1)
     dot_product = np.clip(np.sum(muon_dir * gamma_dir, axis=1), -1.0, 1.0)
-    muon_gamma_opening_angle = np.arccos(dot_product) * 180.0 / np.pi
+    muon_gamma_opening_angle = np.rad2deg(np.arccos(dot_product))
 
     rad_corr_E_tree = (mu3 + shw3) * 1000.0
     rad_corr_x = mu3 * 1000.0 / rad_corr_E_tree
-    rad_corr_eta = np.arccos(shw_costheta) * rad_corr_E_tree / m_mu
+    rad_corr_eta = np.deg2rad(muon_gamma_opening_angle) * rad_corr_E_tree / m_mu
     rad_frac_x_eta_vals = rad_frac_x_eta(rad_corr_x, rad_corr_eta)
 
     del1g_numuCC_df = del1g_numuCC_df.with_columns(
@@ -292,11 +293,15 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
         pl.Series("rad_frac_x_eta", rad_frac_x_eta_vals),
     )
 
+    normal_mu_p = np.sqrt(
+        normal_numuCC_df["wc_truth_muonMomentum_0"].to_numpy() ** 2
+        + normal_numuCC_df["wc_truth_muonMomentum_1"].to_numpy() ** 2
+        + normal_numuCC_df["wc_truth_muonMomentum_2"].to_numpy() ** 2
+    )
     normal_numuCC_df = normal_numuCC_df.with_columns(
         pl.Series(
             "wc_true_muon_costheta",
-            normal_numuCC_df["wc_truth_muonMomentum_2"].to_numpy()
-            / normal_numuCC_df["wc_truth_muonMomentum_3"].to_numpy(),
+            normal_numuCC_df["wc_truth_muonMomentum_2"].to_numpy() / normal_mu_p,
         )
     )
 
