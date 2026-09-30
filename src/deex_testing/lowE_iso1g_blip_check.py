@@ -59,7 +59,7 @@ def load_new_sample():
     E = mom[:, 3] * 1000  # MeV
     p = np.linalg.norm(mom[:, :3], axis=1)
     costheta = mom[:, 2] / p
-    phi = np.degrees(np.arctan2(mom[:, 0], mom[:, 1]))  # postprocessing.py convention
+    phi = np.degrees(np.arctan2(mom[:, 1], mom[:, 0]))  # postprocessing.py convention
     vtx = pos[:, :3]
 
     ns = f["nuselection/NeutrinoSelectionFilter"].arrays(

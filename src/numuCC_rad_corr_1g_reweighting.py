@@ -262,6 +262,7 @@ def compute_1g1mu_rad_corr_reweighting(df, make_plots=True, net_weight_var="wc_n
     shw_phi = del1g_numuCC_df["wc_true_leading_shower_phi"].to_numpy() * np.pi / 180.0
 
     sintheta = np.sqrt(np.clip(1.0 - shw_costheta * shw_costheta, 0.0, None))
+    # postprocessing.py convention: phi = arctan2(py, px)
     shw0 = shw_E * sintheta * np.cos(shw_phi) / 1000.0
     shw1 = shw_E * sintheta * np.sin(shw_phi) / 1000.0
     shw2 = shw_E * shw_costheta / 1000.0
