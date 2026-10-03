@@ -807,6 +807,10 @@ def do_wc_postprocessing(df):
         true_leading_pi0_costhetas = []
         true_leading_pi0_phis = []
         true_leading_pi0_opening_angles = []
+        true_leading_prim_nonpi0_photon_energies = []
+        true_leading_prim_nonpi0_photon_costhetas = []
+        true_leading_prim_nonpi0_photon_phis = []
+        true_leading_prim_nonpi0_photon_muon_opening_angles = []
         true_outgoing_lepton_energies = []
         true_nums_prim_protons = []
         true_nums_prim_protons_35 = []
@@ -835,6 +839,12 @@ def do_wc_postprocessing(df):
             max_pi0_costheta = -2.
             max_pi0_phi = -999.
             max_pi0_opening_angle = -1.
+            max_prim_photon_energy = -1.
+            max_prim_photon_costheta = -2.
+            max_prim_photon_phi = -999.
+            max_prim_photon_momentum = None
+            max_prim_muon_energy = -1.
+            max_prim_muon_momentum = None
             true_num_prim_protons = 0
             true_num_prim_protons_35 = 0
             true_num_prim_neutrons = 0
@@ -879,11 +889,11 @@ def do_wc_postprocessing(df):
                         second_max_shower_phi = max_shower_phi
                         max_shower_energy = truth_startMomentum_list[j][3] * 1000.
                         max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
-                        max_shower_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
+                        max_shower_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
                     elif truth_startMomentum_list[j][3] * 1000. > second_max_shower_energy:
                         second_max_shower_energy = truth_startMomentum_list[j][3] * 1000.
                         second_max_shower_costheta = truth_startMomentum_list[j][2] / truth_startMomentum_list[j][3] # should be basically z / (x**2 + y**2 + z**2)**0.5
-                        second_max_shower_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
+                        second_max_shower_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
 
                 if truth_pdg_list[j] == 111: # pi0
                     curr_pi0_energy = truth_startMomentum_list[j][3] * 1000. - 134.9768
@@ -892,7 +902,7 @@ def do_wc_postprocessing(df):
                         max_tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
                         max_z_momentum = truth_startMomentum_list[j][2]
                         max_pi0_costheta = max_z_momentum / max_tot_momentum
-                        max_pi0_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
+                        max_pi0_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
 
                         pi0_daughter_indices = []
                         for k in range(num_particles):
@@ -962,7 +972,7 @@ def do_wc_postprocessing(df):
                         max_true_prim_proton_energy = truth_startMomentum_list[j][3] * 1000. - 938.272088
                         tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
                         max_true_prim_proton_costheta = truth_startMomentum_list[j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| ([3] is the total energy, dividing by it would squash costheta)
-                        max_true_prim_proton_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
+                        max_true_prim_proton_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
                     sum_true_prim_proton_energy += truth_startMomentum_list[j][3] * 1000. - 938.272088
 
                 if truth_mother_list[j] == 0 and truth_pdg_list[j] == 2112: # primary neutron
@@ -973,11 +983,32 @@ def do_wc_postprocessing(df):
                         max_true_prim_neutron_energy = truth_startMomentum_list[j][3] * 1000. - 939.565422
                         tot_momentum = np.sqrt(truth_startMomentum_list[j][0]**2 + truth_startMomentum_list[j][1]**2 + truth_startMomentum_list[j][2]**2)
                         max_true_prim_neutron_costheta = truth_startMomentum_list[j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| ([3] is the total energy, dividing by it would squash costheta)
-                        max_true_prim_neutron_phi = np.arctan2(truth_startMomentum_list[j][0], truth_startMomentum_list[j][1]) * 180. / np.pi
+                        max_true_prim_neutron_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
                     sum_true_prim_neutron_energy += truth_startMomentum_list[j][3] * 1000. - 939.565422
+
+                if truth_mother_list[j] == 0 and truth_pdg_list[j] == 22: # primary photon (not from a pi0 decay, since those have the pi0 as mother), e.g. numuCC radiative corrections
+                    if truth_startMomentum_list[j][3] * 1000. > max_prim_photon_energy:
+                        max_prim_photon_energy = truth_startMomentum_list[j][3] * 1000.
+                        max_prim_photon_momentum = np.array(truth_startMomentum_list[j][:3], dtype=float)
+                        tot_momentum = np.linalg.norm(max_prim_photon_momentum)
+                        max_prim_photon_costheta = truth_startMomentum_list[j][2] / tot_momentum if tot_momentum > 0 else -2.
+                        max_prim_photon_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
+
+                if truth_mother_list[j] == 0 and abs(truth_pdg_list[j]) == 13: # primary muon
+                    if truth_startMomentum_list[j][3] * 1000. > max_prim_muon_energy:
+                        max_prim_muon_energy = truth_startMomentum_list[j][3] * 1000.
+                        max_prim_muon_momentum = np.array(truth_startMomentum_list[j][:3], dtype=float)
 
                 if truth_mother_list[j] == 0 and 11 <= abs(truth_pdg_list[j]) <= 16: # lepton
                     true_outgoing_lepton_energy = truth_startMomentum_list[j][3] * 1000.
+
+            max_prim_photon_muon_opening_angle = -1. # default if there is no primary photon or no primary muon
+            if max_prim_photon_momentum is not None and max_prim_muon_momentum is not None:
+                photon_p = np.linalg.norm(max_prim_photon_momentum)
+                muon_p = np.linalg.norm(max_prim_muon_momentum)
+                if photon_p > 0 and muon_p > 0:
+                    dot_product = np.clip(np.dot(max_prim_photon_momentum, max_prim_muon_momentum) / (photon_p * muon_p), -1.0, 1.0)
+                    max_prim_photon_muon_opening_angle = np.arccos(dot_product) * 180 / np.pi
 
             max_true_prim_proton_energies.append(max_true_prim_proton_energy)
             max_true_prim_proton_costhetas.append(max_true_prim_proton_costheta)
@@ -1002,6 +1033,10 @@ def do_wc_postprocessing(df):
             true_leading_pi0_costhetas.append(max_pi0_costheta)
             true_leading_pi0_phis.append(max_pi0_phi)
             true_leading_pi0_opening_angles.append(max_pi0_opening_angle)
+            true_leading_prim_nonpi0_photon_energies.append(max_prim_photon_energy)
+            true_leading_prim_nonpi0_photon_costhetas.append(max_prim_photon_costheta)
+            true_leading_prim_nonpi0_photon_phis.append(max_prim_photon_phi)
+            true_leading_prim_nonpi0_photon_muon_opening_angles.append(max_prim_photon_muon_opening_angle)
             has_photonuclear_absorption_flags.append(has_photonuclear_absorption)
             has_pi0_dalitz_decay_flags.append(has_pi0_dalitz_decay)
             pi0_dalitz_m_ees.append(pi0_dalitz_m_ee)
@@ -1033,6 +1068,10 @@ def do_wc_postprocessing(df):
         df["wc_true_leading_pi0_costheta"] = true_leading_pi0_costhetas
         df["wc_true_leading_pi0_phi"] = true_leading_pi0_phis
         df["wc_true_leading_pi0_opening_angle"] = true_leading_pi0_opening_angles
+        df["wc_true_leading_prim_nonpi0_photon_energy"] = true_leading_prim_nonpi0_photon_energies
+        df["wc_true_leading_prim_nonpi0_photon_costheta"] = true_leading_prim_nonpi0_photon_costhetas
+        df["wc_true_leading_prim_nonpi0_photon_phi"] = true_leading_prim_nonpi0_photon_phis
+        df["wc_true_leading_prim_nonpi0_photon_muon_opening_angle"] = true_leading_prim_nonpi0_photon_muon_opening_angles
         df["wc_true_has_photonuclear_absorption"] = pd.Series(has_photonuclear_absorption_flags, dtype=bool)
         df["wc_true_has_pi0_dalitz_decay"] = pd.Series(has_pi0_dalitz_decay_flags, dtype=bool)
         # m_ee / cos theta* (the Geant4->EvtGen reweighting variables) computed inline
@@ -1107,7 +1146,7 @@ def do_wc_postprocessing(df):
         if reco_shower_momentum_3 > 0:
             reco_shower_momentum_perp = np.sqrt(reco_shower_momentum_0 * reco_shower_momentum_0 + reco_shower_momentum_1 * reco_shower_momentum_1)
             shower_thetas.append(np.arctan2(reco_shower_momentum_perp, reco_shower_momentum_2) * 180. / np.pi)
-            shower_phis.append(np.arctan2(reco_shower_momentum_0, reco_shower_momentum_1) * 180. / np.pi)
+            shower_phis.append(np.arctan2(reco_shower_momentum_1, reco_shower_momentum_0) * 180. / np.pi)
 
             shower_momentum_total_3d = np.sqrt(reco_shower_momentum_0 * reco_shower_momentum_0 + 
                                                 reco_shower_momentum_1 * reco_shower_momentum_1 + 
@@ -1443,14 +1482,14 @@ def do_wc_postprocessing(df):
                         tot_momentum = np.sqrt(reco_startMomentum[i][j][0]**2 + reco_startMomentum[i][j][1]**2 + reco_startMomentum[i][j][2]**2)
                         max_prim_proton_energy = ke
                         max_prim_proton_costheta = reco_startMomentum[i][j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| (dividing by [3] would squash costheta)
-                        max_prim_proton_phi = np.arctan2(reco_startMomentum[i][j][0], reco_startMomentum[i][j][1]) * 180. / np.pi
+                        max_prim_proton_phi = np.arctan2(reco_startMomentum[i][j][1], reco_startMomentum[i][j][0]) * 180. / np.pi
                 elif reco_pdg[i][j] == 13: # other track (I think 13 is the only one)
                     ke = reco_startMomentum[i][j][3] * 1000. - 105.6583755 # [3] is the total energy in GeV, store KE in MeV under the muon hypothesis
                     if ke > max_prim_other_track_energy:
                         tot_momentum = np.sqrt(reco_startMomentum[i][j][0]**2 + reco_startMomentum[i][j][1]**2 + reco_startMomentum[i][j][2]**2)
                         max_prim_other_track_energy = ke
                         max_prim_other_track_costheta = reco_startMomentum[i][j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| (dividing by [3] would squash costheta)
-                        max_prim_other_track_phi = np.arctan2(reco_startMomentum[i][j][0], reco_startMomentum[i][j][1]) * 180. / np.pi
+                        max_prim_other_track_phi = np.arctan2(reco_startMomentum[i][j][1], reco_startMomentum[i][j][0]) * 180. / np.pi
 
         max_prim_proton_energies.append(max_prim_proton_energy)
         max_prim_proton_costhetas.append(max_prim_proton_costheta)

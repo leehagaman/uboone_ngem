@@ -12,7 +12,7 @@ The boundary-unbiased ("clean") selection requires the photon origin to be at
 least VTX_WALL_MIN_CM from every TPC wall AND the projected photon ray to have
 at least RAY_IN_TPC_MIN_CM of path inside the TPC before exiting. The photon
 direction comes from wc_true_leading_shower_costheta/phi in all_df.parquet
-(costheta = pz/|p|, phi = arctan2(px, py) in degrees, see postprocessing.py).
+(costheta = pz/|p|, phi = arctan2(py, px) in degrees, see postprocessing.py).
 
 Uses the per-event truth-matched-blip table produced by
 iso1g_deex_blip_response.py (iso1g_lowE_truth_blips.parquet). De-excitation

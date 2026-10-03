@@ -209,7 +209,7 @@ def ray_length_in_tpc(x, y, z, ux, uy, uz):
 
 def load_directions():
     """(run, subrun, event) -> photon direction unit vector, from all_df.
-    postprocessing.py convention: costheta = pz/|p|, phi = arctan2(px, py)
+    postprocessing.py convention: costheta = pz/|p|, phi = arctan2(py, px)
     in degrees."""
     lf = pl.scan_parquet(os.path.join(intermediate_files_location, "all_df.parquet"))
     df = (
@@ -224,8 +224,8 @@ def load_directions():
     costheta = df["wc_true_leading_shower_costheta"].to_numpy()
     phi_rad = np.radians(df["wc_true_leading_shower_phi"].to_numpy())
     sintheta = np.sqrt(np.clip(1 - costheta**2, 0, 1))
-    ux = sintheta * np.sin(phi_rad)
-    uy = sintheta * np.cos(phi_rad)
+    ux = sintheta * np.cos(phi_rad)
+    uy = sintheta * np.sin(phi_rad)
     uz = costheta
     return {
         (r, s, e): (ux[i], uy[i], uz[i])
