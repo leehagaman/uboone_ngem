@@ -48,6 +48,7 @@ DEFAULT_TRAINING = "all_vars_r15_2026_09_11"
 NET_WEIGHT_COL = "wc_net_weight_open_data"
 NUWRO_WEIGHT_COL = "wc_net_weight_nuwro"
 NON_GENIE_NET_WEIGHT_COL = "non_genie_net_weight"
+GENIE_WEIGHTS_VALID_COL = "genie_weights_valid"
 
 # postprocessing.py builds NET_WEIGHT_COL with a sanitized cv*spline factor from the
 # Pandora weightTune*weightSpline columns.  These are the file types for which that
@@ -429,6 +430,28 @@ def _fill_root_batch(tree, batch, out_cols, kinds, fixed_len, buffers, views, de
         tree.Fill()
 
 
+def unit_genie_weights_where_invalid(spline_schema):
+    """Set the GENIE-derived weights of an event to one where GENIE_WEIGHTS_VALID_COL is False.
+
+    When the GENIE tune weight is invalid (zero, negative, NaN or > 30) postprocessing drops it
+    from net_weight, but the stored knob vectors still start at that tune weight.  PROfit's
+    force_0_cv divides each bin's knob sums by the knob-0 sum, so one negative entry in a
+    sparse bin can cancel the other events' and blow the ratio up.  Unit vectors keep such 
+    an event flat, matching its CV weight. Covers the *_UBGenie vectors, the z-expansion 
+    vectors derived from them and the z-expansion CV scalars; flux, hadron-production, 
+    re-interaction and SCC weights do not carry the tune.
+    """
+    valid = pl.col(GENIE_WEIGHTS_VALID_COL)
+    exprs = []
+    for col, dtype in spline_schema.items():
+        if isinstance(dtype, pl.List) and (col.endswith("_UBGenie") or col.startswith("weight_spline_FAzexp")):
+            ones = pl.col(col).list.eval(pl.element().is_not_null().cast(dtype.inner))
+            exprs.append(pl.when(valid).then(pl.col(col)).otherwise(ones).alias(col))
+        elif col.startswith("weight_") and col.endswith("_FA"):
+            exprs.append(pl.when(valid).then(pl.col(col)).otherwise(1.0).alias(col))
+    return exprs
+
+
 def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=131_072):
     """Write the nominal minimal_withspline tree with bounded memory.
 
@@ -496,6 +519,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
                 (pl.col(NON_GENIE_NET_WEIGHT_COL) * pl.col("spline_processed_fraction_weight"))
                 .alias(NON_GENIE_NET_WEIGHT_COL),
             ])
+            .with_columns(unit_genie_weights_where_invalid(spline_schema))
             .select(out_cols)
         )
         n_mc_written += batch.height
@@ -658,11 +682,13 @@ def build_minimal_df(training):
         .then(finite_net_weight / pl.col(GENIE_CV_WEIGHT_COL))
         .otherwise(finite_net_weight)
         .alias(NON_GENIE_NET_WEIGHT_COL),
+        valid_genie_base.alias(GENIE_WEIGHTS_VALID_COL),
     ])
 
     minimal = combined.select(
         OUTPUT_SCALAR_COLUMNS + ["wc_truth_nuScatType"]
-        + [NET_WEIGHT_COL, NON_GENIE_NET_WEIGHT_COL, "net_weight_nuwro"] + prob_cols
+        + [NET_WEIGHT_COL, NON_GENIE_NET_WEIGHT_COL, GENIE_WEIGHTS_VALID_COL, "net_weight_nuwro"]
+        + prob_cols
     ).with_columns([
         (pl.col("filetype") == "data").alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
