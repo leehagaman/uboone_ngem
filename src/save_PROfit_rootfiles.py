@@ -47,6 +47,7 @@ from tqdm import tqdm
 from file_locations import intermediate_files_location
 from df_helpers import format_duration
 from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL
+from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL, UNIT_BASE_WEIGHT_FILETYPES
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
 
@@ -66,6 +67,10 @@ WHOLE_SAMPLE_FILETYPES = ["fullosc_overlay"]
 # Filetypes with no GENIE spline weights that are written with constant unit spline
 # branches (the data role of each study, and EXT when it is part of the prediction).
 NO_SPLINE_FILETYPES = ["data", "ext", "nuwro_fake_data"]
+
+# Per-event flag (written as a branch) for a valid GENIE tune weight; where it is False the
+# GENIE-derived spline weights are written as one (see unit_genie_weights_where_invalid).
+GENIE_WEIGHTS_VALID_COL = "genie_weights_valid"
 
 # DetVar detailed_run_period -> NuWro normalizing run period, for the --nuwro DetVar
 # rescale.  The DetVar configs group {3, 3a, 3b_1mil or 3b_500k} -> "3" and {4b, 4c, 4d,
@@ -195,6 +200,8 @@ TRAINING_VARS = combined_training_vars
 #     filetype_code, isnuwro         (see FILETYPE_CODES; isnuwro flags the NuWro fake data)
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
+#     genie_weights_valid            (False where the GENIE tune weight was invalid; those
+#                                     events' GENIE-derived spline weights are written as one)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
 # and for each DETVAR file: filetype, filetype_code, vartype, run, subrun, event,
 #     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
@@ -513,6 +520,47 @@ def _fill_root_batch(tree, batch, out_cols, kinds, fixed_len, buffers, views, de
         tree.Fill()
 
 
+def genie_weights_valid_expr():
+    """True where the event's GENIE tune weight was applied in net_weight.
+
+    postprocessing.genie_base_weight_expr replaces cv*spline by one when the product is
+    invalid (null, non-finite, <= 0 or > 30).  This also requires the tune weight itself
+    to be finite and positive: the -1 sentinel of rows without a GENIE weight (e.g. the
+    Del1g/Iso1g and derived rad-corr / coherent-1g samples) appears as tune = spline = -1,
+    whose product is a "valid" +1 there (giving the same unit weight by coincidence).
+    """
+    tune = pl.col(GENIE_CV_WEIGHT_COL)
+    base = tune * pl.col(GENIE_SPLINE_WEIGHT_COL)
+    return (
+        ~pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES))
+        & base.is_not_null() & base.is_finite() & (base > 0.0) & (base <= 30.0)
+        & tune.is_not_null() & tune.is_finite() & (tune > 0.0)
+    )
+
+
+def unit_genie_weights_where_invalid(spline_schema):
+    """Set the GENIE-derived weights of an event to one where GENIE_WEIGHTS_VALID_COL is False.
+
+    When the GENIE tune weight is invalid (zero, negative, NaN or > 30) postprocessing drops it
+    from net_weight, but the stored knob vectors still start at that tune weight, and can hold
+    negative or infinite values.  PROfit's force_0_cv divides each bin's knob sums by the
+    knob-0 sum, so one such entry in a sparse bin can cancel the other events' and blow the
+    ratio up.  Unit vectors keep such an event flat, matching its CV weight.  Covers the
+    *_UBGenie vectors, the z-expansion vectors derived from them and the z-expansion CV
+    scalars; flux, hadron-production, re-interaction and SCC weights do not carry the tune.
+    (Same as save_PROfit_rootfiles_zexp.py.)
+    """
+    valid = pl.col(GENIE_WEIGHTS_VALID_COL)
+    exprs = []
+    for col, dtype in spline_schema.items():
+        if isinstance(dtype, pl.List) and (col.endswith("_UBGenie") or col.startswith("weight_spline_FAzexp")):
+            ones = pl.col(col).list.eval(pl.element().is_not_null().cast(dtype.inner))
+            exprs.append(pl.when(valid).then(pl.col(col)).otherwise(ones).alias(col))
+        elif col.startswith("weight_") and col.endswith("_FA"):
+            exprs.append(pl.when(valid).then(pl.col(col)).otherwise(1.0).alias(col))
+    return exprs
+
+
 def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_col, batch_size=131_072):
     """Write the nominal minimal_withspline tree with bounded memory.
 
@@ -580,6 +628,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
                 pl.lit(True).alias("has_spline_weights"),
                 (pl.col(net_weight_col) * pl.col("spline_processed_fraction_weight")).alias("net_weight"),
             ])
+            .with_columns(unit_genie_weights_where_invalid(spline_schema))
             .select(out_cols)
         )
         n_mc_written += batch.height
@@ -718,12 +767,15 @@ def build_minimal_df(training, study):
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
     combined = pl.concat([pred, data], how="vertical")
-    combined = combined.with_columns(_reco_category_expr().alias("reco_category"))
+    combined = combined.with_columns([
+        _reco_category_expr().alias("reco_category"),
+        genie_weights_valid_expr().alias(GENIE_WEIGHTS_VALID_COL),
+    ])
 
     # isdata flags the study's data role (real data, or the NuWro fake data in --nuwro)
     # so the same PROfit XML (isdata == 1 data section; isdata==0 && isext==0 &&
     # isdirt==0 overlays) applies to both studies.
-    minimal = combined.select(OUTPUT_SCALAR_COLUMNS + [net_weight_col] + prob_cols).with_columns([
+    minimal = combined.select(OUTPUT_SCALAR_COLUMNS + [net_weight_col, GENIE_WEIGHTS_VALID_COL] + prob_cols).with_columns([
         _filetype_code_expr(),
         (pl.col("filetype") == study["data_filetype"]).alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
