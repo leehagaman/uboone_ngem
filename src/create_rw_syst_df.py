@@ -328,8 +328,24 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
         "subrun": ids_df["subrun"].to_numpy(),
         "event": ids_df["event"].to_numpy(),
     }
+    # Negative GENIE knob weights are set to zero.  They come from the hA FSI fate-fraction
+    # knobs (FrCEx_N, FrInel_pi, FrCEx_pi, FrAbs_pi) at +2/+3 sigma, where the compensating
+    # weight of events with the other fates falls past zero (an unphysical negative fate
+    # probability); see ipynb_notebooks/fsi_negative_knob_weights.ipynb.  Only finite
+    # negatives in the *_UBGenie knobs are touched: non-finite values are left for the
+    # invalid-tune handling downstream, and the non-GENIE knobs keep their own sentinels.
+    num_clipped = {}
     for col in spline_knob_cols:
-        spline_dict[col] = [row.tolist() for row in spline_data[col]]
+        if col.endswith("_UBGenie"):
+            rows = [np.where(np.isfinite(row) & (row < 0), 0.0, row) for row in spline_data[col]]
+            n = sum(int(np.count_nonzero(np.isfinite(row) & (row < 0))) for row in spline_data[col])
+            if n:
+                num_clipped[col] = n
+        else:
+            rows = spline_data[col]
+        spline_dict[col] = [row.tolist() for row in rows]
+    if num_clipped:
+        print(f"  set negative GENIE knob weights to zero: {num_clipped}")
     spline_dict["weightsReint"] = [(row.astype(np.float64) / 1000.0).tolist() for row in reint_data["weightsReint"]]
 
     print("  computing z-expansion axial-form-factor weights...")
