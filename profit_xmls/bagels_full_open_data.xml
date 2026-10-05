@@ -114,79 +114,79 @@
 
 <MCFile treename="tree" filename="/nevis/riverside/data/leehagaman/ngem/intermediate_files/minimal_withspline_df.root" pot="9.89e19">
 
-	<branch associated_subchannel = "nu_uBooNE_1gNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==0" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1g0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==1" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==2" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1g0p1mu_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==3" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1goutFV_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==4" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1gNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==0" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1g0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==1" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==2" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1g0p1mu_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==3" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1goutFV_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==4" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
-	<branch associated_subchannel = "nu_uBooNE_NC1pi0Np_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==5" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_NC1pi00p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==6" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC1pi0Np_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==7" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC1pi00p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==8" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1pi0outFV_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==9" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NC1pi0Np_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==5" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NC1pi00p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==6" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC1pi0Np_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==7" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC1pi00p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==8" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1pi0outFV_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==9" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
-	<branch associated_subchannel = "nu_uBooNE_nueCCNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==10" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_nueCC0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==11" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCCNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==12" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==13" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_otheroutFVdirt_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==14" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_nueCCNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==10" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_nueCC0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==11" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCCNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==12" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==13" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_otheroutFVdirt_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==14" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
-	<branch associated_subchannel = "nu_uBooNE_multipi0_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==15" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_other2g_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==16" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_pi0dalitz_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==17" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_NCnogamma_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==18" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_EXT_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==19" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-
-
-	<branch associated_subchannel = "nu_uBooNE_1gNp_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==0" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1g0p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==1" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==2" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1g0p1mu_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==3" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1goutFV_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==4" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-
-	<branch associated_subchannel = "nu_uBooNE_NC1pi0Np_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==5" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_NC1pi00p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==6" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC1pi0Np_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==7" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC1pi00p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==8" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1pi0outFV_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==9" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-
-	<branch associated_subchannel = "nu_uBooNE_nueCCNp_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==10" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_nueCC0p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==11" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCCNp_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==12" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC0p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==13" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_otheroutFVdirt_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==14" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-
-	<branch associated_subchannel = "nu_uBooNE_multipi0_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==15" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_other2g_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==16" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_pi0dalitz_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==17" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_NCnogamma_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==18" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_EXT_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==19" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_multipi0_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==15" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_other2g_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==16" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_pi0dalitz_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==17" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NCnogamma_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==18" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_EXT_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==19" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
 
-	<branch associated_subchannel = "nu_uBooNE_1gNp_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==0" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1g0p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==1" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==2" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1g0p1mu_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==3" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1goutFV_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==4" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1gNp_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==0" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1g0p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==1" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==2" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1g0p1mu_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==3" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1goutFV_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==4" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
-	<branch associated_subchannel = "nu_uBooNE_NC1pi0Np_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==5" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_NC1pi00p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==6" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC1pi0Np_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==7" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC1pi00p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==8" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_1pi0outFV_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==9" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NC1pi0Np_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==5" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NC1pi00p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==6" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC1pi0Np_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==7" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC1pi00p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==8" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1pi0outFV_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==9" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
-	<branch associated_subchannel = "nu_uBooNE_nueCCNp_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==10" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_nueCC0p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==11" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCCNp_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==12" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_numuCC0p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==13" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_otheroutFVdirt_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==14" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_nueCCNp_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==10" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_nueCC0p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==11" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCCNp_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==12" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC0p_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==13" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_otheroutFVdirt_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==14" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
-	<branch associated_subchannel = "nu_uBooNE_multipi0_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==15" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_other2g_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==16" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_pi0dalitz_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==17" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_NCnogamma_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==18" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
-	<branch associated_subchannel = "nu_uBooNE_EXT_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==19" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_multipi0_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==15" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_other2g_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==16" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_pi0dalitz_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==17" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NCnogamma_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==18" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_EXT_dirt" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==1 && reco_category==19" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+
+
+	<branch associated_subchannel = "nu_uBooNE_1gNp_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==0" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1g0p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==1" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==2" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1g0p1mu_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==3" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1goutFV_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==4" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+
+	<branch associated_subchannel = "nu_uBooNE_NC1pi0Np_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==5" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NC1pi00p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==6" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC1pi0Np_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==7" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC1pi00p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==8" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_1pi0outFV_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==9" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+
+	<branch associated_subchannel = "nu_uBooNE_nueCCNp_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==10" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_nueCC0p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==11" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCCNp_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==12" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_numuCC0p_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==13" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_otheroutFVdirt_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==14" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+
+	<branch associated_subchannel = "nu_uBooNE_multipi0_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==15" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_other2g_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==16" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_pi0dalitz_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==17" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_NCnogamma_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==18" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
+	<branch associated_subchannel = "nu_uBooNE_EXT_ext" incl_systematics = "false" model_rule = "0" weight_1 = "isdata==0 && isext==1 && isdirt==0 && reco_category==19" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 
 </MCFile>
 
@@ -273,6 +273,12 @@
 </DetVarFiles>
 
 <systematics>
+	<!-- MC branches weight the CV by weight_1 (selection) x weight_2 (non_genie_net_weight) x weight_3
+	     (genie_cv_weight) = net_weight.  The GENIE (*_UBGenie) knob weights already include the GENIE
+	     tune weight (their CV element is weightTune), so they use include_only_weights="1,2": the
+	     selection x the non-GENIE part of the weight x the knob weight.  The flux, SCC and kaon knob
+	     weights are relative to the CV (CV element = 1), so they use the full weight (no
+	     include_only_weights). -->
 
     <!-- MC Statistics -->
 	<systematic type="mcstat" plotname="MC Stats" tag="other">MCStat</systematic>
@@ -289,90 +295,90 @@
     <systematic name="WireModThetaYZ"  type="spline_to_covariance" plotname="WireModThetaYZ" tag="DetVar" />
     <!-- Cross Section Systematics, 55 total (currently 5 CCQE-related splines and one pion FSI spline as examples) -->
 
-	<systematic type="spline" binning="var0" plotname="MACCQE" tag="QE" force_0_cv="true" include_only_weights="1">MaCCQE_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MACCQE" tag="QE" force_0_cv="true" include_only_weights="1,2">MaCCQE_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, tuned CV=0 (dipole FF): universe 0 = max = z-expansion variation, universe 1 = min = CV, hence knobvals "1, 0" -->
-	<systematic type="spline_to_covariance" binning="var0" plotname="AxFFCCQEshape" knobvals="1, 0" tag="QE" force_0_cv="true" include_only_weights="1">AxFFCCQEshape_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="AxFFCCQEshape" knobvals="1, 0" tag="QE" force_0_cv="true" include_only_weights="1,2">AxFFCCQEshape_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, tuned CV=0 (BBBA05 FF): universe 0 = max = variation, universe 1 = min = CV, hence knobvals "1, 0" -->
-	<systematic type="spline_to_covariance" binning="var0" plotname="VecFFCCQEshape" knobvals="1, 0" tag="QE" force_0_cv="true" include_only_weights="1">VecFFCCQEshape_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="RPA_CCQE" tag="QE" force_0_cv="true" include_only_weights="1">RPA_CCQE_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="CoulombCCQE" tag="QE" force_0_cv="true" include_only_weights="1">CoulombCCQE_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="VecFFCCQEshape" knobvals="1, 0" tag="QE" force_0_cv="true" include_only_weights="1,2">VecFFCCQEshape_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="RPA_CCQE" tag="QE" force_0_cv="true" include_only_weights="1,2">RPA_CCQE_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="CoulombCCQE" tag="QE" force_0_cv="true" include_only_weights="1,2">CoulombCCQE_UBGenie</systematic>
 
-	<systematic type="spline" binning="var0" plotname="NormCCMEC" knobvals="-2, -1, 0, 1, 2, 3" tag="MEC" force_0_cv="true" include_only_weights="1">NormCCMEC_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="NormNCMEC" knobvals="-1, 0, 1, 2, 3" tag="MEC" force_0_cv="true" include_only_weights="1">NormNCMEC_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="NormCCMEC" knobvals="-2, -1, 0, 1, 2, 3" tag="MEC" force_0_cv="true" include_only_weights="1,2">NormCCMEC_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="NormNCMEC" knobvals="-1, 0, 1, 2, 3" tag="MEC" force_0_cv="true" include_only_weights="1,2">NormNCMEC_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, tuned CV=1 (GENIE empirical MEC shape): universe 0 = max = CV, universe 1 = min = Nieves variation, so knobvals "0, 1" is already correct -->
-	<systematic type="spline" binning="var0" plotname="XSecShape_CCMEC" knobvals="0, 1" tag="MEC" force_0_cv="true" include_only_weights="1">XSecShape_CCMEC_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="XSecShape_CCMEC" knobvals="0, 1" tag="MEC" force_0_cv="true" include_only_weights="1,2">XSecShape_CCMEC_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, tuned CV=0 (isotropic): universe 0 = max = variation, universe 1 = min = CV, hence knobvals "1, 0" -->
-	<systematic type="spline_to_covariance" binning="var0" plotname="DecayAngMEC" knobvals="1, 0" tag="MEC" force_0_cv="true" include_only_weights="1">DecayAngMEC_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FracPN_CCMEC" tag="MEC" force_0_cv="true" include_only_weights="1">FracPN_CCMEC_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="FracDelta_CCMEC" tag="MEC" force_0_cv="true" include_only_weights="1">FracDelta_CCMEC_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="DecayAngMEC" knobvals="1, 0" tag="MEC" force_0_cv="true" include_only_weights="1,2">DecayAngMEC_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FracPN_CCMEC" tag="MEC" force_0_cv="true" include_only_weights="1,2">FracPN_CCMEC_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="FracDelta_CCMEC" tag="MEC" force_0_cv="true" include_only_weights="1,2">FracDelta_CCMEC_UBGenie</systematic>
 
-	<systematic type="spline" binning="var0" plotname="MaCCRES" tag="RES" force_0_cv="true" include_only_weights="1">MaCCRES_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="MvCCRES" tag="RES" force_0_cv="true" include_only_weights="1">MvCCRES_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="MaNCRES" tag="RES" force_0_cv="true" include_only_weights="1">MaNCRES_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="MvNCRES" tag="RES" force_0_cv="true" include_only_weights="1">MvNCRES_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="RDecBR1eta" tag="RES" force_0_cv="true" include_only_weights="1">RDecBR1eta_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MaCCRES" tag="RES" force_0_cv="true" include_only_weights="1,2">MaCCRES_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MvCCRES" tag="RES" force_0_cv="true" include_only_weights="1,2">MvCCRES_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MaNCRES" tag="RES" force_0_cv="true" include_only_weights="1,2">MaNCRES_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MvNCRES" tag="RES" force_0_cv="true" include_only_weights="1,2">MvNCRES_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="RDecBR1eta" tag="RES" force_0_cv="true" include_only_weights="1,2">RDecBR1eta_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, tuned CV=0 (isotropic): universe 0 = max = variation, universe 1 = min = CV, hence knobvals "1, 0" -->
-	<systematic type="spline_to_covariance" binning="var0" plotname="Theta_Delta2Npi" knobvals="1, 0" tag="RES" force_0_cv="true" include_only_weights="1">Theta_Delta2Npi_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="RDecBR1gamma" tag="RES" force_0_cv="true" include_only_weights="1">RDecBR1gamma_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="Theta_Delta2Npi" knobvals="1, 0" tag="RES" force_0_cv="true" include_only_weights="1,2">Theta_Delta2Npi_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="RDecBR1gamma" tag="RES" force_0_cv="true" include_only_weights="1,2">RDecBR1gamma_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, CV=0, but the production fcl misspelled the knob ("ThetaDelta2Rad"), so both universes equal the CV and this has no effect until resimulated -->
-	<systematic type="spline_to_covariance" binning="var0" plotname="ThetaDelta2NRad" knobvals="0, 1" tag="RES" force_0_cv="true" include_only_weights="1">ThetaDelta2NRad_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="ThetaDelta2NRad" knobvals="0, 1" tag="RES" force_0_cv="true" include_only_weights="1,2">ThetaDelta2NRad_UBGenie</systematic>
 
-	<systematic type="spline_to_covariance" binning="var0" plotname="NormCCCOH" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true" include_only_weights="1">NormCCCOH_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NormNCCOH" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true" include_only_weights="1">NormNCCOH_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NormCCCOH" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true" include_only_weights="1,2">NormCCCOH_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NormNCCOH" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true" include_only_weights="1,2">NormNCCOH_UBGenie</systematic>
 
-	<systematic type="spline" binning="var0" plotname="MaNCEL" tag="NC" force_0_cv="true" include_only_weights="1">MaNCEL_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="EtaNCEL" tag="NC" force_0_cv="true" include_only_weights="1">EtaNCEL_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MaNCEL" tag="NC" force_0_cv="true" include_only_weights="1,2">MaNCEL_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="EtaNCEL" tag="NC" force_0_cv="true" include_only_weights="1,2">EtaNCEL_UBGenie</systematic>
 
-	<systematic type="spline_to_covariance" binning="var0" plotname="AGKYxF1pi" tag="Hadr." force_0_cv="true" include_only_weights="1">AGKYxF1pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="AGKYpT1pi" tag="Hadr." force_0_cv="true" include_only_weights="1">AGKYpT1pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="AGKYxF1pi" tag="Hadr." force_0_cv="true" include_only_weights="1,2">AGKYxF1pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="AGKYpT1pi" tag="Hadr." force_0_cv="true" include_only_weights="1,2">AGKYpT1pi_UBGenie</systematic>
 
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnNC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvnNC1pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnNC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvnNC2pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpNC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvpNC1pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpNC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvpNC2pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnCC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvnCC1pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnCC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvnCC2pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpCC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvpCC1pi_UBGenie</systematic>
-	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpCC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1">NonRESBGvpCC2pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnNC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarnNC1pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnNC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarnNC2pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpNC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarpNC1pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpNC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarpNC2pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnCC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarnCC1pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnCC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarnCC2pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpCC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarpCC1pi_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpCC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1">NonRESBGvbarpCC2pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnNC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvnNC1pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnNC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvnNC2pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpNC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvpNC1pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpNC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvpNC2pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnCC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvnCC1pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvnCC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvnCC2pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpCC1pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvpCC1pi_UBGenie</systematic>
+	<systematic type="spline" 				binning="var0" plotname="NonRESBGvpCC2pi" tag="Non-RES-nu" force_0_cv="true" include_only_weights="1,2">NonRESBGvpCC2pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnNC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarnNC1pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnNC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarnNC2pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpNC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarpNC1pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpNC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarpNC2pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnCC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarnCC1pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarnCC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarnCC2pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpCC1pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarpCC1pi_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="NonRESBGvbarpCC2pi" tag="Non-RES-antinu" force_0_cv="true" include_only_weights="1,2">NonRESBGvbarpCC2pi_UBGenie</systematic>
 	
-	<systematic type="spline_to_covariance" binning="var0" plotname="AhtBY" tag="Struct." force_0_cv="true" include_only_weights="1">AhtBY_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="BhtBY" tag="Struct." force_0_cv="true" include_only_weights="1">BhtBY_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="CV1uBY" tag="Struct." force_0_cv="true" include_only_weights="1">CV1uBY_UBGenie</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="CV2uBY" tag="Struct." force_0_cv="true" include_only_weights="1">CV2uBY_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="AhtBY" tag="Struct." force_0_cv="true" include_only_weights="1,2">AhtBY_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="BhtBY" tag="Struct." force_0_cv="true" include_only_weights="1,2">BhtBY_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="CV1uBY" tag="Struct." force_0_cv="true" include_only_weights="1,2">CV1uBY_UBGenie</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="CV2uBY" tag="Struct." force_0_cv="true" include_only_weights="1,2">CV2uBY_UBGenie</systematic>
 
-	<systematic type="spline" binning="var0" plotname="MFP_pi" tag="FSI" force_0_cv="true" include_only_weights="1">MFP_pi_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FrCEx_pi" tag="FSI" force_0_cv="true" include_only_weights="1">FrCEx_pi_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FrInel_pi" tag="FSI" force_0_cv="true" include_only_weights="1">FrInel_pi_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FrAbs_pi" tag="FSI" force_0_cv="true" include_only_weights="1">FrAbs_pi_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="MFP_N" tag="FSI" force_0_cv="true" include_only_weights="1">MFP_N_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FrCEx_N" tag="FSI" force_0_cv="true" include_only_weights="1">FrCEx_N_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FrInel_N" tag="FSI" force_0_cv="true" include_only_weights="1">FrInel_N_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="FrAbs_N" tag="FSI" force_0_cv="true" include_only_weights="1">FrAbs_N_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MFP_pi" tag="FSI" force_0_cv="true" include_only_weights="1,2">MFP_pi_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FrCEx_pi" tag="FSI" force_0_cv="true" include_only_weights="1,2">FrCEx_pi_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FrInel_pi" tag="FSI" force_0_cv="true" include_only_weights="1,2">FrInel_pi_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FrAbs_pi" tag="FSI" force_0_cv="true" include_only_weights="1,2">FrAbs_pi_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="MFP_N" tag="FSI" force_0_cv="true" include_only_weights="1,2">MFP_N_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FrCEx_N" tag="FSI" force_0_cv="true" include_only_weights="1,2">FrCEx_N_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FrInel_N" tag="FSI" force_0_cv="true" include_only_weights="1,2">FrInel_N_UBGenie</systematic>
+	<systematic type="spline" binning="var0" plotname="FrAbs_N" tag="FSI" force_0_cv="true" include_only_weights="1,2">FrAbs_N_UBGenie</systematic>
 
-	<systematic type="spline_to_covariance" binning="var0" plotname="xsr_scc_Fa3_SCC" tag="SCC" force_0_cv="true" include_only_weights="1">xsr_scc_Fa3_SCC</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="xsr_scc_Fv3_SCC" tag="SCC" force_0_cv="true" include_only_weights="1">xsr_scc_Fv3_SCC</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="xsr_scc_Fa3_SCC" tag="SCC" force_0_cv="true">xsr_scc_Fa3_SCC</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="xsr_scc_Fv3_SCC" tag="SCC" force_0_cv="true">xsr_scc_Fv3_SCC</systematic>
 
 
 	<!-- Flux Systematics, 11 total (currently 2 splines as examples) -->
-	<systematic type="spline_to_covariance" binning="var0" plotname="horncurrent" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">horncurrent_FluxUnisim</systematic>
-	<systematic type="spline" 				binning="var0" plotname="expskin" 			knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">expskin_FluxUnisim</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="nucleoninexsec" 	knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">nucleoninexsec_FluxUnisim</systematic>
-	<systematic type="spline" 				binning="var0" plotname="nucleonqexsec" 	knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">nucleonqexsec_FluxUnisim</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="nucleontotxsec" 	knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">nucleontotxsec_FluxUnisim</systematic>
-	<systematic type="spline" 				binning="var0" plotname="pioninexsec" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">pioninexsec_FluxUnisim</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="pionqexsec" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">pionqexsec_FluxUnisim</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="piontotxsec" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true" include_only_weights="1">piontotxsec_FluxUnisim</systematic>
-	<systematic type="spline_to_covariance" binning="var0" plotname="kminus" knobvals="-1, 0, 1, 2, 3" restrict="-1, 3" tag="Flux" force_0_cv="true" include_only_weights="1">kminus_PrimaryHadronNormalization</systematic>
-    <systematic type="covariance" binning="var0" plotname="kplus" tag="Flux" force_0_cv="true" include_only_weights="1">kplus_PrimaryHadronFeynmanScaling</systematic>
-    <systematic type="covariance" binning="var0" plotname="kzero" tag="Flux" force_0_cv="true" include_only_weights="1">kzero_PrimaryHadronSanfordWang</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="horncurrent" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">horncurrent_FluxUnisim</systematic>
+	<systematic type="spline" 				binning="var0" plotname="expskin" 			knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">expskin_FluxUnisim</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="nucleoninexsec" 	knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">nucleoninexsec_FluxUnisim</systematic>
+	<systematic type="spline" 				binning="var0" plotname="nucleonqexsec" 	knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">nucleonqexsec_FluxUnisim</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="nucleontotxsec" 	knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">nucleontotxsec_FluxUnisim</systematic>
+	<systematic type="spline" 				binning="var0" plotname="pioninexsec" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">pioninexsec_FluxUnisim</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="pionqexsec" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">pionqexsec_FluxUnisim</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="piontotxsec" 		knobvals="-1, 0, 1" restrict="-3, 3" tag="Flux" force_0_cv="true">piontotxsec_FluxUnisim</systematic>
+	<systematic type="spline_to_covariance" binning="var0" plotname="kminus" knobvals="-1, 0, 1, 2, 3" restrict="-1, 3" tag="Flux" force_0_cv="true">kminus_PrimaryHadronNormalization</systematic>
+    <systematic type="covariance" binning="var0" plotname="kplus" tag="Flux" force_0_cv="true">kplus_PrimaryHadronFeynmanScaling</systematic>
+    <systematic type="covariance" binning="var0" plotname="kzero" tag="Flux" force_0_cv="true">kzero_PrimaryHadronSanfordWang</systematic>
     <systematic type="covariance" plotname="piplus_prod" tag="piprod">piplus_PrimaryHadronSWCentralSplineVariation</systematic>
 	<systematic type="covariance" plotname="piminus_prod" tag="piprod">piminus_PrimaryHadronSWCentralSplineVariation</systematic>
 

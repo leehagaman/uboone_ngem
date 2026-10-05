@@ -49,6 +49,11 @@ NET_WEIGHT_COL = "wc_net_weight_open_data"
 NUWRO_WEIGHT_COL = "wc_net_weight_nuwro"
 NON_GENIE_NET_WEIGHT_COL = "non_genie_net_weight"
 GENIE_WEIGHTS_VALID_COL = "genie_weights_valid"
+# the GENIE tune weight applied in net_weight (weightTune where valid, else one), so that
+# genie_cv_weight * non_genie_net_weight == net_weight: PROfit XMLs can fill the CV with
+# both and the GENIE knobs (whose weights already include the tune) with the non-GENIE
+# part only.
+GENIE_CV_WEIGHT_OUT_COL = "genie_cv_weight"
 
 # postprocessing.py builds NET_WEIGHT_COL with a sanitized cv*spline factor from the
 # Pandora weightTune*weightSpline columns.  These are the file types for which that
@@ -102,9 +107,12 @@ TRAINING_VARS = combined_training_vars
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     non_genie_net_weight           (net_weight with the valid GENIE tune weight
 #                                      factor removed, for replacement-model weights)
+#     genie_cv_weight                (that GENIE tune factor: net_weight =
+#                                      genie_cv_weight x non_genie_net_weight)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
 # and for each DETVAR file: the scalar analysis columns plus vartype,
-#     isdata/isext/isdirt/isnuwro, net_weight, and prob_<category>.
+#     isdata/isext/isdirt/isnuwro, net_weight, genie_cv_weight, non_genie_net_weight, and
+#     prob_<category>.
 #     (There are two CV files, one per DetVar CV group: minimal_detvar_CV_df.root for the
 #     LY / WireMod variations and minimal_detvar_CV_sce_recomb2_df.root for SCE /
 #     Recomb2, each with net_weight normalized to that group's CV POT; within one group
@@ -430,6 +438,28 @@ def _fill_root_batch(tree, batch, out_cols, kinds, fixed_len, buffers, views, de
         tree.Fill()
 
 
+def valid_genie_base_expr():
+    """True where the GENIE tune weight was applied in net_weight: postprocessing.py's
+    validity check on cv*spline, plus a finite, positive tune weight itself (the -1
+    sentinel rows have tune = spline = -1, whose product passes postprocessing's check)."""
+    raw_genie_base = pl.col(GENIE_CV_WEIGHT_COL) * pl.col(GENIE_SPLINE_WEIGHT_COL)
+    return (
+        ~pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES))
+        & raw_genie_base.is_not_null()
+        & raw_genie_base.is_finite()
+        & (raw_genie_base > 0.0)
+        & (raw_genie_base <= 30.0)
+        & pl.col(GENIE_CV_WEIGHT_COL).is_not_null()
+        & pl.col(GENIE_CV_WEIGHT_COL).is_finite()
+        & (pl.col(GENIE_CV_WEIGHT_COL) > 0.0)
+    )
+
+
+def genie_cv_weight_expr():
+    """The GENIE tune weight applied in net_weight: weightTune where valid, else one."""
+    return pl.when(valid_genie_base_expr()).then(pl.col(GENIE_CV_WEIGHT_COL)).otherwise(1.0).cast(pl.Float64)
+
+
 def unit_genie_weights_where_invalid(spline_schema):
     """Set the GENIE-derived weights of an event to one where GENIE_WEIGHTS_VALID_COL is False.
 
@@ -655,17 +685,7 @@ def build_minimal_df(training):
     # wc_weight_cv belongs to a different MCTruth in multi-interaction events) and
     # replaces the whole product by one when it is invalid; in that case the tune
     # weight was never applied and must not be divided out here.
-    raw_genie_base = pl.col(GENIE_CV_WEIGHT_COL) * pl.col(GENIE_SPLINE_WEIGHT_COL)
-    valid_genie_base = (
-        ~pl.col("filetype").is_in(list(UNIT_BASE_WEIGHT_FILETYPES))
-        & raw_genie_base.is_not_null()
-        & raw_genie_base.is_finite()
-        & (raw_genie_base > 0.0)
-        & (raw_genie_base <= 30.0)
-        & pl.col(GENIE_CV_WEIGHT_COL).is_not_null()
-        & pl.col(GENIE_CV_WEIGHT_COL).is_finite()
-        & (pl.col(GENIE_CV_WEIGHT_COL) > 0.0)
-    )
+    valid_genie_base = valid_genie_base_expr()
     finite_net_weight = (
         pl.col(NET_WEIGHT_COL).fill_null(0.0).fill_nan(0.0)
     )
@@ -683,11 +703,12 @@ def build_minimal_df(training):
         .otherwise(finite_net_weight)
         .alias(NON_GENIE_NET_WEIGHT_COL),
         valid_genie_base.alias(GENIE_WEIGHTS_VALID_COL),
+        genie_cv_weight_expr().alias(GENIE_CV_WEIGHT_OUT_COL),
     ])
 
     minimal = combined.select(
         OUTPUT_SCALAR_COLUMNS + ["wc_truth_nuScatType"]
-        + [NET_WEIGHT_COL, NON_GENIE_NET_WEIGHT_COL, GENIE_WEIGHTS_VALID_COL, "net_weight_nuwro"]
+        + [NET_WEIGHT_COL, NON_GENIE_NET_WEIGHT_COL, GENIE_WEIGHTS_VALID_COL, GENIE_CV_WEIGHT_OUT_COL, "net_weight_nuwro"]
         + prob_cols
     ).with_columns([
         (pl.col("filetype") == "data").alias("isdata"),
@@ -781,6 +802,8 @@ def save_detvar(training, output_dir):
         "wc_kine_reco_Enu",
         DETVAR_WEIGHT_COL,
         DETVAR_SCE_RECOMB2_WEIGHT_COL,
+        GENIE_CV_WEIGHT_COL,
+        GENIE_SPLINE_WEIGHT_COL,
     ] + detvar_analysis_source_columns + TRAINING_VARS))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -810,6 +833,7 @@ def save_detvar(training, output_dir):
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
         (pl.col("filetype") == "nuwro_fake_data").alias("isnuwro"),
         pl.col("filetype").replace_strict(FILETYPE_CODES, default=0, return_dtype=pl.Int32).alias("filetype_code"),
+        genie_cv_weight_expr().alias(GENIE_CV_WEIGHT_OUT_COL),
     ])
 
     unknown_filetypes = presel.filter(pl.col("filetype_code") == 0)["filetype"].unique().to_list()
@@ -818,7 +842,8 @@ def save_detvar(training, output_dir):
 
     detvar_minimal = presel.select(
         ["filetype", "filetype_code", "vartype"] + OUTPUT_SCALAR_COLUMNS[1:]
-        + ["isdata", "isext", "isdirt", "isnuwro", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL] + prob_cols
+        + ["isdata", "isext", "isdirt", "isnuwro", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL, GENIE_CV_WEIGHT_OUT_COL]
+        + prob_cols
     )
 
     present = detvar_minimal["vartype"].unique().to_list()
@@ -836,6 +861,7 @@ def save_detvar(training, output_dir):
         df_to_save = (
             detvar_minimal.filter((pl.col("vartype") == vartype) & pl.col(weight_col).is_not_null())
             .with_columns(pl.col(weight_col).alias("net_weight"))
+            .with_columns((pl.col("net_weight") / pl.col(GENIE_CV_WEIGHT_OUT_COL)).alias(NON_GENIE_NET_WEIGHT_COL))
             .drop([DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL])
         )
         if df_to_save.height == 0:

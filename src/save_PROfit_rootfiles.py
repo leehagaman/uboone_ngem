@@ -72,6 +72,14 @@ NO_SPLINE_FILETYPES = ["data", "ext", "nuwro_fake_data"]
 # GENIE-derived spline weights are written as one (see unit_genie_weights_where_invalid).
 GENIE_WEIGHTS_VALID_COL = "genie_weights_valid"
 
+# net_weight split into its GENIE tune factor and the rest, written as branches so PROfit
+# can apply the GENIE knob weights (which already include the tune weight: their CV
+# element is weightTune) on top of the non-GENIE part only, while the CV keeps the full
+# weight.  genie_cv_weight * non_genie_net_weight == net_weight; genie_cv_weight is the
+# tune weight where it is valid (and so applied in net_weight), else one.
+GENIE_CV_WEIGHT_OUT_COL = "genie_cv_weight"
+NON_GENIE_NET_WEIGHT_COL = "non_genie_net_weight"
+
 # DetVar detailed_run_period -> NuWro normalizing run period, for the --nuwro DetVar
 # rescale.  The DetVar configs group {3, 3a, 3b_1mil or 3b_500k} -> "3" and {4b, 4c, 4d,
 # 4bcd} -> "4nota"; the NuWro config groups the same detailed periods as "3" and "4c".
@@ -202,9 +210,14 @@ TRAINING_VARS = combined_training_vars
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     genie_weights_valid            (False where the GENIE tune weight was invalid; those
 #                                     events' GENIE-derived spline weights are written as one)
+#     genie_cv_weight, non_genie_net_weight
+#                                    (net_weight = genie_cv_weight x non_genie_net_weight; the
+#                                     XMLs fill the CV with both, and the GENIE knobs, whose
+#                                     weights include the tune, with non_genie_net_weight only)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
 # and for each DETVAR file: filetype, filetype_code, vartype, run, subrun, event,
-#     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+#     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, genie_cv_weight,
+#     non_genie_net_weight, prob_<category>.
 #     (There are two CV files, one per DetVar CV group: minimal_detvar_CV_df.root for the
 #     LY / WireMod variations and minimal_detvar_CV_sce_recomb2_df.root for SCE /
 #     Recomb2, each with net_weight normalized to that group's CV POT.  They need two
@@ -538,6 +551,11 @@ def genie_weights_valid_expr():
     )
 
 
+def genie_cv_weight_expr():
+    """The GENIE tune weight applied in net_weight: weightTune where valid, else one."""
+    return pl.when(genie_weights_valid_expr()).then(pl.col(GENIE_CV_WEIGHT_COL)).otherwise(1.0)
+
+
 def unit_genie_weights_where_invalid(spline_schema):
     """Set the GENIE-derived weights of an event to one where GENIE_WEIGHTS_VALID_COL is False.
 
@@ -587,7 +605,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
 
     # output columns: full spline schema, then the MC-side scalars, then the flag/weight
     mc_extra_cols = [c for c in mc_df.columns if c not in keys]
-    out_cols = list(spline_schema.names()) + ["has_spline_weights"] + mc_extra_cols + ["net_weight"]
+    out_cols = list(spline_schema.names()) + ["has_spline_weights"] + mc_extra_cols + ["net_weight", NON_GENIE_NET_WEIGHT_COL]
 
     # branch kinds; integer columns that contain nulls anywhere fall through to float
     # (NaN), matching write_df_to_root / the earlier uproot-based writer.
@@ -607,6 +625,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
         has_nulls = (mc_df[c].null_count() > 0) or (c in data_df.columns and data_df[c].null_count() > 0)
         kinds[c] = _column_kind(mc_df.schema[c], has_nulls)
     kinds["net_weight"] = "float"
+    kinds[NON_GENIE_NET_WEIGHT_COL] = "float"
 
     pf = pq.ParquetFile(spline_path)
     n_spline = pf.metadata.num_rows
@@ -628,6 +647,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
                 pl.lit(True).alias("has_spline_weights"),
                 (pl.col(net_weight_col) * pl.col("spline_processed_fraction_weight")).alias("net_weight"),
             ])
+            .with_columns((pl.col("net_weight") / pl.col(GENIE_CV_WEIGHT_OUT_COL)).alias(NON_GENIE_NET_WEIGHT_COL))
             .with_columns(unit_genie_weights_where_invalid(spline_schema))
             .select(out_cols)
         )
@@ -641,7 +661,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
     # True, unit fraction weights.
     data_cols = set(data_df.columns)
     for c in out_cols:
-        if c in data_cols or c == "net_weight":
+        if c in data_cols or c in ("net_weight", NON_GENIE_NET_WEIGHT_COL):
             continue
         kind = kinds[c]
         if kind == "list":
@@ -676,6 +696,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
         else:
             data_extract[c] = ("float", s.to_numpy().astype(np.float64))
     net = data_df[net_weight_col].to_numpy().astype(np.float64)
+    data_genie_cv = data_df[GENIE_CV_WEIGHT_OUT_COL].to_numpy().astype(np.float64)
 
     for i in tqdm(range(data_df.height), desc="nominal data/ext"):
         for c in update_cols:
@@ -687,6 +708,7 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, net_weight_c
             else:
                 buffers[c][0] = arr[i]
         buffers["net_weight"][0] = net[i]   # data/ext net_weight = the POT weight itself
+        buffers[NON_GENIE_NET_WEIGHT_COL][0] = net[i] / data_genie_cv[i]
         tree.Fill()
 
     tree.Write()
@@ -770,12 +792,14 @@ def build_minimal_df(training, study):
     combined = combined.with_columns([
         _reco_category_expr().alias("reco_category"),
         genie_weights_valid_expr().alias(GENIE_WEIGHTS_VALID_COL),
+        genie_cv_weight_expr().cast(pl.Float64).alias(GENIE_CV_WEIGHT_OUT_COL),
     ])
 
     # isdata flags the study's data role (real data, or the NuWro fake data in --nuwro)
     # so the same PROfit XML (isdata == 1 data section; isdata==0 && isext==0 &&
     # isdirt==0 overlays) applies to both studies.
-    minimal = combined.select(OUTPUT_SCALAR_COLUMNS + [net_weight_col, GENIE_WEIGHTS_VALID_COL] + prob_cols).with_columns([
+    minimal = combined.select(OUTPUT_SCALAR_COLUMNS + [net_weight_col, GENIE_WEIGHTS_VALID_COL, GENIE_CV_WEIGHT_OUT_COL]
+                              + prob_cols).with_columns([
         _filetype_code_expr(),
         (pl.col("filetype") == study["data_filetype"]).alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
@@ -911,7 +935,8 @@ def score_detvar_df(training, extra_cols=()):
     # dict.fromkeys dedups columns that are both an explicit id/weight and a training var
     # (e.g. wc_kine_reco_Enu is in TRAINING_VARS), which .select would reject as duplicate.
     keep = list(dict.fromkeys(
-        ["filetype", "vartype", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL]
+        ["filetype", "vartype", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL,
+         GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL]
         + TRAINING_VARS + list(extra_cols)))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -939,6 +964,7 @@ def score_detvar_df(training, extra_cols=()):
         (pl.col("filetype") == "data").alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
+        genie_cv_weight_expr().cast(pl.Float64).alias(GENIE_CV_WEIGHT_OUT_COL),
     ])
 
     unknown_filetypes = presel.filter(pl.col("filetype_code") == 0)["filetype"].unique().to_list()
@@ -947,7 +973,8 @@ def score_detvar_df(training, extra_cols=()):
 
     detvar_minimal = presel.select(
         ["filetype", "filetype_code", "vartype", "run", "subrun", "event", "isdata", "isext", "isdirt",
-         "reco_category", "wc_kine_reco_Enu", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL] + prob_cols + list(extra_cols)
+         "reco_category", "wc_kine_reco_Enu", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL, GENIE_CV_WEIGHT_OUT_COL]
+        + prob_cols + list(extra_cols)
     )
     return detvar_minimal
 
@@ -982,6 +1009,7 @@ def split_detvar_by_cv_group(detvar_minimal):
             raise ValueError(f"{n_dropped} '{vartype}' events have a null {weight_col}")
         outputs[name] = (
             df.with_columns(pl.col(weight_col).alias("net_weight"))
+            .with_columns((pl.col("net_weight") / pl.col(GENIE_CV_WEIGHT_OUT_COL)).alias(NON_GENIE_NET_WEIGHT_COL))
             .drop([DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL])
         )
     return outputs
