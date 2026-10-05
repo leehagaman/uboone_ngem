@@ -25,6 +25,7 @@ from pot_and_trigger_numbers import expected_full_dataset_data_POT
 from create_df import _arrays_filling_missing
 
 from df_helpers import align_columns_for_concat, format_duration
+from df_helpers import DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL, DETVAR_SCE_RECOMB2_VARTYPES, DETVAR_MATCH_KEYS
 from memory_monitoring import start_memory_logger
 
 
@@ -74,33 +75,11 @@ def _vartype_from_filename(filename):
     raise ValueError("Unknown vartype!", filename)
 
 
-def _detvar_sample_from_filename(filename):
-    """Index of the independent detvar generation sample this file belongs to, used
-    (together with run, subrun, event) to pair variation events with their CV events.
-
-    Run 3b has two CV samples that overlap heavily in (run, subrun, event) (the 500k
-    sample is ~95% a subset of the 1mil sample), so run/subrun/event alone is ambiguous:
-        0 = the 1mil CV sample (paired with all run 3b variations except SCE and Recomb2)
-        1 = the 500k CV sample (paired with the run 3b SCE and Recomb2 variations)
-    All non-run-3b detvar batches also get 0: their run-number ranges are disjoint from
-    run 3b (and from each other), so they can't cross-match.  (Empirically confirmed for
-    the lya hist_3 file, whose run 3b events cover ~99% of the 1mil CV.)
-    """
-    fn = filename.lower()
-    if "3b" not in fn:
-        return 0
-    if "1mil" in fn:
-        return 0
-    if "500k" in fn:
-        return 1
-    return 1 if _vartype_from_filename(filename) in ("SCE", "Recomb2") else 0
-
-
 def _get_file_metadata(filename, frac_events=1):
     """Open a ROOT file briefly to collect per-file metadata without reading branch data.
 
     Returns a dict with keys:
-        filetype, vartype, detvar_sample, detailed_run_period, file_POT, n_events,
+        filetype, vartype, detailed_run_period, file_POT, n_events,
         root_file_size_gb, curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars
     """
     filetype = _filetype_from_filename(filename)
@@ -109,7 +88,6 @@ def _get_file_metadata(filename, frac_events=1):
         raise ValueError(f"filetype is empty or None for filename: {filename}")
 
     vartype = _vartype_from_filename(filename)
-    detvar_sample = _detvar_sample_from_filename(filename)
 
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
 
@@ -145,9 +123,12 @@ def _get_file_metadata(filename, frac_events=1):
     f.close()
 
     detailed_run_period = "?"
-    if "3b" in filename.lower(): # run 3b detvar files (e.g. cv_3b_1mil) have no trailing run suffix;
-        # the two overlapping 3b samples get distinct periods so POT counting stays per-sample
-        detailed_run_period = "3b1" if detvar_sample == 0 else "3b2"
+    # the two run 3b CV files have no trailing run suffix; they get distinct periods so each
+    # can be put in only its own CV group's weight config (see df_helpers.detvar_weight_col)
+    if "_3b_1mil_" in filename:
+        detailed_run_period = "3b_1mil"
+    elif "_3b_500k_" in filename:
+        detailed_run_period = "3b_500k"
     elif "13a" in filename.lower() and "3.root" in filename: # the run-3 part of the 13a detvar batch is run 3a only
         detailed_run_period = "3a"
     elif "1.root" in filename:
@@ -188,7 +169,6 @@ def _get_file_metadata(filename, frac_events=1):
     return {
         "filetype": filetype,
         "vartype": vartype,
-        "detvar_sample": detvar_sample,
         "detailed_run_period": detailed_run_period,
         "file_POT": file_POT,
         "n_events": n_events,
@@ -198,7 +178,7 @@ def _get_file_metadata(filename, frac_events=1):
     }
 
 
-def _load_chunk(filename, filetype, vartype, detvar_sample, detailed_run_period, file_POT,
+def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
                 curr_wc_T_BDT_including_training_vars, curr_wc_T_pf_vars,
                 entry_start, entry_stop, **_):
     """Load events [entry_start, entry_stop) from a ROOT file and return a DataFrame.
@@ -269,7 +249,6 @@ def _load_chunk(filename, filetype, vartype, detvar_sample, detailed_run_period,
     all_df["filename"] = filename
     all_df["filetype"] = filetype
     all_df["vartype"] = vartype
-    all_df["detvar_sample"] = np.int32(detvar_sample)
 
     # nue_overlay: the nominal pipeline (create_df.add_nue_flux_sampling_weight)
     # reweights the intrinsic-nue flux sampling per file and postprocessing requires
@@ -379,7 +358,7 @@ if __name__ == "__main__":
         if vartype == "CV":
             key = (filetype, detailed_run_period)
             if key in pot_dic:
-                raise ValueError(f"Duplicate CV POT key {key} -- two CV files share a detailed_run_period, give them distinct ones (like 3b1/3b2)")
+                raise ValueError(f"Duplicate CV POT key {key} -- two CV files share a detailed_run_period, give them distinct ones (like 3b_1mil/3b_500k)")
             pot_dic[key] = file_POT
 
         n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
@@ -532,25 +511,37 @@ if __name__ == "__main__":
     # true-nueCC class are handled by the orthogonalization).  An explicit goal also
     # means a period that has nue_overlay but no nu_overlay DetVar (currently 4nota,
     # while run 4d nu_overlay is skipped) still gets a non-zero weight; postprocessing
-    # raises if any weighted period ends up with a zero goal POT.  The detvar
-    # covariance is a fractional (CV - var)/CV difference, so the absolute
-    # normalization cancels; the single "wc_net_weight" column matches what
-    # create_detvar_frac_cov_matrices reads.
+    # raises if any weighted period ends up with a zero goal POT.
+    #
+    # There is one weight config per DetVar CV group (see df_helpers.detvar_weight_col):
+    # each event's weight is goal POT / the POT of the CV files in its own group, so a
+    # run period's weight is right relative to the other run periods.  Pooling both run
+    # 3b CVs into one run 3 denominator would under-weight run 3 (by ~31% for the main
+    # group and ~66% for SCE/Recomb2).  Each config leaves out the other group's run 3b
+    # CV period, which gives those rows a null weight in this config.
+    shared_run_period_map = {
+        "1": "1", "2": "2", "3": "3", "3a": "3", "4a": "4a",
+        "4b": "4nota", "4c": "4nota", "4d": "4nota", "4bcd": "4nota", "5": "5",
+    }
+    shared_config = dict(goal_pot=expected_full_dataset_data_POT, goal_pot_filetypes=None,
+                         total_pot=None, exclude_filetypes=[])
     detvar_weight_configs = [
-        dict(
-            name="detvar",
-            weight_col="wc_net_weight",
-            run_period_map={
-                "1": "1", "2": "2", "3": "3", "3a": "3", "3b1": "3", "3b2": "3", "4a": "4a",
-                "4b": "4nota", "4c": "4nota", "4d": "4nota", "4bcd": "4nota", "5": "5",
-            },
-            goal_pot=expected_full_dataset_data_POT,
-            goal_pot_filetypes=None,
-            total_pot=None,
-            exclude_filetypes=[],
-        ),
+        dict(name="detvar", weight_col=DETVAR_WEIGHT_COL,
+             run_period_map={**shared_run_period_map, "3b_1mil": "3"}, **shared_config),
+        dict(name="detvar_sce_recomb2", weight_col=DETVAR_SCE_RECOMB2_WEIGHT_COL,
+             run_period_map={**shared_run_period_map, "3b_500k": "3"}, **shared_config),
     ]
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, detvar_weight_configs)
+
+    # each variation only gets the weight of its own CV group (the configs above weight
+    # every row in their run periods, including the other group's variations)
+    is_sce_recomb2 = pl.col("vartype").is_in(DETVAR_SCE_RECOMB2_VARTYPES)
+    is_cv = pl.col("vartype") == "CV"
+    all_df = all_df.with_columns([
+        pl.when(is_sce_recomb2).then(None).otherwise(pl.col(DETVAR_WEIGHT_COL)).alias(DETVAR_WEIGHT_COL),
+        pl.when(is_sce_recomb2 | is_cv).then(pl.col(DETVAR_SCE_RECOMB2_WEIGHT_COL)).otherwise(None)
+            .alias(DETVAR_SCE_RECOMB2_WEIGHT_COL),
+    ])
 
     # the weighting adds new Float64 columns; downcast them too
     new_float64_cols = [c for c, dt in all_df.schema.items() if dt == pl.Float64]
@@ -564,13 +555,16 @@ if __name__ == "__main__":
     # have limited DetVar files available (no delete_one_gamma / isotropic_one_gamma
     # detector variations), so there are no events for these reweightings to act on.
 
-    # duplicate (filetype, vartype, detvar_sample, run, subrun, event) check, done in
-    # polars to avoid materializing a multi-million-row Python string list.
-    # detvar_sample is part of the key because the two run 3b CV samples (1mil / 500k)
-    # overlap in run/subrun/event.
-    n_dups = all_df.select(pl.struct("filetype", "vartype", "detvar_sample", "run", "subrun", "event").is_duplicated().sum()).item()
-    if n_dups > 0:
-        raise ValueError(f"Duplicate filetype/vartype/detvar_sample/run/subrun/event! ({n_dups} rows)")
+    # duplicate checks, done in polars to avoid materializing a multi-million-row Python
+    # string list.  Within each CV group, every (filetype, run, subrun, event) must appear
+    # at most once per vartype, so CV-variation matching on those keys is unambiguous.
+    # (The two run 3b CVs share most of their run/subrun/event numbers, but they are in
+    # different groups.)
+    for weight_col in (DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL):
+        n_dups = (all_df.filter(pl.col(weight_col).is_not_null())
+                  .select(pl.struct(["vartype"] + DETVAR_MATCH_KEYS).is_duplicated().sum()).item())
+        if n_dups > 0:
+            raise ValueError(f"Duplicate vartype/filetype/run/subrun/event within the {weight_col} DetVar group! ({n_dups} rows)")
 
     print(f"saving {intermediate_files_location}/detvar_presel_df_train_vars.parquet...", end="", flush=True)
     start_time = time.time()

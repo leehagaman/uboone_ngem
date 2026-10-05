@@ -13,6 +13,27 @@ def format_duration(seconds):
     return f"{m}m {sec:02d}s"
 
 
+# DetVar CV groups.  The run 3b detector variations come in two separately generated
+# sets, each with its own run 3b CV sample (whose run/subrun/event numbers mostly overlap
+# with the other's):
+#     main group:        LY, WireMod variations   <-> 13a + run 3b 1mil + run 4d/5 CVs
+#     SCE/Recomb2 group: SCE, Recomb2 variations  <-> 13a + run 3b 500k + run 4d/5 CVs
+# create_detvar_df.py writes one POT-normalized weight column per group, each normalized
+# to only that group's CV POT and null on rows outside the group (the other group's run 3b
+# CV, and the other group's variations).  CV rows shared by both groups carry both weights.
+# Within one group the CV (filetype, run, subrun, event) keys are unique, so CV-variation
+# matching only needs those keys plus the group's weight column.
+DETVAR_SCE_RECOMB2_VARTYPES = ("SCE", "Recomb2")
+DETVAR_WEIGHT_COL = "wc_net_weight"
+DETVAR_SCE_RECOMB2_WEIGHT_COL = "wc_net_weight_sce_recomb2"
+DETVAR_MATCH_KEYS = ["filetype", "run", "subrun", "event"]
+
+
+def detvar_weight_col(vartype):
+    """The DetVar weight column of the CV group that a variation type is matched within."""
+    return DETVAR_SCE_RECOMB2_WEIGHT_COL if vartype in DETVAR_SCE_RECOMB2_VARTYPES else DETVAR_WEIGHT_COL
+
+
 def lazy_height(lf):
     return lf.select(pl.len()).collect().item()
 

@@ -4,7 +4,7 @@ import hashlib
 from tqdm import tqdm
 import polars as pl
 from .file_locations import intermediate_files_location, covariance_cache_location
-from .df_helpers import get_vals
+from .df_helpers import get_vals, detvar_weight_col, DETVAR_MATCH_KEYS
 
 # The GENIE tune CV weight column the stored universes are relative to (universe 0 of every
 # tune-scaled knob).  Keep in sync with postprocessing.GENIE_CV_WEIGHT_COL (not imported:
@@ -314,10 +314,6 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
 
     detvar_sys_frac_cov_dic = {}
 
-    # detvar_sample is part of the match key because the two run 3b CV samples
-    # (500k for SCE/Recomb2, 1mil for the other variations) overlap in run/subrun/event
-    detvar_match_keys = ["filetype", "detvar_sample", "run", "subrun", "event"]
-
     for vartype in ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
@@ -325,14 +321,16 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             print(f"WARNING: no detvar events for vartype '{vartype}', skipping its covariance matrix")
             continue
 
-        curr_filetype_rse_df = curr_df.select(detvar_match_keys)
-        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=detvar_match_keys, how="inner")
-
-        matching_curr_df = curr_df.join(matching_cv_df.select(detvar_match_keys), on=detvar_match_keys, how="inner")
+        # match within this variation's CV group (see df_helpers.detvar_weight_col), whose
+        # weight column is normalized to that group's CV POT and null outside the group
+        weight_col = detvar_weight_col(vartype)
+        group_cv_df = cv_df.filter(pl.col(weight_col).is_not_null())
+        matching_cv_df = group_cv_df.join(curr_df.select(DETVAR_MATCH_KEYS), on=DETVAR_MATCH_KEYS, how="inner")
+        matching_curr_df = curr_df.join(matching_cv_df.select(DETVAR_MATCH_KEYS), on=DETVAR_MATCH_KEYS, how="inner")
 
         if not use_detvar_bootstrapping:
-            matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, "wc_net_weight"), bins=bins)[0]
-            matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, "wc_net_weight"), bins=bins)[0]
+            matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, weight_col), bins=bins)[0]
+            matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, weight_col), bins=bins)[0]
             diff = matching_cv_counts - matching_var_counts
             curr_cov = np.outer(diff, diff)
             denom = np.outer(matching_cv_counts, matching_cv_counts)
@@ -344,9 +342,9 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             # also see code at https://github.com/BNLIF/wcp-uboone-bdt/blob/05acfe6d3c2a175ff52573669be7ce8ba77c623c/src/mcm_1.h#L77
 
             matching_cv_vals = get_vals(matching_cv_df, var)
-            matching_cv_weights = get_vals(matching_cv_df, "wc_net_weight")
+            matching_cv_weights = get_vals(matching_cv_df, weight_col)
             matching_var_vals = get_vals(matching_curr_df, var)
-            matching_var_weights = get_vals(matching_curr_df, "wc_net_weight")
+            matching_var_weights = get_vals(matching_curr_df, weight_col)
 
             matching_cv_counts = np.histogram(matching_cv_vals, weights=matching_cv_weights, bins=bins)[0]
             matching_var_counts = np.histogram(matching_var_vals, weights=matching_var_weights, bins=bins)[0]

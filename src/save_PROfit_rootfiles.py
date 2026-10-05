@@ -7,6 +7,8 @@ writer that PROfit's SetBranchAddress pattern expects):
 
   * nominal MC + data with GENIE spline weights ->  minimal_withspline[_nuwro]_df.root
   * one detector-variation file per vartype     ->  minimal_detvar[_nuwro]_<vartype>_df.root
+    (two CV files, one per DetVar CV group: _CV_ for the LY / WireMod variations and
+    _CV_sce_recomb2_ for SCE / Recomb2; see df_helpers.detvar_weight_col)
 
 Two "studies" share every writer and differ only in what plays prediction and data
 (see STUDIES):
@@ -44,6 +46,7 @@ from tqdm import tqdm
 
 from file_locations import intermediate_files_location
 from df_helpers import format_duration
+from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
 
@@ -65,14 +68,13 @@ WHOLE_SAMPLE_FILETYPES = ["fullosc_overlay"]
 NO_SPLINE_FILETYPES = ["data", "ext", "nuwro_fake_data"]
 
 # DetVar detailed_run_period -> NuWro normalizing run period, for the --nuwro DetVar
-# rescale.  The DetVar config groups {3, 3a, 3b1, 3b2} -> "3" and {4b, 4c, 4d, 4bcd} ->
-# "4nota"; the NuWro config groups the same detailed periods as "3" and "4c".  Because
-# both configs pool identical detailed periods, the per-(filetype, group) denominator
-# POTs are the same and only the goal POT differs, so
-# net_weight_nuwro = net_weight * goal_nuwro / goal_detvar exactly.
+# rescale.  The DetVar configs group {3, 3a, 3b_1mil or 3b_500k} -> "3" and {4b, 4c, 4d,
+# 4bcd} -> "4nota"; the NuWro config groups the same detailed periods as "3" and "4c".
+# Because the rescale keeps each DetVar group's per-(filetype, group) denominator POTs and
+# only swaps the goal POT, net_weight_nuwro = net_weight * goal_nuwro / goal_detvar exactly.
 DETVAR_TO_NUWRO_RUN_PERIOD = {
     "1": "1", "2": "2",
-    "3": "3", "3a": "3", "3b1": "3", "3b2": "3",
+    "3": "3", "3a": "3", "3b_1mil": "3", "3b_500k": "3",
     "4a": "4a",
     "4b": "4c", "4c": "4c", "4d": "4c", "4bcd": "4c",
     "5": "5",
@@ -127,17 +129,21 @@ STUDIES = {
     ),
 }
 
-# DetVar has its own single weighting config (create_detvar_df.py) whose column is
-# "wc_net_weight" (each run period scaled to the expected full-dataset data POT); the
+# DetVar has its own weighting configs (create_detvar_df.py), one per DetVar CV group,
+# with weight columns DETVAR_WEIGHT_COL / DETVAR_SCE_RECOMB2_WEIGHT_COL (each run period
+# scaled to the expected full-dataset data POT, over only that group's CV POT); the
 # detvar covariance is a fractional (CV-var)/CV difference so the absolute
-# normalization cancels.  norm_goal_pot_detvar is that config's per-group goal POT.
-DETVAR_NET_WEIGHT_COL = "wc_net_weight"
-DETVAR_GOAL_POT_COL = "norm_goal_pot_detvar"
+# normalization cancels.  norm_goal_pot_<config name> is each config's per-group goal POT
+# (the same values in both configs).
+DETVAR_GOAL_POT_COLS = {
+    DETVAR_WEIGHT_COL: "norm_goal_pot_detvar",
+    DETVAR_SCE_RECOMB2_WEIGHT_COL: "norm_goal_pot_detvar_sce_recomb2",
+}
 
 # Integer code for the filetype string, written as the `filetype_code` branch so PROfit
 # can use it in cv_variation_matching_vars (TTreeFormula can't match on a string
 # branch).  Needed since the DetVar files mix nu_overlay and nue_overlay samples, whose
-# (detvar_sample, run, subrun, event) keys are not guaranteed to be distinct.  Append
+# (run, subrun, event) keys are not guaranteed to be distinct.  Append
 # only -- existing codes are baked into written ROOT files.
 FILETYPE_CODES = {
     "nu_overlay": 1,
@@ -165,10 +171,13 @@ def _filetype_code_expr():
         .alias("filetype_code")
     )
 
-# The detector-variation samples PROfit expects (CV + the 7 variations used by the
-# covariance).  Only these get a ROOT file; any other vartype value (e.g. the empty
-# "" that create_detvar_df.py mislabels some events with) is skipped with a warning.
+# The detector-variation samples PROfit expects (CV + the variations used by the
+# covariance).  Only these get a ROOT file (the CV gets one per DetVar CV group, see
+# DETVAR_CV_SCE_RECOMB2_NAME); any other vartype value (e.g. the empty "" that
+# create_detvar_df.py mislabels some events with) is skipped with a warning.
 DETVAR_VARTYPES = ["CV", "LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
+# output name of the CV file for the SCE / Recomb2 DetVar CV group (the main group's CV is "CV")
+DETVAR_CV_SCE_RECOMB2_NAME = "CV_sce_recomb2"
 
 # The reco categories (and therefore the prob_<category> BDT-score columns) come from
 # the training definition.
@@ -187,14 +196,14 @@ TRAINING_VARS = combined_training_vars
 #     has_spline_weights, fraction_with_spline_weights, spline_processed_fraction_weight
 #     net_weight                     (final weight = open-data weight x spline-fraction weight)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
-# and for each DETVAR file: filetype, filetype_code, vartype, detvar_sample, run,
-#     subrun, event, isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight,
-#     prob_<category>.
-#     (detvar_sample distinguishes the two overlapping run 3b CV samples: 0 = 1mil,
-#     matched by all run 3b variations except SCE/Recomb2; 1 = 500k, matched by
-#     SCE/Recomb2.  filetype_code (FILETYPE_CODES) separates the nu_overlay and
-#     nue_overlay DetVar samples; PROfit's cv_variation_matching_vars should be
-#     "filetype_code,detvar_sample,run,subrun,event".)
+# and for each DETVAR file: filetype, filetype_code, vartype, run, subrun, event,
+#     isdata/isext/isdirt, reco_category, wc_kine_reco_Enu, net_weight, prob_<category>.
+#     (There are two CV files, one per DetVar CV group: minimal_detvar_CV_df.root for the
+#     LY / WireMod variations and minimal_detvar_CV_sce_recomb2_df.root for SCE /
+#     Recomb2, each with net_weight normalized to that group's CV POT.  They need two
+#     PROfit <DetVarSection>s.  Within one group the CV keys are unique, so PROfit's
+#     cv_variation_matching_vars should be "filetype_code,run,subrun,event";
+#     filetype_code (FILETYPE_CODES) separates the nu_overlay and nue_overlay samples.)
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
@@ -823,7 +832,7 @@ def save_nominal(training, output_dir, study):
 
 def score_detvar_df(training, extra_cols=()):
     """Return the scored DetVar minimal df (all vartypes): ids, flags, reco_category,
-    wc_kine_reco_Enu, net_weight (= DETVAR_NET_WEIGHT_COL) and the prob_ columns, plus any
+    wc_kine_reco_Enu, both DetVar CV-group weight columns and the prob_ columns, plus any
     extra_cols carried through untouched (the --nuwro DetVar rescale uses these to
     rescale the run-period mix)."""
     print("Building DetVar minimal dfs...")
@@ -850,7 +859,7 @@ def score_detvar_df(training, extra_cols=()):
     # dict.fromkeys dedups columns that are both an explicit id/weight and a training var
     # (e.g. wc_kine_reco_Enu is in TRAINING_VARS), which .select would reject as duplicate.
     keep = list(dict.fromkeys(
-        ["filetype", "vartype", "detvar_sample", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_NET_WEIGHT_COL]
+        ["filetype", "vartype", "run", "subrun", "event", "wc_kine_reco_Enu", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL]
         + TRAINING_VARS + list(extra_cols)))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -878,21 +887,25 @@ def score_detvar_df(training, extra_cols=()):
         (pl.col("filetype") == "data").alias("isdata"),
         (pl.col("filetype") == "ext").alias("isext"),
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
-    ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
+    ])
 
     unknown_filetypes = presel.filter(pl.col("filetype_code") == 0)["filetype"].unique().to_list()
     if unknown_filetypes:
         raise ValueError(f"filetypes {unknown_filetypes} are missing from FILETYPE_CODES -- add them (append only)")
 
     detvar_minimal = presel.select(
-        ["filetype", "filetype_code", "vartype", "detvar_sample", "run", "subrun", "event", "isdata", "isext", "isdirt",
-         "reco_category", "wc_kine_reco_Enu", "net_weight"] + prob_cols + list(extra_cols)
+        ["filetype", "filetype_code", "vartype", "run", "subrun", "event", "isdata", "isext", "isdirt",
+         "reco_category", "wc_kine_reco_Enu", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL] + prob_cols + list(extra_cols)
     )
     return detvar_minimal
 
 
-def write_detvar_files(detvar_minimal, output_dir, file_prefix="minimal_detvar_"):
-    """Write one <file_prefix><vartype>_df.root per DETVAR_VARTYPES from the scored df."""
+def split_detvar_by_cv_group(detvar_minimal):
+    """Split the scored DetVar df into {output name: df}, one per DETVAR_VARTYPES plus a
+    second CV (DETVAR_CV_SCE_RECOMB2_NAME), each with the single net_weight column of its
+    DetVar CV group.  Each variation is written with its own group's weight; the CV is
+    written once per group, each with only the CV rows in that group (see
+    df_helpers.detvar_weight_col)."""
     present = detvar_minimal["vartype"].unique().to_list()
     unexpected = [v for v in present if v not in DETVAR_VARTYPES]
     if unexpected:
@@ -900,19 +913,40 @@ def write_detvar_files(detvar_minimal, output_dir, file_prefix="minimal_detvar_"
         print(f"  WARNING: skipping {counts.select(pl.col('n').sum()).item()} events with unexpected vartype(s) "
               f"{counts.to_dicts()} -- not writing ROOT files for them (likely mislabeled in create_detvar_df.py)")
 
-    for vartype in DETVAR_VARTYPES:
-        df_to_save = detvar_minimal.filter(pl.col("vartype") == vartype)
-        if df_to_save.height == 0:
-            print(f"  WARNING: no events for detvar vartype '{vartype}'; skipping")
+    outputs = {}
+    for name in DETVAR_VARTYPES + [DETVAR_CV_SCE_RECOMB2_NAME]:
+        if name == "CV":
+            vartype, weight_col = "CV", DETVAR_WEIGHT_COL
+        elif name == DETVAR_CV_SCE_RECOMB2_NAME:
+            vartype, weight_col = "CV", DETVAR_SCE_RECOMB2_WEIGHT_COL
+        else:
+            vartype, weight_col = name, detvar_weight_col(name)
+        df = detvar_minimal.filter((pl.col("vartype") == vartype) & pl.col(weight_col).is_not_null())
+        if df.height == 0:
+            print(f"  WARNING: no events for detvar output '{name}'; skipping")
             continue
-        output_path = f"{output_dir}/{file_prefix}{vartype}_df.root"
-        write_df_to_root(df_to_save, output_path, desc=f"detvar {vartype}")
+        n_dropped = detvar_minimal.filter((pl.col("vartype") == vartype) & pl.col(weight_col).is_null()).height
+        if vartype != "CV" and n_dropped:
+            raise ValueError(f"{n_dropped} '{vartype}' events have a null {weight_col}")
+        outputs[name] = (
+            df.with_columns(pl.col(weight_col).alias("net_weight"))
+            .drop([DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL])
+        )
+    return outputs
+
+
+def write_detvar_files(detvar_outputs, output_dir, file_prefix="minimal_detvar_"):
+    """Write one <file_prefix><name>_df.root per output of split_detvar_by_cv_group."""
+    for name, df_to_save in detvar_outputs.items():
+        output_path = f"{output_dir}/{file_prefix}{name}_df.root"
+        write_df_to_root(df_to_save, output_path, desc=f"detvar {name}")
 
 
 
 def rescale_detvar_weights(detvar_minimal, run_period_map, goal):
-    """Multiply each DetVar event's net_weight by (goal POT of its mapped group) /
-    (the DetVar config's goal POT of its own group), see DETVAR_TO_NUWRO_RUN_PERIOD."""
+    """Multiply each DetVar event's weights (both CV-group weight columns) by (goal POT of
+    its mapped group) / (the DetVar configs' goal POT of its own group, the same in both
+    configs), see DETVAR_TO_NUWRO_RUN_PERIOD."""
     present = detvar_minimal["detailed_run_period"].unique().to_list()
     unmapped = sorted(p for p in present if p not in run_period_map)
     if unmapped:
@@ -920,11 +954,20 @@ def rescale_detvar_weights(detvar_minimal, run_period_map, goal):
     missing_goal = sorted({run_period_map[p] for p in present} - set(goal))
     if missing_goal:
         raise ValueError(f"DetVar events map to run period(s) {missing_goal} that have no goal POT")
-    if detvar_minimal.filter(pl.col(DETVAR_GOAL_POT_COL).is_null() | (pl.col(DETVAR_GOAL_POT_COL) <= 0)).height:
-        raise ValueError(f"DetVar rows with a null/zero {DETVAR_GOAL_POT_COL}")
+
+    goal_cols = list(DETVAR_GOAL_POT_COLS.values())
+    for weight_col, goal_col in DETVAR_GOAL_POT_COLS.items():
+        if detvar_minimal.filter(pl.col(weight_col).is_not_null()
+                                 & (pl.col(goal_col).is_null() | (pl.col(goal_col) <= 0))).height:
+            raise ValueError(f"DetVar rows with a {weight_col} but a null/zero {goal_col}")
+    # the two configs share the per-group goal POT, so take whichever is set on the row
+    detvar_goal = pl.coalesce(goal_cols).cast(pl.Float64)
+    both_goals = detvar_minimal.filter(pl.all_horizontal([pl.col(c).is_not_null() for c in goal_cols]))
+    if both_goals.height and not np.allclose(both_goals[goal_cols[0]].to_numpy(), both_goals[goal_cols[1]].to_numpy()):
+        raise ValueError(f"the DetVar configs' goal POTs ({goal_cols}) differ on the same rows")
 
     mapped = pl.col("detailed_run_period").replace_strict(run_period_map, return_dtype=pl.String)
-    scale = mapped.replace_strict(goal, return_dtype=pl.Float64) / pl.col(DETVAR_GOAL_POT_COL).cast(pl.Float64)
+    scale = mapped.replace_strict(goal, return_dtype=pl.Float64) / detvar_goal
 
     summary = (
         detvar_minimal.with_columns(scale.alias("_scale"))
@@ -934,7 +977,7 @@ def rescale_detvar_weights(detvar_minimal, run_period_map, goal):
     )
     print("  DetVar weight rescale (expected-full-dataset POT -> study POT), per filetype / detailed_run_period:")
     for row in summary.iter_rows(named=True):
-        print(f"    {row['filetype']:<12} {row['detailed_run_period']:<5} -> group "
+        print(f"    {row['filetype']:<12} {row['detailed_run_period']:<7} -> group "
               f"{run_period_map[row['detailed_run_period']]:<3} x{row['scale_min']:.4f}  ({row['n']} events)")
         if abs(row["scale_min"] - row["scale_max"]) > 1e-6 * abs(row["scale_min"]):
             raise ValueError(f"non-constant rescale within {row['filetype']} {row['detailed_run_period']}: "
@@ -942,8 +985,8 @@ def rescale_detvar_weights(detvar_minimal, run_period_map, goal):
 
     return (
         detvar_minimal
-        .with_columns((pl.col("net_weight") * scale).alias("net_weight"))
-        .drop(["detailed_run_period", DETVAR_GOAL_POT_COL])
+        .with_columns([(pl.col(c) * scale).alias(c) for c in DETVAR_GOAL_POT_COLS])
+        .drop(["detailed_run_period"] + goal_cols)
     )
 
 
@@ -952,11 +995,11 @@ def save_detvar(training, output_dir, study):
     if run_period_map is None:
         detvar_minimal = score_detvar_df(training)
     else:
-        detvar_minimal = score_detvar_df(training, extra_cols=["detailed_run_period", DETVAR_GOAL_POT_COL])
+        detvar_minimal = score_detvar_df(training, extra_cols=["detailed_run_period", *DETVAR_GOAL_POT_COLS.values()])
         goal = get_goal_pot(study)
         print_goal_pot(goal, study)
         detvar_minimal = rescale_detvar_weights(detvar_minimal, run_period_map, goal)
-    write_detvar_files(detvar_minimal, output_dir, file_prefix=study["detvar_prefix"])
+    write_detvar_files(split_detvar_by_cv_group(detvar_minimal), output_dir, file_prefix=study["detvar_prefix"])
 
 
 # ============================================================================

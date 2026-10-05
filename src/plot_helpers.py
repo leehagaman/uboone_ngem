@@ -9,7 +9,7 @@ import matplotlib.gridspec as gridspec
 from .signal_categories import *
 from .systematics import get_rw_sys_frac_cov_matrices, get_detvar_sys_frac_cov_matrices, get_data_stat_cov, get_pred_stat_cov
 from .systematics import get_significance, get_significance_from_p_value, chi2_decomposition
-from .df_helpers import get_vals
+from .df_helpers import get_vals, detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_MATCH_KEYS
 from .file_locations import intermediate_files_location
 
 
@@ -24,6 +24,7 @@ NET_WEIGHT_CONFIG_NAME = {
     "wc_net_weight_nuwro": "nuwro",
     "run4b_only_wc_net_weight": "run4b_only",
     "wc_net_weight": "detvar",
+    "wc_net_weight_sce_recomb2": "detvar_sce_recomb2",
 }
 
 
@@ -303,45 +304,46 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
 
 def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x=False, log_y=False,
         additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
-        page_num=None, savename=None, show=True, detvar_df=None, net_weight_var="wc_net_weight"):
+        page_num=None, savename=None, show=True, detvar_df=None):
 
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
 
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
-    # the two run 3b CV samples (detvar_sample 0 = 1mil, 1 = 500k) overlap in
-    # run/subrun/event, so the displayed total CV uses only detvar_sample == 0
-    # (the 1mil sample plus every other batch) to avoid double counting
-    cv_display_df = cv_df.filter(pl.col("detvar_sample") == 0)
+    # the displayed total CV is the main DetVar CV group (13a + run 3b 1mil + run 4d/5 CVs),
+    # which leaves out the run 3b 500k CV that would double count run 3b
+    # (see df_helpers.detvar_weight_col)
+    cv_display_df = cv_df.filter(pl.col(DETVAR_WEIGHT_COL).is_not_null())
 
-    cv_counts = np.histogram(get_vals(cv_display_df, var), weights=get_vals(cv_display_df, net_weight_var)*additional_scaling_factor, bins=bins)[0]
+    cv_counts = np.histogram(get_vals(cv_display_df, var), weights=get_vals(cv_display_df, DETVAR_WEIGHT_COL)*additional_scaling_factor, bins=bins)[0]
     min_nonzero_y = np.min(cv_counts[cv_counts > 0])
     max_y = np.max(cv_counts)
     ax1.hist(display_bin_centers, weights=cv_counts, bins=display_bins, histtype="step", color="k", lw=2, zorder=-1, label="CV")
 
     ratios_by_var_dic = {}
 
-    detvar_match_keys = ["filetype", "detvar_sample", "run", "subrun", "event"]
     detvar_plot_vartypes = ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
 
-    total_cv_weight = np.sum(get_vals(cv_display_df, net_weight_var))
+    total_cv_weight = np.sum(get_vals(cv_display_df, DETVAR_WEIGHT_COL))
     for vartype in detvar_plot_vartypes:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
         if curr_df.height == 0:
             continue
 
-        curr_filetype_rse_df = curr_df.select(detvar_match_keys)
-        matching_cv_df = cv_df.join(curr_filetype_rse_df, on=detvar_match_keys, how="inner")
+        # match within this variation's CV group, weighted by that group's weight column
+        weight_col = detvar_weight_col(vartype)
+        group_cv_df = cv_df.filter(pl.col(weight_col).is_not_null())
+        matching_cv_df = group_cv_df.join(curr_df.select(DETVAR_MATCH_KEYS), on=DETVAR_MATCH_KEYS, how="inner")
 
-        matching_cv_weight = np.sum(get_vals(matching_cv_df, net_weight_var))
+        matching_cv_weight = np.sum(get_vals(matching_cv_df, weight_col))
         match_weight = total_cv_weight / matching_cv_weight
 
-        matching_curr_df = curr_df.join(matching_cv_df.select(detvar_match_keys), on=detvar_match_keys, how="inner")
+        matching_curr_df = curr_df.join(matching_cv_df.select(DETVAR_MATCH_KEYS), on=DETVAR_MATCH_KEYS, how="inner")
 
-        matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, net_weight_var)*additional_scaling_factor*match_weight, bins=bins)[0]
-        matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, net_weight_var)*additional_scaling_factor*match_weight, bins=bins)[0]
+        matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, weight_col)*additional_scaling_factor*match_weight, bins=bins)[0]
+        matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, weight_col)*additional_scaling_factor*match_weight, bins=bins)[0]
 
         var_over_cv_ratio = matching_cv_counts / matching_var_counts
         var_over_cv_ratio = np.nan_to_num(var_over_cv_ratio, nan=0, posinf=0, neginf=0)

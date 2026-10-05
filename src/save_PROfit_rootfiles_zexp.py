@@ -30,6 +30,7 @@ from tqdm import tqdm
 
 from file_locations import intermediate_files_location
 from df_helpers import format_duration
+from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL
 from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
@@ -53,10 +54,10 @@ NON_GENIE_NET_WEIGHT_COL = "non_genie_net_weight"
 # factor is explicitly replaced by one there.
 UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
 
-# DetVar has its own single weighting config (create_detvar_df.py) whose column is
-# "wc_net_weight"; the detvar covariance is a fractional (CV-var)/CV difference so the
-# absolute normalization cancels.
-DETVAR_NET_WEIGHT_COL = "wc_net_weight"
+# DetVar has its own weighting configs (create_detvar_df.py), one per DetVar CV group,
+# with weight columns DETVAR_WEIGHT_COL / DETVAR_SCE_RECOMB2_WEIGHT_COL (see
+# df_helpers.detvar_weight_col); the detvar covariance is a fractional (CV-var)/CV
+# difference so the absolute normalization cancels.
 
 # Integer filetype code written as the `filetype_code` branch of the DetVar files so
 # PROfit's cv_variation_matching_vars can separate the nu_overlay and nue_overlay DetVar
@@ -101,11 +102,12 @@ TRAINING_VARS = combined_training_vars
 #     non_genie_net_weight           (net_weight with the valid GENIE tune weight
 #                                      factor removed, for replacement-model weights)
 #     weightsReint + every GENIE spline-knob column (from spline_weights_df)
-# and for each DETVAR file: the scalar analysis columns plus vartype, detvar_sample,
+# and for each DETVAR file: the scalar analysis columns plus vartype,
 #     isdata/isext/isdirt/isnuwro, net_weight, and prob_<category>.
-#     (detvar_sample distinguishes the two overlapping run 3b CV samples: 0 = 1mil,
-#     matched by all run 3b variations except SCE/Recomb2; 1 = 500k, matched by
-#     SCE/Recomb2.)
+#     (There are two CV files, one per DetVar CV group: minimal_detvar_CV_df.root for the
+#     LY / WireMod variations and minimal_detvar_CV_sce_recomb2_df.root for SCE /
+#     Recomb2, each with net_weight normalized to that group's CV POT; within one group
+#     the CV (filetype, run, subrun, event) keys are unique.)
 #
 # Edit this list to change which non-spline variables are written.
 # ---------------------------------------------------------------------------
@@ -747,12 +749,12 @@ def save_detvar(training, output_dir):
     keep = list(dict.fromkeys([
         "filetype",
         "vartype",
-        "detvar_sample",
         "run",
         "subrun",
         "event",
         "wc_kine_reco_Enu",
-        DETVAR_NET_WEIGHT_COL,
+        DETVAR_WEIGHT_COL,
+        DETVAR_SCE_RECOMB2_WEIGHT_COL,
     ] + detvar_analysis_source_columns + TRAINING_VARS))
     presel = (
         pl.scan_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
@@ -782,15 +784,15 @@ def save_detvar(training, output_dir):
         (pl.col("filetype") == "dirt_overlay").alias("isdirt"),
         (pl.col("filetype") == "nuwro_fake_data").alias("isnuwro"),
         pl.col("filetype").replace_strict(FILETYPE_CODES, default=0, return_dtype=pl.Int32).alias("filetype_code"),
-    ]).rename({DETVAR_NET_WEIGHT_COL: "net_weight"})
+    ])
 
     unknown_filetypes = presel.filter(pl.col("filetype_code") == 0)["filetype"].unique().to_list()
     if unknown_filetypes:
         raise ValueError(f"filetypes {unknown_filetypes} are missing from FILETYPE_CODES -- add them (append only)")
 
     detvar_minimal = presel.select(
-        ["filetype", "filetype_code", "vartype", "detvar_sample"] + OUTPUT_SCALAR_COLUMNS[1:]
-        + ["isdata", "isext", "isdirt", "isnuwro", "net_weight"] + prob_cols
+        ["filetype", "filetype_code", "vartype"] + OUTPUT_SCALAR_COLUMNS[1:]
+        + ["isdata", "isext", "isdirt", "isnuwro", DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL] + prob_cols
     )
 
     present = detvar_minimal["vartype"].unique().to_list()
@@ -800,13 +802,21 @@ def save_detvar(training, output_dir):
         print(f"  WARNING: skipping {counts.select(pl.col('n').sum()).item()} events with unexpected vartype(s) "
               f"{counts.to_dicts()} -- not writing ROOT files for them (likely mislabeled in create_detvar_df.py)")
 
-    for vartype in DETVAR_VARTYPES:
-        df_to_save = detvar_minimal.filter(pl.col("vartype") == vartype)
+    # each variation is written with its own DetVar CV group's weight; the CV is written
+    # once per group ("CV" and "CV_sce_recomb2"), each with only that group's CV rows
+    outputs = [(vartype, vartype, detvar_weight_col(vartype)) for vartype in DETVAR_VARTYPES]
+    outputs.append(("CV_sce_recomb2", "CV", DETVAR_SCE_RECOMB2_WEIGHT_COL))
+    for name, vartype, weight_col in outputs:
+        df_to_save = (
+            detvar_minimal.filter((pl.col("vartype") == vartype) & pl.col(weight_col).is_not_null())
+            .with_columns(pl.col(weight_col).alias("net_weight"))
+            .drop([DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL])
+        )
         if df_to_save.height == 0:
-            print(f"  WARNING: no events for detvar vartype '{vartype}'; skipping")
+            print(f"  WARNING: no events for detvar output '{name}'; skipping")
             continue
-        output_path = f"{output_dir}/minimal_detvar_{vartype}_df.root"
-        write_df_to_root(df_to_save, output_path, desc=f"detvar {vartype}")
+        output_path = f"{output_dir}/minimal_detvar_{name}_df.root"
+        write_df_to_root(df_to_save, output_path, desc=f"detvar {name}")
 
 
 # ============================================================================
