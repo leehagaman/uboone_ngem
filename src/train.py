@@ -113,8 +113,9 @@ if __name__ == "__main__":
     presel_df = trainable_df.filter(pl.col("wc_kine_reco_Enu") > 0) # not necessary, already applied in presel_df_train_vars.parquet
 
     if args.signal_categories == "nc_coh_1g_vs_bkg":
-        # don't use Iso1g or Del1g events for training/testing
-        presel_df = presel_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay"))
+        # don't use Iso1g or Del1g events for training/testing, nor the dedicated rad. corr. simulation
+        presel_df = presel_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay")
+                                     & (pl.col("filetype") != "numucc_rad_corr_sim"))
 
         # only use sampled NC Coherent 1g events, in order to get a coherent 1g shape without event weights
         presel_df = presel_df.filter(
@@ -124,7 +125,7 @@ if __name__ == "__main__":
 
     else:
         # don't use 1mu1g rad. corr. events or NC Coherent 1g events for training/testing, since these are already included in the Del1g and Iso1g training
-        presel_df = presel_df.filter((pl.col("filetype") != "numuCC_rad_corrected") & (pl.col("filetype") != "NC_coherent_1g_reweighted"))
+        presel_df = presel_df.filter(~pl.col("filetype").is_in(["numucc_rad_corr_sim", "NC_coherent_1g_reweighted"]))
 
     preselected_num_events = presel_df.height
     print(f"Preselected {preselected_num_events} / {original_num_events} events")

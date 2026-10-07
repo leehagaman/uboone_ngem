@@ -19,9 +19,9 @@ from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_l
 from postprocessing import add_afro_1mu1p_sel
 from blip_postprocessing import do_blip_postprocessing_with_deex
 from postprocessing import remove_vector_variables, change_dtypes
-from postprocessing import apply_1g1mu_rad_corr_reweighting, apply_nc_coh_1g_reweighting
+from postprocessing import apply_nc_coh_1g_reweighting
+from postprocessing import apply_rad_corr_sim_normalization
 from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL
-from numuCC_rad_corr_1g_reweighting import compute_1g1mu_rad_corr_reweighting
 from coh_1g_reweighting import compute_nc_coh_1g_reweighting
 from pi0_dalitz_reweighting import compute_pi0_dalitz_reweighting, apply_pi0_dalitz_reweighting
 from pion_fsi_reweighting import compute_pion_fsi_weights_from_arrays
@@ -129,6 +129,10 @@ def _detailed_run_period_from_filename(filename):
         return "1"
     if "_3_1e19opendata.root" in filename:
         return "3"
+    # the dedicated numuCC rad-corr simulation (numucc_radcorr_1g_*.root) is a run-5
+    # sample whose filename carries no run-period suffix
+    if "numucc_radcorr" in filename.lower():
+        return "5"
 
     # strip trailing production tags so the run-period suffix checks below see
     # "..._hist_N.root": a version tag ("..._hist_2_v3.root", whose "_v3.root"
@@ -175,6 +179,8 @@ def _filetype_from_filename(filename):
     fn = filename.lower()
     if "fullosc" in fn:
         return "fullosc_overlay"
+    if "numucc_radcorr" in fn:
+        return "numucc_rad_corr_sim"
     if "beam_off" in fn or "beamoff" in fn or "ext" in fn:
         return "ext"
     if "nuwro" in fn:
@@ -196,6 +202,13 @@ def _filetype_from_filename(filename):
     if "beam_on" in fn:
         return "data"
     raise ValueError("Unknown filetype!", filename)
+
+# TEMPORARY, RAD CORR SIM FILES NEED WC BDT PROCESSING
+RAD_CORR_SIM_MISSING_WC_SCORES = {
+    "nc_delta_score", "nc_pio_score",
+    "single_photon_numu_score", "single_photon_other_score",
+    "single_photon_ncpi0_score", "single_photon_nue_score",
+}
 
 
 def _get_file_metadata(filename, frac_events=1):
@@ -226,15 +239,22 @@ def _get_file_metadata(filename, frac_events=1):
     # Some productions (v10_04_07_09, and every Run4b v10_04_07_20/24 retuple file) lack
     # the WCPMTInfo* branches in T_BDTvars.  Detect that from the tree itself rather than
     # by filename; the columns are null-filled by the diagonal concat downstream.
+    # The dedicated rad-corr simulation was processed with a reduced WC T_BDTvars that also
+    # lacks the WC NC-Delta / NC-pi0 / single-photon BDT scores (not training features of
+    # our BDTs, but used by the WC reference selections in the notebooks, which these
+    # events therefore never pass).
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     bdt_keys = set(f["wcpselection"]["T_BDTvars"].keys())
     missing_bdt_vars = [var for var in wc_T_BDT_including_training_vars if var not in bdt_keys]
     if missing_bdt_vars:
-        if any("WCPMTInfo" not in var for var in missing_bdt_vars):
-            raise KeyError(f"{filename}: T_BDTvars is missing non-WCPMTInfo branches: "
-                           f"{[v for v in missing_bdt_vars if 'WCPMTInfo' not in v]}")
-        print(f"    WARNING: {filename} has no WCPMTInfo branches in T_BDTvars, NOT LOADING "
-              f"{len(missing_bdt_vars)} WCPMTInfo VARIABLES FOR {filetype} (they will be null)")
+        tolerated = [v for v in missing_bdt_vars if "WCPMTInfo" in v
+                     or (filetype == "numucc_rad_corr_sim" and v in RAD_CORR_SIM_MISSING_WC_SCORES)]
+        untolerated = [v for v in missing_bdt_vars if v not in tolerated]
+        if untolerated:
+            raise KeyError(f"{filename}: T_BDTvars is missing non-WCPMTInfo branches: {untolerated}")
+        print(f"    WARNING: {filename} is missing {len(missing_bdt_vars)} T_BDTvars branches, NOT LOADING "
+              f"them FOR {filetype} (they will be null): "
+              f"{[v for v in missing_bdt_vars if 'WCPMTInfo' not in v] + (['WCPMTInfo*'] if any('WCPMTInfo' in v for v in missing_bdt_vars) else [])}")
         curr_wc_T_BDT_including_training_vars = [var for var in wc_T_BDT_including_training_vars if var in bdt_keys]
 
     detailed_run_period = _detailed_run_period_from_filename(filename)
@@ -802,7 +822,7 @@ if __name__ == "__main__":
         # the machine (several steps below also transiently need ~2x).  Instead we
         # process the files in row-count-bounded BATCHES, writing one processed
         # parquet per batch (Phase 1), then run the few genuinely-global steps -- the
-        # rad-corr / coherent-1g / pi0-Dalitz reweightings, the duplicate check and
+        # coherent-1g / pi0-Dalitz reweightings, the duplicate check and
         # the final writes -- over lazy scans of those per-batch parquets (Phases 2-3).
         # Peak memory is then one batch (a few GB), never the whole dataset.
         weight_configs = get_weight_configs()
@@ -813,7 +833,7 @@ if __name__ == "__main__":
                 os.remove(f"{intermediate_files_location}/{_f}")
 
         # Global union schema: a zero-row diagonal concat resolves the unified dtypes
-        # without reading data.  Every batch (and the derived rad/coh rows) is reindexed
+        # without reading data.  Every batch (and the derived coherent-1g rows) is reindexed
         # to it so the orthogonalization masks and distance math always see their
         # wc_truth_* / lantern_* / pandora_* columns present (null-filled) -- exactly
         # what the old single diagonal concat provided (the masks reference columns that
@@ -880,7 +900,7 @@ if __name__ == "__main__":
                 "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
                 "nc_pi0_overlay", "numucc_pi0_overlay",
                 "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
-                "fullosc_overlay",
+                "fullosc_overlay", "numucc_rad_corr_sim",
             }
             if "filetype" in all_df.columns:
                 # Cast to String first so Categorical comparisons don't silently miss values
@@ -940,6 +960,10 @@ if __name__ == "__main__":
 
             all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, weight_configs)
             all_df = apply_rootino_correction(all_df, pot_dic, weight_configs)
+            # the run-5-only rad-corr simulation is normalized to each config's full
+            # runs-1-5 goal POT and spread across run periods (after the ROOTino step,
+            # which must not zero/rescale its valid run-5 ROOTino events)
+            all_df = apply_rad_corr_sim_normalization(all_df, pot_dic, weight_configs)
 
             # do_orthogonalization_and_POT_weighting adds new Float64 weight columns; convert them now.
             new_float64_cols = [col for col, dtype in all_df.schema.items() if dtype == pl.Float64]
@@ -991,8 +1015,6 @@ if __name__ == "__main__":
         # parquet, so the full df is never materialized.
         print("\n=== Phase 2: global reweightings ===")
         all_lf = pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed")
-        compute_1g1mu_rad_corr_reweighting(all_lf)
-        rad_corrected_df = apply_1g1mu_rad_corr_reweighting(all_lf, pot_dic, weight_configs)
         compute_nc_coh_1g_reweighting(all_lf)
         coherent_1g_df = apply_nc_coh_1g_reweighting(all_lf, pot_dic, weight_configs)
         del all_lf
@@ -1017,26 +1039,24 @@ if __name__ == "__main__":
         del _dalitz_df
         gc.collect()
 
-        # Persist the small derived-row sets (reindexed to the common schema) so they
+        # Persist the small derived-row set (reindexed to the common schema) so they
         # flow through Phase 3's per-part folds and the final concat just like the
         # batch parquets.
-        _rad_path = f"{intermediate_files_location}/_rad_part.parquet"
         _coh_path = f"{intermediate_files_location}/_coh_part.parquet"
-        _reindex_to_union(rad_corrected_df).write_parquet(_rad_path)
         _reindex_to_union(coherent_1g_df).write_parquet(_coh_path)
-        print(f"  rad-corr rows: {rad_corrected_df.height}, coherent-1g rows: {coherent_1g_df.height}")
-        del rad_corrected_df, coherent_1g_df
+        print(f"  coherent-1g rows: {coherent_1g_df.height}")
+        del coherent_1g_df
         gc.collect()
 
         # ── Phase 3: per-part pi0-Dalitz + hA2025 folds, then streaming writes ──
-        # All remaining steps are per-row, so each part (a batch parquet or the rad/coh
+        # All remaining steps are per-row, so each part (a batch parquet or the coherent-1g
         # derived rows) is processed eagerly one at a time -- never the full df.
         # make_plots=False here because the monitoring plots were already generated
         # once, globally, over all Dalitz events in Phase 2.
         print("\n=== Phase 3: pi0-Dalitz + hA2025 folds, streaming writes ===")
         weight_cols = [c["weight_col"] for c in weight_configs]
         final_parts = []
-        _phase3_parts = chunk_paths + [_rad_path, _coh_path]
+        _phase3_parts = chunk_paths + [_coh_path]
         for _k, _p in enumerate(_phase3_parts):
             print(f"\n--- Phase 3 part {_k + 1}/{len(_phase3_parts)}: {os.path.basename(_p)} ---")
             all_df = pl.read_parquet(_p)
@@ -1088,7 +1108,7 @@ if __name__ == "__main__":
         gc.collect()
 
         # Global event counts via cheap scans, reported pre-reweighting to match the
-        # old printout (rad/coh rows are appended after these were historically shown).
+        # old printout (coherent-1g rows are appended after these were historically shown).
         _proc_lf = pl.concat([pl.scan_parquet(p) for p in chunk_paths], how="diagonal_relaxed")
         print(f"Total number of events in all_df: {_proc_lf.select(pl.len()).collect().item()}")
         print(f"Number of events in all_df with will_use_for_50_50_training == True: "
@@ -1117,7 +1137,7 @@ if __name__ == "__main__":
         print(f"done, {file_size_gb:.2f} GB, {format_duration(time.time() - start_time)}")
 
         # Clean up per-batch intermediates.
-        for _p in chunk_paths + [_rad_path, _coh_path] + final_parts:
+        for _p in chunk_paths + [_coh_path] + final_parts:
             if os.path.exists(_p):
                 os.remove(_p)
 

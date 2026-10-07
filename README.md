@@ -29,6 +29,18 @@ src/file_locations.py
 ```
 
 
+## Full Re-processing
+To run every step below in one go (create_df, then the rw and detvar systematics in
+parallel, then BDT training; stops at the first failure, each step logging to its usual
+`*_nohup.out` file):
+
+```
+nohup bash run_full_reprocessing.sh all_vars_r16_2026_10_06 > reprocess_nohup.out 2>&1 &
+```
+
+The argument is the training name (default `all_vars_<YYYY_MM_DD>`).
+
+
 ## Creating Dataframes
 You can add --frac_events (-f) 0.01 to load only 1% of the events from each file, making this faster (and less RAM consuming) for small tests. You can also add --just_one_file to only process one file for small tests.
 

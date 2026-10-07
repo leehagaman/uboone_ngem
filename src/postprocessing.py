@@ -76,7 +76,7 @@ def _orthogonalization_masks():
 
     These define how the dedicated samples (nc_pi0/nue/numucc_pi0 overlays) and the
     inclusive nu_overlay are split into non-overlapping truth classes, plus the
-    simple per-filetype masks (dirt/ext/nuwro/del1g/iso1g/data).  Returned as a
+    simple per-filetype masks (dirt/ext/nuwro/del1g/iso1g/fullosc/rad_corr_sim/data).  Returned as a
     dict so both do_orthogonalization_and_POT_weighting and the weighting helpers
     share one definition.
     """
@@ -131,6 +131,7 @@ def _orthogonalization_masks():
     masks["del1g"] = pl.col("filetype") == 'delete_one_gamma_overlay'
     masks["iso1g"] = pl.col("filetype") == 'isotropic_one_gamma_overlay'
     masks["fullosc"] = pl.col("filetype") == 'fullosc_overlay'
+    masks["rad_corr_sim"] = pl.col("filetype") == 'numucc_rad_corr_sim'
     masks["data"] = pl.col("filetype") == 'data'
     return masks
 
@@ -441,7 +442,7 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
         | masks["numucc_pi0_overlay_true_numucc_pi0"] | masks["nu_overlay_true_numucc_pi0"]
         | masks["nue_overlay_true_nue_cc"] | masks["nu_overlay_true_nue_cc"]
         | masks["nu_overlay_other"]
-        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["del1g"] | masks["iso1g"] | masks["fullosc"] | masks["data"]
+        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["del1g"] | masks["iso1g"] | masks["fullosc"] | masks["rad_corr_sim"] | masks["data"]
     )
     df = df.filter(combined_mask)
     gc.collect()
@@ -4058,146 +4059,88 @@ def _data_pot_per_detailed_period(pot_dic):
     return dict(out)
 
 
-def apply_1g1mu_rad_corr_reweighting(df, pot_dic, weight_configs, seed=12345):
-    """Append numuCC_rad_corrected events derived from delete_one_gamma_overlay.
+def _spread_run_period_series(n_rows, pot_dic, weight_configs, seed):
+    """Randomly assign each of n_rows events ONE detailed_run_period ∝ beam-on data POT.
 
-    This is the *apply* half of the 1g1mu radiative-correction reweighting: it
-    reads the binned weights previously written by
-    compute_1g1mu_rad_corr_reweighting (numuCC_rad_corr_1g_reweighting.parquet) and
-    applies them per-event.  Call compute_1g1mu_rad_corr_reweighting first to
-    (re)generate that parquet from the central sample.
+    Used for the samples that are normalized to each config's FULL goal POT with a
+    period-independent weight (the derived coherent-1g rows and the dedicated
+    rad-corr simulation): a single copy of each event is kept (duplicating
+    into every run period would undercount the per-bin MC variance), so the runs-1-5
+    total is exact and only the per-run split carries Monte-Carlo noise.
 
-    The binned weights are POT-independent (the x_eta and fix_del1g factors carry
-    canceling POT dependence, and rad_frac_x_eta is pure theory).  For each
-    weighting config, each rad-corrected event's net weight is
-
-        (source del1g rate per POT in that config) * corrections * (config total goal POT)
-
-    where the source rate per POT is wc_net_weight_<config> / norm_goal_pot_<config>
-    on the parent delete_one_gamma_overlay event (so the config's per-group denominator
-    cancels and the result is normalized to that config's full goal POT).  An event with
-    a null source weight in a config (e.g. its run period is unmapped there) gets a null
-    weight in that config.
-
-    A SINGLE copy of each event is kept (duplicating into every run period would
-    undercount per-bin MC variance); each event is randomly assigned one
-    detailed_run_period in proportion to the per-period beam-on data POT, and each
-    config's normalizing_run_period_<config> is set from that period via its run_period_map.
-    The weight itself is the full-goal-POT contribution, so the runs-1-5 total is exact;
-    only the per-run split carries Monte-Carlo noise.
-
-    Accepts either an eager DataFrame or a LazyFrame.
-
-    - Eager DataFrame: returns the full df with rad-corrected rows appended.
-    - LazyFrame: uses predicate pushdown to collect *only* the new rad-corrected
-      rows (small, cheap) and returns them as an eager DataFrame.  The caller is
-      responsible for concatenating these rows with the full df after calling
-      pl.read_parquet separately.
+    Returns the list of Series to set: detailed_run_period plus, per config,
+    normalizing_run_period_<name> (via its run_period_map) and norm_goal_pot_<name>
+    (that period's goal POT, or null where the period is unmapped in the config).
     """
-    print("applying 1g1mu rad correction reweighting to the dataframe")
-    print(f"  weight configs: {[c['name'] for c in weight_configs]}")
-
-    is_lazy = isinstance(df, pl.LazyFrame)
-
-    rad_weights_lf = pl.scan_parquet(
-        f"{intermediate_files_location}/numuCC_rad_corr_1g_reweighting.parquet"
-    )
-    print("  rad_weights parquet queued for lazy scan")
-
-    lf = df if is_lazy else df.lazy()
-
-    # Drop any stale weight columns that may already exist on the main df.
-    stale = [c for c in ["fix_del1g_weight", "x_eta_uniform_weight",
-                          "rad_frac_x_eta", "wc_muon_gamma_opening_angle"]
-             if c in lf.collect_schema().names()]
-    if stale:
-        print(f"  WARNING: dropping stale weight columns before join: {stale}")
-        lf = lf.drop(stale)
-
-    total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
-    # per-config per-normalizing-run-period goal POT, used to set norm_goal_pot_<name>
-    # consistently with each appended event's reassigned run period (otherwise the
-    # row would keep the stale goal inherited from its del1g source event)
-    config_goal_pots = {c["name"]: _compute_config_pot_dics(pot_dic, c)[1] for c in weight_configs}
     data_pot_per_period = _data_pot_per_detailed_period(pot_dic)
-    print(f"  rad-corr per-config total goal POT: {total_goal_pots}")
-    print(f"  rad-corr detailed-period data POT (for run-period spreading): {data_pot_per_period}")
+    det_periods = list(data_pot_per_period.keys())
+    det_pots = np.array([data_pot_per_period[d] for d in det_periods], dtype=float)
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(det_periods), size=n_rows, p=det_pots / det_pots.sum())
+    det_arr = [det_periods[i] for i in idx]
 
-    def _weight_and_spread_rad_corr(rcdf):
-        """Compute each config's appended-event weight and assign run periods."""
-        if rcdf.height == 0:
-            return rcdf
+    out = [pl.Series("detailed_run_period", det_arr, dtype=pl.String)]
+    for config in weight_configs:
+        name = config["name"]
+        goal_dic = _compute_config_pot_dics(pot_dic, config)[1]
+        nrp_arr = [config["run_period_map"].get(d) for d in det_arr]
+        goal_arr = [goal_dic.get(nrp) if nrp is not None else None for nrp in nrp_arr]
+        out.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr, dtype=pl.String))
+        out.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64))
+    return out
 
-        corrections = (
-            rcdf["fix_del1g_weight"].to_numpy().astype(float)
-            * rcdf["x_eta_uniform_weight"].to_numpy().astype(float)
-            * rcdf["rad_frac_x_eta"].to_numpy().astype(float)
-        )
 
-        # randomly assign one detailed_run_period per event, ∝ beam-on data POT
-        det_periods = list(data_pot_per_period.keys())
-        det_pots = np.array([data_pot_per_period[d] for d in det_periods], dtype=float)
-        rng = np.random.default_rng(seed)
-        idx = rng.choice(len(det_periods), size=rcdf.height, p=det_pots / det_pots.sum())
-        det_arr = [det_periods[i] for i in idx]
+def apply_rad_corr_sim_normalization(df, pot_dic, weight_configs, seed=34567):
+    """Normalize the dedicated numuCC rad-corr simulation (numucc_rad_corr_sim) to
+    each config's full goal POT, spreading its events across run periods.
 
-        new_series = [pl.Series("detailed_run_period", det_arr, dtype=pl.String)]
-        for config in weight_configs:
-            name, wcol = config["name"], config["weight_col"]
-            src_w = rcdf[wcol].to_numpy().astype(float)             # parent del1g net weight in this config
-            src_goal = rcdf[f"norm_goal_pot_{name}"].to_numpy().astype(float)  # parent group goal POT
-            with np.errstate(divide="ignore", invalid="ignore"):
-                rate_per_pot = src_w / src_goal                    # base / denominator (period-independent)
-            weight = rate_per_pot * corrections * total_goal_pots[name]
-            weight = np.where(np.isfinite(weight), weight, np.nan)  # NaN -> null below
-            new_series.append(pl.Series(wcol, weight).cast(pl.Float32))
-            nrp_arr = [config["run_period_map"].get(d) for d in det_arr]
-            new_series.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr, dtype=pl.String))
-            # set norm_goal_pot_<name> to match the reassigned run period (not the
-            # stale value inherited from the del1g source event)
-            goal_dic = config_goal_pots[name]
-            goal_arr = [goal_dic.get(nrp) if nrp is not None else None for nrp in nrp_arr]
-            new_series.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64))
+    The sample (numucc_radcorr_1g_*.root, uboone/ubsim PR #20) adds a Tomalak et al.
+    collinear photon to GENIE numuCC events with the physical emission probability,
+    keeping only the radiating events but counting all the POT.  It replaces the old
+    reweighting of delete_one_gamma_overlay events, removed 2026-10-06 (that was ~6x
+    below the Tomalak et al. emission probability, which this sample reproduces).
 
-        rcdf = rcdf.with_columns(new_series)
-        # turn NaN weights into nulls (events with no weight in a given config)
-        rcdf = rcdf.with_columns([
-            pl.when(pl.col(c["weight_col"]).is_nan()).then(None).otherwise(pl.col(c["weight_col"])).alias(c["weight_col"])
-            for c in weight_configs
-        ])
-        return rcdf
+    The sample exists only in run 5, so do_orthogonalization_and_POT_weighting can only
+    scale it to the run-5 normalizing group's goal POT.  It should instead cover runs 1-5,
+    so every row's net weight is replaced by
 
-    rad_corrected_lf = (
-        lf.filter(
-            (pl.col("filetype") == "delete_one_gamma_overlay") &
-            (pl.col("wc_truth_muonMomentum_3") > 0.0)
-        )
-        .join(rad_weights_lf, on=["run", "subrun", "event"], how="inner")
-        .with_columns([
-            pl.lit("numuCC_rad_corrected").alias("filetype"),
-            pl.col("wc_muon_gamma_opening_angle").cast(pl.Float32),
-            pl.lit(False).alias("normal_overlay"),
-            pl.lit(False).alias("del1g_overlay"),
-            pl.lit(False).alias("iso1g_overlay"),
-        ])
-    )
+        weight_cv_weight_spline * (config total goal POT) / (sample POT)
 
-    print("  collecting rad_corrected rows...")
-    rad_corrected_df = rad_corrected_lf.collect()
-    rad_corrected_df = _weight_and_spread_rad_corr(rad_corrected_df)
-    rad_corrected_df = rad_corrected_df.drop(
-        [c for c in ["fix_del1g_weight", "x_eta_uniform_weight", "rad_frac_x_eta"]
-         if c in rad_corrected_df.columns]
-    )
-    print(f"  produced {rad_corrected_df.height} rad-corrected rows")
+    and each event is randomly assigned ONE detailed_run_period ∝ beam-on data POT
+    (_spread_run_period_series).  Call after apply_rootino_correction: the sample's
+    ROOTino events are valid run-5 events, so they get no runs-1-3 zeroing and no
+    runs-4-5 rescale (pre_rootino_<weight_col> is set to the same new weight).  The
+    per-event pi0-Dalitz and hA2025 factors are folded in later, as for every sample.
 
-    if is_lazy:
-        return rad_corrected_df
+    Rows of other filetypes are returned unchanged.
+    """
+    is_sim = pl.col("filetype") == "numucc_rad_corr_sim"
+    n_sim = df.filter(is_sim).height
+    if n_sim == 0:
+        return df
 
-    df = pl.concat([df, rad_corrected_df], how="diagonal_relaxed")
-    del rad_corrected_df
-    gc.collect()
-    return df
+    sim_pot = sum(v for (ft, _drp), v in pot_dic.items() if ft == "numucc_rad_corr_sim")
+    if sim_pot <= 0:
+        raise ValueError("numucc_rad_corr_sim events present but no POT for it in pot_dic!")
+    total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
+    print(f"normalizing {n_sim} numucc_rad_corr_sim events: sample POT = {sim_pot:.4e}, "
+          f"per-config total goal POT = {total_goal_pots}")
+
+    sim_df = df.filter(is_sim)
+    new_series = _spread_run_period_series(sim_df.height, pot_dic, weight_configs, seed)
+    for config in weight_configs:
+        wcol = config["weight_col"]
+        weight = (sim_df["weight_cv_weight_spline"].cast(pl.Float64)
+                  * (total_goal_pots[config["name"]] / sim_pot)).cast(pl.Float32)
+        new_series.append(weight.alias(wcol))
+        if f"pre_rootino_{wcol}" in sim_df.columns:
+            new_series.append(weight.alias(f"pre_rootino_{wcol}"))
+    # cast each replacement to the existing column's dtype so the concat back stays aligned
+    new_series = [s.cast(sim_df.schema[s.name]) if s.name in sim_df.columns else s for s in new_series]
+    sim_df = sim_df.with_columns(new_series)
+
+    return pl.concat([df.filter(~is_sim), sim_df], how="diagonal_relaxed")
+
 
 def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     """Append NC_coherent_1g_reweighted events derived from isotropic_one_gamma_overlay.
@@ -4211,10 +4154,10 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     The saved weight is POT-independent (events per POT).  For each weighting
     config the final per-event net weight is coherent_1g_weight_per_pot times that
     config's total goal POT, so each config's coherent contribution is normalized
-    to its own full exposure.  Like the rad-corr events, each appended event is then
+    to its own full exposure.  Like the rad-corr simulation, each appended event is then
     randomly assigned ONE detailed_run_period in proportion to the per-period beam-on
     data POT -- rather than inheriting the parent iso1g run-4-5 period -- so the
-    coherent contribution is spread across runs 1-5 consistently with rad-corr.  The
+    coherent contribution is spread across runs 1-5 consistently with it.  The
     weight is period-independent (it uses the full goal POT), so the runs-1-5 total is
     exact and only the per-run split carries Monte-Carlo noise; norm_goal_pot_<config>
     and normalizing_run_period_<config> are reset to match the reassigned period.
@@ -4238,13 +4181,7 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     print("  coherent_weights parquet queued for lazy scan")
 
     total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
-    # per-config per-normalizing-run-period goal POT and per-detailed-period beam-on
-    # data POT, used to spread the appended events across run periods exactly like the
-    # rad-corr events (see _weight_and_spread_rad_corr in apply_1g1mu_rad_corr_reweighting).
-    config_goal_pots = {c["name"]: _compute_config_pot_dics(pot_dic, c)[1] for c in weight_configs}
-    data_pot_per_period = _data_pot_per_detailed_period(pot_dic)
     print(f"  coherent per-config total goal POT: {total_goal_pots}")
-    print(f"  coherent detailed-period data POT (for run-period spreading): {data_pot_per_period}")
 
     lf = df if is_lazy else df.lazy()
 
@@ -4269,28 +4206,14 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
 
     def _spread_coherent_run_periods(cdf):
         """Spread the appended coherent events across run periods like the rad-corr
-        events: each event keeps its already-computed full-goal-POT weight but is
+        simulation: each event keeps its already-computed full-goal-POT weight but is
         randomly assigned ONE detailed_run_period ∝ beam-on data POT (instead of
         inheriting the parent iso1g run-4-5 period).  The weight is period-independent
         so the runs-1-5 total is unchanged; norm_goal_pot_<config> and
         normalizing_run_period_<config> are reset to match the reassigned period."""
         if cdf.height == 0:
             return cdf
-        det_periods = list(data_pot_per_period.keys())
-        det_pots = np.array([data_pot_per_period[d] for d in det_periods], dtype=float)
-        rng = np.random.default_rng(seed)
-        idx = rng.choice(len(det_periods), size=cdf.height, p=det_pots / det_pots.sum())
-        det_arr = [det_periods[i] for i in idx]
-
-        new_series = [pl.Series("detailed_run_period", det_arr, dtype=pl.String)]
-        for config in weight_configs:
-            name = config["name"]
-            nrp_arr = [config["run_period_map"].get(d) for d in det_arr]
-            new_series.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr, dtype=pl.String))
-            goal_dic = config_goal_pots[name]
-            goal_arr = [goal_dic.get(nrp) if nrp is not None else None for nrp in nrp_arr]
-            new_series.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64))
-        return cdf.with_columns(new_series)
+        return cdf.with_columns(_spread_run_period_series(cdf.height, pot_dic, weight_configs, seed))
 
     print("  collecting coherent_1g rows...")
     coherent_1g_df = _spread_coherent_run_periods(coherent_1g_lf.collect())

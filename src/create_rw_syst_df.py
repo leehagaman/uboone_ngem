@@ -67,12 +67,12 @@ def _merge_parquet_parts(paths, out_path, batch_size=32_768):
             writer.close()
 
 
-DERIVED_FILETYPES = ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
+DERIVED_FILETYPES = ["NC_coherent_1g_reweighted"]
 
 
 def _load_derived_events():
-    """The derived (appended) rows -- numuCC_rad_corrected (from delete_one_gamma_overlay)
-    and NC_coherent_1g_reweighted (from isotropic_one_gamma_overlay) -- read from the
+    """The derived (appended) rows -- NC_coherent_1g_reweighted (from
+    isotropic_one_gamma_overlay) -- read from the
     preselected training df.  They have no GENIE weight trees, so they get unit CV weights
     and unit systematic-weight lists; PROfit / the notebooks then see them with no
     reweightable systematic variation.  Returns None when the presel df is missing."""
@@ -83,7 +83,7 @@ def _load_derived_events():
     derived_events = pl.scan_parquet(presel_df_path).filter(
         pl.col("filetype").is_in(DERIVED_FILETYPES)
     ).select(["run", "subrun", "event", "filetype", "detailed_run_period", "filename", "wc_kine_reco_Enu"]).collect()
-    print(f"Adding {derived_events.height} derived events (rad_corrected, coherent_1g) with unit systematic weights...")
+    print(f"Adding {derived_events.height} derived events (coherent_1g) with unit systematic weights...")
     if derived_events.height == 0:
         print("  WARNING: no derived events found; skipping extension")
         return None
@@ -159,6 +159,8 @@ def _get_file_metadata(filename, frac_events=1):
     """
     if "fullosc" in filename.lower():
         filetype = "fullosc_overlay"
+    elif "numucc_radcorr" in filename.lower():
+        filetype = "numucc_rad_corr_sim"
     elif "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
         filetype = "ext"
     elif "nuwro" in filename.lower():
@@ -207,7 +209,10 @@ def _get_file_metadata(filename, frac_events=1):
     filename_for_period = re.sub(r"(_v\d+|_filtered)+\.root$", ".root", filename)
 
     detailed_run_period = "?"
-    if "1.root" in filename_for_period:
+    if "numucc_radcorr" in filename_for_period.lower():
+        # the dedicated run-5 numuCC rad-corr simulation has no run-period suffix
+        detailed_run_period = "5"
+    elif "1.root" in filename_for_period:
         detailed_run_period = "1"
     elif "2.root" in filename_for_period:
         detailed_run_period = "2"

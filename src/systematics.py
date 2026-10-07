@@ -138,7 +138,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
 
     print("creating reweightable systematic covariance matrices...")
 
-    derived_filetypes = ["numuCC_rad_corrected", "NC_coherent_1g_reweighted"]
+    derived_filetypes = ["NC_coherent_1g_reweighted"]
     col_names = mc_pred_df.collect_schema().names() if isinstance(mc_pred_df, pl.LazyFrame) else mc_pred_df.columns
     if "filetype" in col_names:
         derived_counts = mc_pred_df.filter(pl.col("filetype").is_in(derived_filetypes)).group_by("filetype").agg(pl.len().alias("count"))
@@ -199,7 +199,7 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     # (ipynb_notebooks/genie_tune_weight_mismatch.ipynb).
     # Only divide where the tune weight is a valid weight (same validity as the postprocessing clamp and the
     # universe-weight clamp in create_universe_histograms): rows from samples with no GENIE weight tree
-    # (delete_one_gamma / isotropic_one_gamma, hence the derived numuCC_rad_corrected and
+    # (delete_one_gamma / isotropic_one_gamma, hence the derived
     # NC_coherent_1g_reweighted rows, and nuwro) carry the -1 sentinel and unit universe
     # weights, so for them the universe weight has to multiply the net weight unchanged.  Dividing by
     # the -1 sentinel flipped their sign in every universe, giving every knob (even dead ones) an

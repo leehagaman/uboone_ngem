@@ -53,7 +53,8 @@ def load_data(args):
         presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0)
         presel_df = presel_df.filter(
             (pl.col("filetype") != "isotropic_one_gamma_overlay") &
-            (pl.col("filetype") != "delete_one_gamma_overlay")
+            (pl.col("filetype") != "delete_one_gamma_overlay") &
+            (pl.col("filetype") != "numucc_rad_corr_sim")
         )
         presel_df = presel_df.filter(
             ((pl.col("filetype") == "NC_coherent_1g_reweighted") & (pl.col("coherent_1g_keep") == True))
@@ -62,8 +63,7 @@ def load_data(args):
     else:
         presel_df = no_data_df.filter(pl.col("wc_kine_reco_Enu") > 0)
         presel_df = presel_df.filter(
-            (pl.col("filetype") != "numuCC_rad_corrected") &
-            (pl.col("filetype") != "NC_coherent_1g_reweighted")
+            ~pl.col("filetype").is_in(["numucc_rad_corr_sim", "NC_coherent_1g_reweighted"])
         )
         if args.signal_categories == "topological":
             signal_category_labels = topological_category_labels

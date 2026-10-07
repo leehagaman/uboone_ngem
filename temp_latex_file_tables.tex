@@ -1,0 +1,314 @@
+\section{Technical Details}
+\label{sec:technical_details}
+
+This section describes more technical details of the analysis.
+
+\subsection{Samples Used}
+
+The samples in this analysis were produced by the production team. The generation through Reco 1 stages use MCC9, while the Reco 1 through ntuple stages use MCC10 (this is also called the MCC9.10 or SURPRISE workflow). The resulting ntuples are referred to as SURPRISE files.
+
+These output SURPRISE ntuples then undergo spline reweighting, processed using MCC9 on the grid, in order to add additional flux and cross section weights to be used for systematic understanding using PROfit \cite{profit}. This processing step operates only on the ntuples, making the computational cost minimal relative to the other simulation and reconstruction steps.
+
+Then, the samples undergo Wire-Cell postprocessing \cite{wc_postprocessing}, which does several things:
+
+\begin{itemize}
+    \item Calculates and adds the $\nu_\mu$CC, $\nu_e$CC, NC $\pi^0$, and NC $\Delta\rightarrow N \gamma$ Wire-Cell BDT scores.
+    \item Cuts to the good runs list
+    \item Removes subruns where the LANTERN reconstruction container failed
+    \item Separates subruns used to train Wire-Cell BDTs into different files (not used in this analysis)
+    \item Removes duplicate subruns
+    \item Removes events that have corrupt or missing Wire-Cell information
+    \item Re-scales invalid or extreme outlier GENIE cross section weight values
+\end{itemize}
+
+\begin{sloppypar}
+POT values for these files are tracked for simulated neutrino files by summing \texttt{wcpselection/T\_pot/pot\_tor875good} in each file. For data (beam-on) and EXT (beam-off) files, we calculate the POT values by using Zarko's tool \texttt{/exp/uboone/app/users/zarko/getDataInfo.py -v3} while passing in a list of run-subrun pairs. For data files, we use the \texttt{tor875\_wcut} value for the POT. For EXT files, we use the corresponding data period's POT weighted by the EXT file's number of triggers \texttt{EXT} divided by the data file's number of triggers \texttt{E1DCNT\_wcut}. This process is described at \url{https://github.com/leehagaman/uboone_ngem/blob/main/ipynb_notebooks/pot_and_trigger_processing.ipynb}.
+\end{sloppypar}
+
+NuWro fake data files are also analyzed, in this case with no EXT or dirt simulation included. For these, the flux and detector effects are identical between the prediction and fake data, and only the cross section and statistical fluctuations cause the observed variations.
+
+Tables~\ref{tab:data_ext_samples}, \ref{tab:fake_data_samples}, \ref{tab:mc_samples}, and \ref{tab:detvar_samples} list the data, EXT, NuWro fake data, Monte Carlo, and detector variation samples used in this analysis, organized by file type and run period.
+
+% BEGIN AUTO-GENERATED FILE TABLES (ipynb_notebooks/file_pot_tables.ipynb)
+
+\begin{table}[H]
+\centering
+\tiny
+\caption{Data and EXT samples used in this analysis. Data POT and trigger counts (\texttt{tor875\_wcut} and \texttt{E1DCNT\_wcut}) and EXT trigger counts (\texttt{EXT}) are from \texttt{getDataInfo.py}. EXT POT values are POT-equivalents, equal to the EXT trigger count times the POT per trigger of the paired data period (run 1 for EXT run 1, run 3 for EXT runs 2 and 3, run 4a for EXT run 4a, and run 4b for EXT runs 4b, 4c, 4d, and 5).}
+\label{tab:data_ext_samples}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{lllllp{10cm}}
+\toprule
+\textbf{Type} & \textbf{Run} & \textbf{POT} & \makecell{\textbf{Num} \\ \textbf{Triggers}} & \makecell{\textbf{Num} \\ \textbf{Events}} & \textbf{File Path} \\
+\midrule
+Data & 1 & $2.807\times10^{19}$ & 6{,}247{,}112 & 105{,}725 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_on_data_surprise_reco2_hist_1_5e19opendata.root} \\
+\hline
+Data & 3 & $9.471\times10^{18}$ & 2{,}301{,}101 & 34{,}605 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_on_data_surprise_reco2_hist_3_1e19opendata.root} \\
+\hline
+Data & 4a & $1.837\times10^{19}$ & 4{,}281{,}689 & 63{,}109 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_on_retuple_retuple_hist_opendata_19550.root} \\
+\hline
+Data & 4b & $3.731\times10^{19}$ & 8{,}523{,}291 & 135{,}054 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_on_metapatch_retuple_retuple_hist_opendata_20700.root} \\
+\midrule
+EXT & 1 & $2.226\times10^{20}$ & 49{,}551{,}151 & 623{,}561 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_1.root} \\
+\hline
+EXT & 2 & $6.261\times10^{20}$ & 152{,}116{,}269 & 1{,}840{,}347 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run2_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_2.root} \\
+\hline
+EXT & 3 & $5.903\times10^{20}$ & 143{,}426{,}455 & 1{,}697{,}250 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_3.root} \\
+\hline
+EXT & 4a & $1.090\times10^{20}$ & 25{,}415{,}200 & 306{,}624 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_off_retuple_retuple_hist_4a.root} \\
+\hline
+EXT & 4b & $3.719\times10^{20}$ & 84{,}966{,}908 & 1{,}039{,}973 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_beam_off_metapatch_retuple_retuple_hist.root} \\
+\hline
+EXT & 4c & $2.338\times10^{20}$ & 53{,}405{,}830 & 634{,}101 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_off_retuple_retuple_hist_4c.root} \\
+\hline
+EXT & 4d & $3.339\times10^{20}$ & 76{,}274{,}342 & 887{,}339 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_off_retuple_retuple_hist_4d.root} \\
+\hline
+EXT & 5 & $4.777\times10^{20}$ & 109{,}124{,}930 & 1{,}288{,}082 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_23_BNB_beam_off_retuple_retuple_hist_5.root} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\begin{table}[H]
+\centering
+\tiny
+\caption{NuWro fake data samples used in this analysis. POT values are from \texttt{pot\_tor875good}.}
+\label{tab:fake_data_samples}
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{llllp{10cm}}
+\toprule
+\textbf{Type} & \textbf{Run} & \textbf{POT} & \makecell{\textbf{Num} \\ \textbf{Events}} & \textbf{File Path} \\
+\midrule
+NuWro Fake Data & 1 & $2.844\times10^{20}$ & 237{,}112 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/run1_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_1_filtered.root} \\
+\hline
+NuWro Fake Data & 2 & $3.019\times10^{20}$ & 251{,}540 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/run2_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_2_filtered.root} \\
+\hline
+NuWro Fake Data & 3 & $3.114\times10^{20}$ & 259{,}658 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/run3_full_samples/wc_processed/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_3_filtered.root} \\
+\hline
+NuWro Fake Data & 4a & $1.387\times10^{20}$ & 103{,}073 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_4a.root} \\
+\hline
+NuWro Fake Data & 4c & $3.258\times10^{20}$ & 271{,}433 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_4c.root} \\
+\hline
+NuWro Fake Data & 5 & $3.625\times10^{20}$ & 302{,}328 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_5.root} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+{\tiny
+\begin{longtable}{llllp{8.5cm}}
+\caption{Monte Carlo overlay samples used in this analysis. POT values are from \texttt{pot\_tor875good}.}
+\label{tab:mc_samples} \\
+\toprule
+\textbf{Type} & \textbf{Run} & \textbf{POT} & \makecell{\textbf{Num} \\ \textbf{Events}} & \textbf{File Path} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type} & \textbf{Run} & \textbf{POT} & \makecell{\textbf{Num} \\ \textbf{Events}} & \textbf{File Path} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+$\nu$ Overlay & 1 & $7.382\times10^{20}$ & 590{,}865 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & 2 & $9.094\times10^{20}$ & 727{,}013 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run2_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_2_v3.root} \\
+\hline
+$\nu$ Overlay & 3 & $8.629\times10^{20}$ & 688{,}977 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_nu_overlay_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & 4a & $2.308\times10^{20}$ & 166{,}537 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist_4a.root} \\
+\hline
+$\nu$ Overlay & 4b & $7.670\times10^{20}$ & 618{,}898 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist.root} \\
+\hline
+$\nu$ Overlay & 4c & $4.695\times10^{20}$ & 378{,}998 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist_4c.root} \\
+\hline
+$\nu$ Overlay & 4d & $8.898\times10^{20}$ & 719{,}572 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist_4d.root} \\
+\hline
+$\nu$ Overlay & 5 & $9.469\times10^{20}$ & 763{,}698 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_nu_overlay_retuple_retuple_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & 4a & $3.639\times10^{22}$ & 54{,}410 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_intrinsic_nue_overlay_retuple_retuple_hist_4a.root} \\
+\hline
+$\nu_e$CC Overlay & 4b & $1.098\times10^{23}$ & 187{,}780 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_intrinsic_nue_overlay_retuple_retuple_hist.root} \\
+\hline
+$\nu_e$CC Overlay & 4c & $7.129\times10^{22}$ & 119{,}666 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_intrinsic_nue_overlay_retuple_retuple_hist_4c.root} \\
+\hline
+$\nu_e$CC Overlay & 4d & $1.370\times10^{23}$ & 228{,}841 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_intrinsic_nue_overlay_retuple_retuple_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & 5 & $1.445\times10^{23}$ & 247{,}491 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_intrinsic_nue_overlay_retuple_retuple_hist_5.root} \\
+\midrule
+NC $\pi^0$ Overlay & 4a & $1.937\times10^{21}$ & 30{,}182 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_24_BNB_NCpi0_overlay_retuple_retuple_hist_4a.root} \\
+\hline
+NC $\pi^0$ Overlay & 4b & $4.934\times10^{21}$ & 85{,}441 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_24_BNB_NCpi0_overlay_retuple_retuple_hist.root} \\
+\hline
+NC $\pi^0$ Overlay & 4c & $3.311\times10^{21}$ & 57{,}424 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_24_BNB_NCpi0_overlay_retuple_retuple_hist_4c.root} \\
+\hline
+NC $\pi^0$ Overlay & 4d & $6.433\times10^{21}$ & 111{,}189 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_24_BNB_NCpi0_overlay_retuple_retuple_hist_4d.root} \\
+\hline
+NC $\pi^0$ Overlay & 5 & $6.936\times10^{21}$ & 119{,}837 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_24_BNB_NCpi0_overlay_retuple_retuple_hist_5.root} \\
+\midrule
+$\nu_\mu$CC $\pi^0$ Overlay & 4a & $1.464\times10^{21}$ & 38{,}603 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4a.root} \\
+\hline
+$\nu_\mu$CC $\pi^0$ Overlay & 4b & $1.424\times10^{21}$ & 41{,}407 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4b.root} \\
+\hline
+$\nu_\mu$CC $\pi^0$ Overlay & 4c & $8.647\times10^{20}$ & 25{,}198 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_4c.root} \\
+\hline
+$\nu_\mu$CC $\pi^0$ Overlay & 5 & $1.550\times10^{21}$ & 45{,}171 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_5.root} \\
+\midrule
+Dirt Overlay & 4a & $1.088\times10^{20}$ & 30{,}484 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_4a.root} \\
+\hline
+Dirt Overlay & 4b & $2.959\times10^{20}$ & 96{,}340 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist.root} \\
+\hline
+Dirt Overlay & 4c & $1.804\times10^{20}$ & 58{,}754 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_4c.root} \\
+\hline
+Dirt Overlay & 4d & $3.519\times10^{20}$ & 114{,}748 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_4d.root} \\
+\hline
+Dirt Overlay & 5 & $3.337\times10^{20}$ & 109{,}455 & \filepath{/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_5.root} \\
+\midrule
+Del $1\gamma$ Overlay & 4a & $4.897\times10^{20}$ & 54{,}958 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/4a/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist_4a.root} \\
+\hline
+Del $1\gamma$ Overlay & 4bcd & $2.594\times10^{21}$ & 290{,}985 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/4bcd/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist_4bcd.root} \\
+\hline
+Del $1\gamma$ Overlay & 5 & $2.037\times10^{21}$ & 229{,}096 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/5/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist_5.root} \\
+\midrule
+Iso $1\gamma$ Overlay & 4a & $6.788\times10^{19}$ & 54{,}622 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4a/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_4a.root} \\
+\hline
+Iso $1\gamma$ Overlay & 4bcd & $3.610\times10^{20}$ & 291{,}235 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4bcd/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_4bcd.root} \\
+\hline
+Iso $1\gamma$ Overlay & 5 & $2.832\times10^{20}$ & 228{,}377 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/5/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_5.root} \\
+\end{longtable}
+}
+
+{\tiny
+\begin{longtable}{lllllp{7.5cm}}
+\caption{Detector variation samples used in this analysis. POT values are from \texttt{pot\_tor875good}. The run 1 and run 3a CVs are the two halves of the \texttt{13a} CV sample, and pair with the run 1 and run 3a events of every variation. For run 3b events, $^*$the 1M-event CV sample pairs with all variations except SCE and Recombination, and $^\dagger$the 500k-event CV sample pairs with only SCE and Recombination.}
+\label{tab:detvar_samples} \\
+\toprule
+\textbf{File Type} & \textbf{Variation} & \textbf{Run} & \textbf{POT} & \makecell{\textbf{Num} \\ \textbf{Events}} & \textbf{File Path} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{File Type} & \textbf{Variation} & \textbf{Run} & \textbf{POT} & \makecell{\textbf{Num} \\ \textbf{Events}} & \textbf{File Path} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+$\nu$ Overlay & CV & 1 & $5.962\times10^{20}$ & 482{,}341 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_cv_13a_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & CV & 3a & $6.064\times10^{19}$ & 49{,}126 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_cv_13a_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & CV (1M)$^*$ & 3b & $1.299\times10^{21}$ & 1{,}036{,}568 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_cv_3b_1mil_surprise_reco2_hist.root} \\
+\hline
+$\nu$ Overlay & CV (500k)$^\dagger$ & 3b & $6.108\times10^{20}$ & 493{,}223 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_cv_3b_500k_surprise_reco2_hist.root} \\
+\hline
+$\nu$ Overlay & CV & 4d & $1.260\times10^{21}$ & 1{,}019{,}370 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_cv_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & CV & 5 & $7.000\times10^{20}$ & 565{,}137 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_cv_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & LYAttenuation & 1 & $5.984\times10^{20}$ & 484{,}011 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_lya_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & LYAttenuation & 3 & $1.386\times10^{21}$ & 1{,}106{,}487 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_lya_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & LYAttenuation & 4d & $1.272\times10^{21}$ & 1{,}029{,}312 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_lya_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & LYAttenuation & 5 & $6.928\times10^{20}$ & 559{,}557 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_lya_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & LYDown & 1 & $5.991\times10^{20}$ & 484{,}617 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_lyd_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & LYDown & 3 & $1.388\times10^{21}$ & 1{,}108{,}771 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_lyd_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & LYDown & 4d & $1.271\times10^{21}$ & 1{,}027{,}987 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_lyd_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & LYDown & 5 & $6.489\times10^{20}$ & 523{,}693 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_lyd_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & LYRayleigh & 1 & $5.967\times10^{20}$ & 482{,}852 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_lyr_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & LYRayleigh & 3 & $1.383\times10^{21}$ & 1{,}104{,}739 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_lyr_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & LYRayleigh & 4d & $1.273\times10^{21}$ & 1{,}029{,}966 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_lyr_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & LYRayleigh & 5 & $5.272\times10^{20}$ & 425{,}835 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_lyr_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & Recombination & 1 & $6.237\times10^{20}$ & 504{,}416 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_24_BNB_nu_overlay_recomb2_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & Recombination & 3 & $6.999\times10^{20}$ & 565{,}272 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_24_BNB_nu_overlay_recomb2_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & Recombination & 4d & $1.267\times10^{21}$ & 1{,}025{,}115 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_recomb2_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & Recombination & 5 & $4.506\times10^{20}$ & 363{,}657 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_recomb2_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & SCE & 1 & $6.231\times10^{20}$ & 503{,}692 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_24_BNB_nu_overlay_sce_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & SCE & 3 & $6.944\times10^{20}$ & 560{,}797 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_24_BNB_nu_overlay_sce_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & SCE & 4d & $1.266\times10^{21}$ & 1{,}024{,}084 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_sce_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & SCE & 5 & $6.086\times10^{20}$ & 491{,}335 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_sce_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & WireMod X & 4d & $1.185\times10^{21}$ & 958{,}694 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMX_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & WireMod X & 5 & $6.634\times10^{20}$ & 536{,}120 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMX_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & WireMod YZ & 1 & $6.135\times10^{20}$ & 496{,}141 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_25_BNB_nu_overlay_WMYZ_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & WireMod YZ & 3 & $1.412\times10^{21}$ & 1{,}127{,}681 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_25_BNB_nu_overlay_WMYZ_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & WireMod YZ & 4d & $1.267\times10^{21}$ & 1{,}024{,}742 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMYZ_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & WireMod YZ & 5 & $6.842\times10^{20}$ & 552{,}387 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMYZ_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & WireMod $\theta_{XZ}$ & 1 & $5.830\times10^{20}$ & 471{,}740 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_26_BNB_nu_overlay_WMthetaXZ_surprise_reco2_hist_1.root} \\
+\hline
+$\nu$ Overlay & WireMod $\theta_{XZ}$ & 3 & $1.326\times10^{21}$ & 1{,}059{,}274 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_26_BNB_nu_overlay_WMthetaXZ_surprise_reco2_hist_3.root} \\
+\hline
+$\nu$ Overlay & WireMod $\theta_{XZ}$ & 4d & $1.257\times10^{21}$ & 1{,}016{,}357 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMthetaXZ_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & WireMod $\theta_{XZ}$ & 5 & $6.883\times10^{20}$ & 555{,}835 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMthetaXZ_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu$ Overlay & WireMod $\theta_{YZ}$ & 4d & $1.260\times10^{21}$ & 1{,}019{,}604 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMthetaYZ_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu$ Overlay & WireMod $\theta_{YZ}$ & 5 & $6.697\times10^{20}$ & 540{,}720 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_19_BNB_nu_overlay_WMthetaYZ_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & CV & 4d & $1.274\times10^{23}$ & 214{,}389 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_cv_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & CV & 5 & $1.196\times10^{23}$ & 203{,}557 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_cv_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & LYAttenuation & 4d & $1.271\times10^{23}$ & 213{,}833 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lya_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & LYAttenuation & 5 & $1.174\times10^{23}$ & 200{,}202 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lya_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & LYDown & 4d & $1.269\times10^{23}$ & 213{,}521 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lyd_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & LYDown & 5 & $1.169\times10^{23}$ & 199{,}037 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lyd_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & LYRayleigh & 4d & $1.270\times10^{23}$ & 213{,}632 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lyr_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & LYRayleigh & 5 & $1.172\times10^{23}$ & 199{,}826 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_lyr_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & SCE & 4d & $1.279\times10^{23}$ & 215{,}196 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_sce_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & SCE & 5 & $1.211\times10^{23}$ & 206{,}419 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_sce_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & WireMod X & 4d & $1.273\times10^{23}$ & 214{,}194 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMX_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & WireMod X & 5 & $1.227\times10^{23}$ & 209{,}290 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMX_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & WireMod YZ & 4d & $1.272\times10^{23}$ & 213{,}957 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMYZ_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & WireMod YZ & 5 & $1.203\times10^{23}$ & 205{,}140 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMYZ_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & WireMod $\theta_{XZ}$ & 4d & $1.275\times10^{23}$ & 214{,}511 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMthetaXZ_surprise_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & WireMod $\theta_{XZ}$ & 5 & $1.231\times10^{23}$ & 210{,}019 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMthetaXZ_surprise_reco2_hist_5.root} \\
+\midrule
+$\nu_e$CC Overlay & WireMod $\theta_{YZ}$ & 4d & $1.272\times10^{23}$ & 214{,}078 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run4d/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMthetaYZ_surprise_redo_reco2_hist_4d.root} \\
+\hline
+$\nu_e$CC Overlay & WireMod $\theta_{YZ}$ & 5 & $1.231\times10^{23}$ & 210{,}019 & \filepath{/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run5/checkout_DetVar_Run45_v10_04_07_25_BNB_intrinsic_nue_overlay_WMthetaYZ_surprise_redo_reco2_hist_5.root} \\
+\end{longtable}
+}
+
+% END AUTO-GENERATED FILE TABLES

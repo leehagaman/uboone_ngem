@@ -107,12 +107,12 @@ STUDIES = {
         prediction_filetypes=[
             "nu_overlay", "nue_overlay", "nc_pi0_overlay", "numucc_pi0_overlay",
             "dirt_overlay", "ext",
-            "numuCC_rad_corrected", "NC_coherent_1g_reweighted",
+            "numucc_rad_corr_sim", "NC_coherent_1g_reweighted",
         ],
         excluded_filetypes=[
             "nuwro_fake_data",               # only in the --nuwro study
             "isotropic_one_gamma_overlay",   # raw 1g overlay, kept as NC_coherent_1g_reweighted
-            "delete_one_gamma_overlay",      # raw 1g overlay, kept as numuCC_rad_corrected
+            "delete_one_gamma_overlay",      # raw 1g overlay
             "fullosc_overlay",               # evaluation-only sample
         ],
         nominal_output="minimal_withspline_df.root",
@@ -126,7 +126,7 @@ STUDIES = {
         data_filetype="nuwro_fake_data",
         prediction_filetypes=[
             "nu_overlay", "nue_overlay", "nc_pi0_overlay", "numucc_pi0_overlay",
-            "numuCC_rad_corrected", "NC_coherent_1g_reweighted",
+            "numucc_rad_corr_sim", "NC_coherent_1g_reweighted",
         ],
         excluded_filetypes=[
             "data",                          # real data: not part of the fake-data study
@@ -170,8 +170,9 @@ FILETYPE_CODES = {
     "delete_one_gamma_overlay": 9,
     "isotropic_one_gamma_overlay": 10,
     "fullosc_overlay": 11,
-    "numuCC_rad_corrected": 12,
+    # 12 was "numuCC_rad_corrected" (reweighted del1g rows, removed 2026-10-06); don't reuse
     "NC_coherent_1g_reweighted": 13,
+    "numucc_rad_corr_sim": 14,
 }
 
 
