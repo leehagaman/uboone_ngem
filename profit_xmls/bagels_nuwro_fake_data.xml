@@ -300,7 +300,27 @@
 	<systematic type="spline_to_covariance" binning="var0" plotname="AxFFCCQEshape" knobvals="1, 0" tag="QE" force_0_cv="true" include_only_weights="1,2">AxFFCCQEshape_UBGenie</systematic>
 	<!-- generated as GENIE minmax with min=0, max=1, tuned CV=0 (BBBA05 FF): universe 0 = max = variation, universe 1 = min = CV, hence knobvals "1, 0" -->
 	<systematic type="spline_to_covariance" binning="var0" plotname="VecFFCCQEshape" knobvals="1, 0" tag="QE" force_0_cv="true" include_only_weights="1,2">VecFFCCQEshape_UBGenie</systematic>
-	<systematic type="spline" binning="var0" plotname="RPA_CCQE" tag="QE" force_0_cv="true" include_only_weights="1,2">RPA_CCQE_UBGenie</systematic>
+	<!-- RPA_CCQE: GENIE dial d, 0 = full Nieves RPA, 1 = RPA off.  Tuned CV d = 0.151 (~85% RPA strength);
+	     intended 1 sigma = 0.2 in d (85% +/- 20% RPA strength, allowing variations past 100%).
+	     The weights were generated in UBGenie multisigma mode with
+	       parameter_sigma: [-1.449, -1.049, -0.649, -0.249, 0.151, 0.551, 0.951, 1.351], number_of_multisims: 7
+	     These input values s were meant as absolute dial values (CV 0.151 +/- k*0.4), but UBGenieWeightCalc.cxx
+	     adds the tuned CV to every multisigma entry, and only the first 7 entries are used (one per universe):
+	     https://github.com/uboone/ubsim/blob/ec2997a5ffe41535e9a6b2ca2d0a0715b5c42ac7/ubsim/EventWeight/Calculators/UBGenieWeightCalc.cxx#L420-L426
+	     So the stored universes are at d = 0.151 + s:
+	       universe:                                  0       1       2       3       4       5       6
+	       Input reweight knob value s:          -1.449  -1.049  -0.649  -0.249   0.151   0.551   0.951
+	       Used reweight knob value d = 0.151+s: -1.298  -0.898  -0.498  -0.098   0.302   0.702   1.102
+	       Sigmas from CV, (d - 0.151) / 0.2:    -7.245  -5.245  -3.245  -1.245   0.755   2.755   4.755
+	     The last row is the knobvals below.
+
+	     No universe is at the CV (knob 0), so PROfit inserts the CV prediction there itself (force_0_cv is
+	     then a no-op).  The weights are exactly linear in d, except that GENIE floors them at zero, which
+	     clips ~2.5% of events in the d < 0 universes (knobs <= -3.245, i.e. > 100% RPA strength); the spline
+	     knots are the actual weights, so this real flattening is kept.  The knot spacing is uneven around 0
+	     (1.245, 0.755), which gives a <~0.1 sigma interpolation error for a linear response.  The spline
+	     covers -7.2 to +4.8 sigma. -->
+	<systematic type="spline" binning="var0" plotname="RPA_CCQE" knobvals="-7.245, -5.245, -3.245, -1.245, 0.755, 2.755, 4.755" tag="QE" force_0_cv="true" include_only_weights="1,2">RPA_CCQE_UBGenie</systematic>
 	<systematic type="spline_to_covariance" binning="var0" plotname="CoulombCCQE" tag="QE" force_0_cv="true" include_only_weights="1,2">CoulombCCQE_UBGenie</systematic>
 
 	<systematic type="spline" binning="var0" plotname="NormCCMEC" knobvals="-2, -1, 0, 1, 2, 3" tag="MEC" force_0_cv="true" include_only_weights="1,2">NormCCMEC_UBGenie</systematic>
