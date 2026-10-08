@@ -1541,7 +1541,6 @@ def add_extra_true_photon_variables(df):
     truth_startMomentum_arr = df["wc_truth_startMomentum"].to_numpy()
     truth_startXYZT_arr = df["wc_truth_startXYZT"].to_numpy()
 
-    num_infinite_loops_broken = 0
 
     for event_i in tqdm(range(df.shape[0]), desc="Adding true photon variables", mininterval=10):
 
@@ -1605,61 +1604,50 @@ def add_extra_true_photon_variables(df):
             if truth_id_arr[event_i][i] in primary_or_pi0_gamma_ids: # pi0/primary -> gamma, this won't include the manually deleted photon
 
                 original_gamma_energy = truth_startMomentum_arr[event_i][i][3]
-                cumulative_deposited_energy = 0
 
-                visited_ids = set()
-                iteration_count = 0
-                
-                while True:
-                    curr_id = truth_id_arr[event_i][i]
-                    
-                    if curr_id in visited_ids:
-                        num_infinite_loops_broken += 1
-                        break
-
-                    visited_ids.add(curr_id)
-                    iteration_count += 1
-                    
-                    descendants_ids = []
-                    descendants_indices = []
-                    descendants_pdgs = []
+                # the photon plus any photons descended from it through photons only. Geant4 usually keeps the photon's
+                # track ID through a Compton scatter, so this is normally just the original photon
+                photon_chain_ids = {truth_id_arr[event_i][i]}
+                added_photon = True
+                while added_photon:
+                    added_photon = False
                     for j in range(num_particles):
-                        if truth_mother_arr[event_i][j] == curr_id: # pi0/primary -> gamma -> this particle
-                            descendants_ids.append(truth_id_arr[event_i][j])
-                            descendants_indices.append(j)
-                            descendants_pdgs.append(truth_pdg_arr[event_i][j])
+                        if (truth_pdg_arr[event_i][j] == 22 and truth_mother_arr[event_i][j] in photon_chain_ids
+                                and truth_id_arr[event_i][j] not in photon_chain_ids):
+                            photon_chain_ids.add(truth_id_arr[event_i][j])
+                            added_photon = True
 
-                    for descendant_i in range(len(descendants_indices)):
-                        if abs(descendants_pdgs[descendant_i]) == 11: # electron/positron daughter
-                            cumulative_deposited_energy += truth_startMomentum_arr[event_i][descendants_indices[descendant_i]][3]
+                # electrons/positrons created directly by those photons (Compton electrons and the pair), in order of creation time
+                charged_daughter_indices = [j for j in range(num_particles)
+                                            if abs(truth_pdg_arr[event_i][j]) == 11 and truth_mother_arr[event_i][j] in photon_chain_ids]
+                charged_daughter_indices.sort(key=lambda j: truth_startXYZT_arr[event_i][j][3])
 
-                    if cumulative_deposited_energy > original_gamma_energy / 2: # it has deposited enough energy to effectively count as a pair conversion
+                # the conversion point is the start of the e+- that brings the cumulative energy transferred to charged
+                # particles above half the photon energy
+                conversion_index = None
+                cumulative_deposited_energy = 0
+                for j in charged_daughter_indices:
+                    cumulative_deposited_energy += truth_startMomentum_arr[event_i][j][3]
+                    if cumulative_deposited_energy > original_gamma_energy / 2:
+                        conversion_index = j
                         break
 
-                    if 22 in descendants_pdgs: # found a compton scatter, hasn't deposited enough energy yet, loop to consider that next photon
-                        curr_id = descendants_ids[descendants_pdgs.index(22)]
-                        #print("doing a compton scatter")
-                    else: # no compton scatter, we're done, it's either a pair conversion or photoelectric absorption or a Geant tree deletion
-                        break
+                if conversion_index is None: # never passed half: photoelectric absorption, left the detector, or daughters missing from the Geant tree
+                    continue
 
-                if cumulative_deposited_energy < original_gamma_energy / 2: # weird event, didn't deposit enough energy to count as a pair conversion
-                    #print(f"weird event, no daughter photon, but also deposited less than half the energy: {cumulative_deposited_energy} / {original_gamma_energy}")
-                    pass
-                else:
-                    # Store conversion point in the correct position based on photon ID
-                    photon_id = truth_id_arr[event_i][i]
-                    position = photon_id_to_position[photon_id]
-                    
-                    curr_true_gamma_pairconversion_xs[position] = truth_startXYZT_arr[event_i][descendants_indices[0]][0]
-                    curr_true_gamma_pairconversion_ys[position] = truth_startXYZT_arr[event_i][descendants_indices[0]][1]
-                    curr_true_gamma_pairconversion_zs[position] = truth_startXYZT_arr[event_i][descendants_indices[0]][2]
-                    curr_true_num_gamma_pairconvert += 1
+                # Store conversion point in the correct position based on photon ID
+                position = photon_id_to_position[truth_id_arr[event_i][i]]
 
-                    if -1 < curr_true_gamma_pairconversion_xs[position] <= 254.3 and -115.0 < curr_true_gamma_pairconversion_ys[position] <= 117.0 and 0.6 < curr_true_gamma_pairconversion_zs[position] <= 1036.4:
-                        curr_true_num_gamma_pairconvert_in_FV += 1
+                curr_true_gamma_pairconversion_xs[position] = truth_startXYZT_arr[event_i][conversion_index][0]
+                curr_true_gamma_pairconversion_ys[position] = truth_startXYZT_arr[event_i][conversion_index][1]
+                curr_true_gamma_pairconversion_zs[position] = truth_startXYZT_arr[event_i][conversion_index][2]
+                curr_true_num_gamma_pairconvert += 1
 
-                        if original_gamma_energy > 0.02:
-                            curr_true_num_gamma_pairconvert_in_FV_20_MeV += 1
+                if -1 < curr_true_gamma_pairconversion_xs[position] <= 254.3 and -115.0 < curr_true_gamma_pairconversion_ys[position] <= 117.0 and 0.6 < curr_true_gamma_pairconversion_zs[position] <= 1036.4:
+                    curr_true_num_gamma_pairconvert_in_FV += 1
+
+                    if original_gamma_energy > 0.02:
+                        curr_true_num_gamma_pairconvert_in_FV_20_MeV += 1
 
         # Filter out None values from conversion point lists
         curr_true_gamma_pairconversion_xs = [x for x in curr_true_gamma_pairconversion_xs if x is not None]
@@ -1676,8 +1664,6 @@ def add_extra_true_photon_variables(df):
         true_num_gamma_pairconvert_in_FV_20_MeV.append(curr_true_num_gamma_pairconvert_in_FV_20_MeV)
         true_num_prim_gamma.append(curr_true_num_prim_gamma)
 
-    if num_infinite_loops_broken > 0:
-        print(f"Broke infinite loops in the true gamma daughter search {num_infinite_loops_broken} / {df.shape[0]} times")
 
     new_cols = {
         "true_num_gamma": true_num_gamma,
