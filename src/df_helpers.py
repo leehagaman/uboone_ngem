@@ -37,6 +37,44 @@ def detvar_weight_col(vartype):
 def lazy_height(lf):
     return lf.select(pl.len()).collect().item()
 
+
+# Filetypes never used for BDT training (src/bdt_training_setup.py NON_TRAINING_FILETYPES is
+# the union of these two lists):
+#   data roles: real data and the NuWro fake data
+#   whole-sample prediction filetypes: nothing was trained on them, so they need no test-half
+#     selection and are kept whole (all events, no 1/frac_test upweighting)
+BDT_DATA_ROLE_FILETYPES = ["data", "nuwro_fake_data"]
+BDT_WHOLE_SAMPLE_FILETYPES = ["fullosc_overlay", "numucc_rad_corr_sim"]
+
+
+def select_bdt_test_events(pred_df, weight_cols):
+    """The prediction events usable with BDT scores: the BDT test-half events, with
+    `weight_cols` scaled up by 1/frac_test so the total normalization is preserved, plus every
+    BDT_WHOLE_SAMPLE_FILETYPES event, kept whole and unscaled.
+
+    Whole-sample filetypes are recognized by filetype rather than by their split flags, so
+    this is also correct for predictions.parquet files from trainings that still gave them
+    train/test flags. Works on a DataFrame or a LazyFrame. Returns (selected_df, frac_test).
+    """
+    in_split = ~pl.col("filetype").is_in(BDT_WHOLE_SAMPLE_FILETYPES)
+    counts = pred_df.filter(in_split).select(
+        pl.col("used_for_training").sum().alias("n_train"),
+        pl.col("used_for_testing").sum().alias("n_test"),
+    )
+    if isinstance(counts, pl.LazyFrame):
+        counts = counts.collect()
+    num_train, num_test = counts["n_train"][0], counts["n_test"][0]
+    frac_test = num_test / (num_train + num_test)
+    print(f"BDT train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}; "
+          f"keeping {BDT_WHOLE_SAMPLE_FILETYPES} whole")
+
+    is_test = in_split & pl.col("used_for_testing")
+    selected = pred_df.with_columns([
+        pl.when(is_test).then(pl.col(c) / frac_test).otherwise(pl.col(c)).alias(c)
+        for c in weight_cols
+    ]).filter(is_test | ~in_split)
+    return selected, frac_test
+
 def get_vals(df, var):
     if isinstance(df, pl.LazyFrame):
         if var == "(wc_flash_measPe - wc_flash_predPe) / wc_flash_predPe":

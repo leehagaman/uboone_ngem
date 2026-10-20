@@ -31,9 +31,11 @@ from tqdm import tqdm
 from file_locations import intermediate_files_location
 from df_helpers import format_duration
 from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL
+from df_helpers import BDT_WHOLE_SAMPLE_FILETYPES
 from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
+from bdt_training_setup import bdt_feature_matrix
 from afro_1mu1p_selection import STV_COLUMN_NAMES, TRUE_STV_COLUMN_NAMES
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -660,7 +662,10 @@ def build_minimal_df(training):
 
     # Use only test events (the BDT trained on the train half), weighted up by
     # 1/frac_test so the total normalization is preserved.  Both counts in one pass.
-    counts = pred.select([
+    # BDT_WHOLE_SAMPLE_FILETYPES (numucc_rad_corr_sim here) are never in the split:
+    # kept whole, left out of the counts, not upweighted.
+    in_split = ~pl.col("filetype").is_in(BDT_WHOLE_SAMPLE_FILETYPES)
+    counts = pred.filter(in_split).select([
         pl.col("used_for_training").sum().alias("n_train"),
         pl.col("used_for_testing").sum().alias("n_test"),
     ]).collect()
@@ -668,11 +673,11 @@ def build_minimal_df(training):
     frac_test = num_test / (num_train + num_test)
     print(f"  train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}")
     pred = pred.with_columns(
-        pl.when(pl.col("used_for_testing"))
+        pl.when(pl.col("used_for_testing") & in_split)
         .then(pl.col(NET_WEIGHT_COL) / frac_test)
         .otherwise(pl.col(NET_WEIGHT_COL))
         .alias(NET_WEIGHT_COL)
-    ).filter(pl.col("used_for_testing"))
+    ).filter(pl.col("used_for_testing") | ~in_split)
 
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
@@ -815,8 +820,7 @@ def save_detvar(training, output_dir):
     # batched inference over the training variables
     probs = []
     for start in tqdm(range(0, presel.height, DETVAR_INFERENCE_BATCH_SIZE), desc="detvar inference"):
-        x = presel.select(TRAINING_VARS).slice(start, DETVAR_INFERENCE_BATCH_SIZE).to_numpy().astype(np.float64)
-        x[np.isinf(x)] = np.nan
+        x = bdt_feature_matrix(presel.slice(start, DETVAR_INFERENCE_BATCH_SIZE), TRAINING_VARS)
         probs.append(model.predict_proba(x))
     probs = np.vstack(probs)
 

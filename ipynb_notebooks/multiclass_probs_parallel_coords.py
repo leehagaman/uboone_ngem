@@ -20,6 +20,7 @@ def _():
     sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "..")))
 
     from src.file_locations import intermediate_files_location
+    from src.df_helpers import select_bdt_test_events
     from src.signal_categories import train_category_labels
 
     prob_cols = ["prob_" + cat for cat in train_category_labels]
@@ -30,6 +31,7 @@ def _():
         np,
         pl,
         prob_cols,
+        select_bdt_test_events,
         train_category_labels,
     )
 
@@ -49,7 +51,7 @@ def _(mo):
 
 
 @app.cell
-def _(intermediate_files_location, pl, prob_cols):
+def _(intermediate_files_location, pl, prob_cols, select_bdt_test_events):
     training = "all_vars"
 
     keep_cols = [
@@ -68,19 +70,16 @@ def _(intermediate_files_location, pl, prob_cols):
     ).filter(
         (pl.col("filetype") != "data")
         & (pl.col("filetype") != "isotropic_one_gamma_overlay")
+        & (pl.col("filetype") != "fullosc_overlay")
+        & (pl.col("filetype") != "nuwro_fake_data")
     )
 
-    counts = merged_lf.select(
-        pl.col("used_for_training").sum().alias("n_train"),
-        pl.col("used_for_testing").sum().alias("n_test"),
-    ).collect()
-    frac_test = counts["n_test"][0] / (counts["n_train"][0] + counts["n_test"][0])
-
+    # BDT test events, scaled up by the test fraction, plus the samples the BDT never
+    # trained on (BDT_WHOLE_SAMPLE_FILETYPES, e.g. numucc_rad_corr_sim), kept whole
+    test_lf, _frac_test = select_bdt_test_events(merged_lf, ["wc_net_weight"])
     test_df = (
-        merged_lf
-        .filter(pl.col("used_for_testing") == True)
+        test_lf
         .filter(pl.col("wc_kine_reco_Enu") > 0)
-        .with_columns((pl.col("wc_net_weight") / frac_test).alias("wc_net_weight"))
         .select(keep_cols)
         .collect()
     )

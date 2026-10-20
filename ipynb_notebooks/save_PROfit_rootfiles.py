@@ -26,7 +26,7 @@ from src.plot_helpers import make_histogram_plot
 
 from src.ntuple_variables.variables import combined_training_vars
 
-from src.df_helpers import lazy_height, get_vals
+from src.df_helpers import lazy_height, get_vals, select_bdt_test_events
 
 
 # In[2]:
@@ -91,8 +91,10 @@ merged_df_no_data_drop = merged_df_no_data_drop.with_columns(
 )
 
 # removing data and training-only events that aren't part of the prediction
+# the fullosc sample and the NuWro fake data are not part of this prediction
 full_pred = merged_df_no_data_drop.filter(
-    ~pl.col("filetype").is_in(["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"])
+    ~pl.col("filetype").is_in(["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay",
+                               "fullosc_overlay", "nuwro_fake_data"])
 )
 full_data = merged_df_no_data_drop.filter(pl.col("filetype") == "data")
 
@@ -104,27 +106,10 @@ for i, signal_category in enumerate(reco_categories):
 generic_pred_df = full_pred.filter(pl.col("wc_kine_reco_Enu") > 0)
 del full_pred
 
-num_train_events = lazy_height(generic_pred_df.filter(pl.col("used_for_training") == True))
-num_test_events = lazy_height(generic_pred_df.filter(pl.col("used_for_testing") == True))
-print(f"num_train_events: {num_train_events}, num_test_events: {num_test_events}")
-
-frac_test = num_test_events / (num_train_events + num_test_events)
-print(f"weighting up preselected prediction events by the fraction of test/train events: {frac_test:.3f}")
-
-# Modify weights using polars expressions
-generic_pred_df = generic_pred_df.with_columns(
-    pl.when(pl.col("used_for_testing"))
-    .then(pl.col("wc_net_weight") / frac_test)
-    .otherwise(pl.col("wc_net_weight"))
-    .alias("wc_net_weight"),
-    
-    pl.when(pl.col("used_for_testing"))
-    .then(pl.col("run4b_only_wc_net_weight") / frac_test)
-    .otherwise(pl.col("run4b_only_wc_net_weight"))
-    .alias("run4b_only_wc_net_weight")
-)
-
-generic_test_pred_df = generic_pred_df.filter(pl.col("used_for_testing") == True)
+# Only BDT test events are used for the prediction (training events would be biased), scaled up by
+# the test fraction. Samples the BDT never trained on (BDT_WHOLE_SAMPLE_FILETYPES, e.g.
+# numucc_rad_corr_sim) are kept whole and unscaled.
+generic_test_pred_df, frac_test = select_bdt_test_events(generic_pred_df, ["wc_net_weight", "run4b_only_wc_net_weight"])
 del generic_pred_df
 
 generic_data_df = full_data.filter(pl.col("wc_kine_reco_Enu") > 0)

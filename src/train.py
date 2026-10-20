@@ -15,13 +15,16 @@ from sklearn.metrics import confusion_matrix
 from datetime import datetime
 import os
 import argparse
+import json
 import time
 
-from src.signal_categories import topological_category_labels, train_category_labels
-from src.ntuple_variables.variables import wc_training_vars, combined_training_vars, lantern_training_vars, glee_training_vars, pandora_training_vars, pandora_scalar_training_vars, combined_postprocessing_training_vars
-
-from src.file_locations import intermediate_files_location
-from src.df_helpers import format_duration
+from bdt_training_setup import (
+    NON_TRAINING_FILETYPES, WEIGHT_MODES, get_training_vars, get_signal_categories, add_split_columns,
+    select_training_events, get_labels, get_physics_weights, get_training_weights,
+    class_prior_correction, PhysicsWeightedLoglossMetric, bdt_feature_matrix,
+)
+from file_locations import intermediate_files_location
+from df_helpers import format_duration
 
 if __name__ == "__main__":
     main_start_time = time.time()
@@ -30,6 +33,14 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, default=None)
     parser.add_argument("--training_vars", type=str, default="combined")
     parser.add_argument("--signal_categories", type=str, default="del1g_simple")
+    parser.add_argument("--params_json", type=str, default=None,
+                        help="Hyperparameters from hyperparameter_tuning.py (its <study_name>_best_params.json); "
+                             "default: XGBoost defaults")
+    parser.add_argument("--weight_mode", type=str, default=None, choices=WEIGHT_MODES,
+                        help="Event weights used in the training (see bdt_training_setup.WEIGHT_MODES); "
+                             "default: from --params_json, else normalized")
+    parser.add_argument("--n_estimators", type=int, default=5000,
+                        help="Upper limit on boosting rounds; training normally ends by early stopping first")
     parser.add_argument("--early_stopping_rounds", type=int, default=50,
                         help="Stop training if validation metric doesn't improve for this many rounds")
     args = parser.parse_args()
@@ -40,40 +51,25 @@ if __name__ == "__main__":
         timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         args.name = f"training_{timestamp}"
 
-    if args.training_vars == "combined":
-        training_vars = combined_training_vars
-    elif args.training_vars == "wc":
-        training_vars = wc_training_vars
-    elif args.training_vars == "lantern":
-        training_vars = lantern_training_vars
-    elif args.training_vars == "lantern_first_half":
-        training_vars = lantern_training_vars[:len(lantern_training_vars)//2]
-    elif args.training_vars == "glee":
-        training_vars = glee_training_vars
-    elif args.training_vars == "pandora":
-        training_vars = pandora_training_vars
-    elif args.training_vars == "pandora_scalars":
-        training_vars = pandora_scalar_training_vars
-    elif args.training_vars == "only_wc_lantern_combined":
-        training_vars = wc_training_vars + lantern_training_vars + combined_postprocessing_training_vars
-    else:
-        raise ValueError(f"Invalid training_vars: {args.training_vars}")
+    xgb_params = {}
+    tuned_weight_mode = None
+    if args.params_json is not None:
+        with open(args.params_json) as f:
+            tuned = json.load(f)
+        xgb_params = tuned["xgb_params"]
+        tuned_weight_mode = tuned["weight_mode"]
+        print(f"Using hyperparameters from {args.params_json}: {xgb_params}")
+        setup = tuned.get("setup", {})
+        for key, current in [("training_vars", args.training_vars), ("signal_categories", args.signal_categories)]:
+            if setup.get(key) != current:
+                print(f"WARNING: hyperparameters were tuned with {key}={setup.get(key)}, training with {current}")
+        if args.weight_mode is not None and args.weight_mode != tuned_weight_mode:
+            print(f"WARNING: hyperparameters were tuned with weight_mode={tuned_weight_mode}, training with {args.weight_mode}")
+    weight_mode = args.weight_mode or tuned_weight_mode or "normalized"
+    print(f"{weight_mode=}")
 
-    if args.signal_categories == "topological":
-        signal_category_labels = topological_category_labels
-        signal_category_var = "topological_signal_category"
-    elif args.signal_categories == "del1g_simple":
-        signal_category_labels = train_category_labels
-        signal_category_var = "del1g_simple_signal_category"
-    elif args.signal_categories == "nue_only":
-        # Binary classification: 0 -> not_nue, 1 -> nue
-        signal_category_labels = ["not_nue", "nue"]
-        signal_category_var = "del1g_simple_signal_category"
-    elif args.signal_categories == "nc_coh_1g_vs_bkg":
-        signal_category_labels = ["not_NC_coherent_1g_reweighted", "NC_coherent_1g_reweighted"]
-        signal_category_var = "filetype"
-    else:
-        raise ValueError(f"Invalid signal_categories: {args.signal_categories}")
+    training_vars = get_training_vars(args.training_vars)
+    signal_category_labels, signal_category_var = get_signal_categories(args.signal_categories)
 
     # Delete the directory if it exists
     if (PROJECT_ROOT / 'training_outputs' / args.name).exists():
@@ -93,39 +89,14 @@ if __name__ == "__main__":
 
     all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
 
-    # These events are not used for BDT training
-    non_training_filetypes = ["data", "nuwro_fake_data", "fullosc_overlay"]
-
-    # Assign train/test flags in place (avoids duplicating the full dataframe with pl.concat).
-    # For non_training_filetypes, `~is_in(...)` is False, so both flags are False regardless of
-    # train_test_score (Kleene: False & anything == False).
-    train_fraction = 0.5
-    all_df = all_df.with_columns([
-        (~pl.col("filetype").is_in(non_training_filetypes) & (pl.col("train_test_score") < train_fraction)).alias("used_for_training"),
-        (~pl.col("filetype").is_in(non_training_filetypes) & (pl.col("train_test_score") >= train_fraction)).alias("used_for_testing"),
-    ])
+    # Assign train/validation/test flags in place (avoids duplicating the full dataframe with pl.concat).
+    # The validation split is used for early stopping, so the test split stays untouched by the training.
+    all_df = add_split_columns(all_df)
 
     # Preselection: WC generic neutrino selection
     # (should already be applied in the presel_df_train_vars.pkl file)
-    trainable_df = all_df.filter(~pl.col("filetype").is_in(non_training_filetypes))
-    original_num_events = trainable_df.height
-
-    presel_df = trainable_df.filter(pl.col("wc_kine_reco_Enu") > 0) # not necessary, already applied in presel_df_train_vars.parquet
-
-    if args.signal_categories == "nc_coh_1g_vs_bkg":
-        # don't use Iso1g or Del1g events for training/testing, nor the dedicated rad. corr. simulation
-        presel_df = presel_df.filter((pl.col("filetype") != "isotropic_one_gamma_overlay") & (pl.col("filetype") != "delete_one_gamma_overlay")
-                                     & (pl.col("filetype") != "numucc_rad_corr_sim"))
-
-        # only use sampled NC Coherent 1g events, in order to get a coherent 1g shape without event weights
-        presel_df = presel_df.filter(
-            ((pl.col("filetype") == "NC_coherent_1g_reweighted") & (pl.col("coherent_1g_keep") == True))
-            | (pl.col("filetype") != "NC_coherent_1g_reweighted")
-        )
-
-    else:
-        # don't use 1mu1g rad. corr. events or NC Coherent 1g events for training/testing, since these are already included in the Del1g and Iso1g training
-        presel_df = presel_df.filter(~pl.col("filetype").is_in(["numucc_rad_corr_sim", "NC_coherent_1g_reweighted"]))
+    original_num_events = all_df.filter(~pl.col("filetype").is_in(NON_TRAINING_FILETYPES)).height
+    presel_df = select_training_events(all_df, args.signal_categories)
 
     preselected_num_events = presel_df.height
     print(f"Preselected {preselected_num_events} / {original_num_events} events")
@@ -134,41 +105,31 @@ if __name__ == "__main__":
     print(f"{num_categories=}")
 
     presel_train_df = presel_df.filter(pl.col("used_for_training") == True)
+    presel_val_df = presel_df.filter(pl.col("used_for_validation") == True)
     presel_test_df = presel_df.filter(pl.col("used_for_testing") == True)
     del presel_df
+    print(f"Train: {presel_train_df.height}, Val: {presel_val_df.height}, Test: {presel_test_df.height}")
 
-    # check for duplicates in training_vars, and print them
-    training_vars_set = set(training_vars)
-    if len(training_vars_set) != len(training_vars):
-        print("Duplicates in training_vars:")
-        for var in training_vars:
-            if training_vars.count(var) > 1:
-                print(var)
-        raise ValueError("Duplicates in training_vars!")
+    x_train = bdt_feature_matrix(presel_train_df, training_vars)
+    x_val = bdt_feature_matrix(presel_val_df, training_vars)
+    x_test = bdt_feature_matrix(presel_test_df, training_vars)
 
-    x_train = presel_train_df.select(training_vars).to_numpy()
-    x_train = x_train.astype(np.float64)
-    x_train[(x_train > 1e10) | (x_train < -1e10)] = np.nan
-    x_test = presel_test_df.select(training_vars).to_numpy()
-    x_test = x_test.astype(np.float64)
-    x_test[(x_test > 1e10) | (x_test < -1e10)] = np.nan
+    y_train = get_labels(presel_train_df, args.signal_categories)
+    y_val = get_labels(presel_val_df, args.signal_categories)
+    y_test = get_labels(presel_test_df, args.signal_categories)
 
-    w_train = presel_train_df.select("wc_net_weight_open_data").to_numpy()
-    w_train = w_train.flatten() if w_train.ndim > 1 else w_train
-    w_test = presel_test_df.select("wc_net_weight_open_data").to_numpy()
-    w_test = w_test.flatten() if w_test.ndim > 1 else w_test
-
-    y_train = presel_train_df.select(signal_category_var).to_numpy()
-    y_test = presel_test_df.select(signal_category_var).to_numpy()
-
-    if args.signal_categories == "nc_coh_1g_vs_bkg":
-        w_train = np.ones(w_train.shape)
-        w_test = np.ones(w_test.shape)
-        y_train = presel_train_df.select((pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")).to_numpy()
-        y_test = presel_test_df.select((pl.col("filetype") == "NC_coherent_1g_reweighted") & pl.col("wc_truth_inFV")).to_numpy()
-
-    y_train = y_train.flatten() if y_train.ndim > 1 else y_train
-    y_test = y_test.flatten() if y_test.ndim > 1 else y_test
+    # physics weights (for the evaluation plots) and the weights given to XGBoost
+    w_phys_train = get_physics_weights(presel_train_df, args.signal_categories)
+    w_phys_test = get_physics_weights(presel_test_df, args.signal_categories)
+    normalization = w_phys_train.mean()
+    w_train = get_training_weights(w_phys_train, weight_mode, normalization)
+    w_phys_val = get_physics_weights(presel_val_df, args.signal_categories)
+    w_val = get_training_weights(w_phys_val, weight_mode, normalization)
+    w_test = get_training_weights(w_phys_test, weight_mode, normalization)
+    prior_correction = class_prior_correction(y_train, w_train, w_phys_train, num_categories)
+    print(f"mean physics training weight: {normalization:.4g}")
+    print(f"class prior correction factors (physics / training priors): {np.array2string(prior_correction, precision=3)}")
+    del presel_train_df, presel_val_df, presel_test_df
 
     print("num training signal:", np.sum(y_train == 1))
     print("num training background:", np.sum(y_train == 0))
@@ -176,18 +137,24 @@ if __name__ == "__main__":
 
     num_training_vars = len(training_vars)
     print(f"{num_training_vars=}")
-    
-    # Debug: Check what categories are in training and test data
-    #unique_categories_train = np.unique(y_train)
-    #unique_categories_test = np.unique(y_test)
-    #print(f"Categories in training data: {unique_categories_train}")
-    #print(f"Categories in test data: {unique_categories_test}")
-    #print(f"Expected categories: {list(range(num_categories))}")
 
     print("creating eval_set and eval_weights...")
 
-    eval_set = [(x_train, y_train), (x_test, y_test)]
-    eval_weights = [w_train, w_test]
+    # XGBoost early-stops on the last eval_set entry (validation); test is only monitored
+    eval_set = [(x_train, y_train), (x_test, y_test), (x_val, y_val)]
+    eval_weights = [w_train, w_test, w_val]
+
+    # Log loss with the physics weights for every eval set regardless of weight_mode, so these
+    # curves are comparable between weight modes (the built-in metrics use eval_weights)
+    physics_logloss = PhysicsWeightedLoglossMetric(
+        [("train", y_train, w_phys_train), ("test", y_test, w_phys_test), ("validation", y_val, w_phys_val)],
+        num_categories, prior_correction)
+
+    # Early stop on the built-in validation log loss (with the training weights, as in the
+    # hyperparameter tuning), rather than XGBoost's default of the last (custom) metric
+    loss_key = 'mlogloss' if num_categories > 2 else 'logloss'
+    early_stopping = xgb.callback.EarlyStopping(
+        rounds=args.early_stopping_rounds, metric_name=loss_key, data_name="validation_2", save_best=False)
 
     print("creating model...")
 
@@ -195,17 +162,21 @@ if __name__ == "__main__":
     if num_categories == 2:
         model = xgb.XGBClassifier(
             objective='binary:logistic',
-            n_estimators=200,
-            eval_metric=['logloss', 'error'],
-            early_stopping_rounds=args.early_stopping_rounds,
+            tree_method='hist',
+            n_estimators=args.n_estimators,
+            eval_metric=['logloss', 'error', physics_logloss],
+            callbacks=[early_stopping],
+            **xgb_params,
         )
     else:
         model = xgb.XGBClassifier(
             objective='multi:softprob',
             num_class=num_categories,
-            n_estimators=200,
-            eval_metric=['mlogloss', 'merror'],
-            early_stopping_rounds=args.early_stopping_rounds,
+            tree_method='hist',
+            n_estimators=args.n_estimators,
+            eval_metric=['mlogloss', 'merror', physics_logloss],
+            callbacks=[early_stopping],
+            **xgb_params,
         )
 
     print("fitting model...")
@@ -221,9 +192,30 @@ if __name__ == "__main__":
     if model.best_iteration is not None:
         print(f"Early stopping: best_iteration={model.best_iteration}")
 
-    # x_train (~12 GB) is no longer needed after fitting; eval_set/eval_weights also hold
+    # x_train is no longer needed after fitting; eval_set/eval_weights also hold
     # references to it, so drop them too to actually free the memory.
-    del eval_set, eval_weights, x_train, y_train, w_train
+    del eval_set, eval_weights, x_train, y_train, w_train, x_val, y_val, w_val
+
+    print("Saving training config...")
+    with open(output_dir / "training_config.json", "w") as f:
+        json.dump({
+            "training_vars": args.training_vars,
+            "signal_categories": args.signal_categories,
+            "weight_mode": weight_mode,
+            "params_json": args.params_json,
+            "xgb_params": xgb_params,
+            "n_estimators": args.n_estimators,
+            "early_stopping_rounds": args.early_stopping_rounds,
+            "best_iteration": model.best_iteration,
+            # comparable between weight modes (see physics_weighted_loss_curves.png)
+            "physics_weighted_logloss_at_best_iteration": {
+                set_name: {kind: values[model.best_iteration] for kind, values in curves.items()}
+                for set_name, curves in physics_logloss.history.items()},
+            "mean_physics_training_weight": float(normalization),
+            # multiply the predicted probabilities by these (and renormalize) to move the class
+            # priors to the physics priors; all ones for weight_mode "normalized"
+            "class_prior_correction": dict(zip(signal_category_labels, prior_correction.tolist())),
+        }, f, indent=2)
 
     print("Saving model...")
     model.get_booster().save_model(output_dir / "bdt.json")
@@ -288,11 +280,12 @@ if __name__ == "__main__":
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
     evals_result = model.evals_result()
-    loss_key = 'mlogloss' if num_categories > 2 else 'logloss'
     err_key = 'merror' if num_categories > 2 else 'error'
     train_loss = evals_result['validation_0'][loss_key]
     test_loss = evals_result['validation_1'][loss_key]
+    val_loss = evals_result['validation_2'][loss_key]
     plt.plot(train_loss, label='Train Loss', linewidth=2)
+    plt.plot(val_loss, label='Validation Loss', linewidth=2)
     plt.plot(test_loss, label='Test Loss', linewidth=2)
     plt.xlabel('Iteration')
     plt.ylabel('Multi-class Log Loss')
@@ -303,7 +296,9 @@ if __name__ == "__main__":
     plt.subplot(1, 2, 2)
     train_acc = [1 - err for err in evals_result['validation_0'][err_key]]
     test_acc = [1 - err for err in evals_result['validation_1'][err_key]]
+    val_acc = [1 - err for err in evals_result['validation_2'][err_key]]
     plt.plot(train_acc, label='Train Accuracy', linewidth=2)
+    plt.plot(val_acc, label='Validation Accuracy', linewidth=2)
     plt.plot(test_acc, label='Test Accuracy', linewidth=2)
     plt.xlabel('Iteration')
     plt.ylabel('Accuracy')
@@ -321,19 +316,52 @@ if __name__ == "__main__":
     training_curves_df = pl.DataFrame({
         'iteration': list(range(num_iterations)),
         'train_loss': train_loss,
+        'validation_loss': val_loss,
         'test_loss': test_loss,
         'train_accuracy': train_acc,
+        'validation_accuracy': val_acc,
         'test_accuracy': test_acc,
         'is_best_iteration': [i == model.best_iteration for i in range(num_iterations)]
     })
     training_curves_df.write_csv(output_dir / "training_curves.csv")
     print(f"Saved training curves to: {output_dir / 'training_curves.csv'}")
 
+    # Physics-weighted log loss, comparable between weight modes. The prior-corrected version
+    # first moves the class priors to the physics priors (identical for weight_mode "normalized").
+    print("Creating physics-weighted loss curves...")
+    plt.figure(figsize=(12, 5))
+    for i_plot, (kind, kind_label) in enumerate([("raw", "Raw probabilities"), ("prior_corrected", "Prior-corrected probabilities")]):
+        plt.subplot(1, 2, i_plot + 1)
+        for set_name in ["train", "validation", "test"]:
+            plt.plot(physics_logloss.history[set_name][kind], label=f'{set_name.capitalize()} Loss', linewidth=2)
+        plt.xlabel('Iteration')
+        plt.ylabel('Physics-Weighted Log Loss')
+        plt.title(f'{kind_label} (weight_mode={weight_mode})')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.axvline(model.best_iteration, linestyle='--', color='k', alpha=0.6, label='Best iteration')
+    plt.tight_layout()
+    plt.savefig(output_dir / "physics_weighted_loss_curves.png", dpi=300, bbox_inches='tight')
+    plt.close()
+
+    physics_curves_df = pl.DataFrame({
+        'iteration': list(range(num_iterations)),
+        **{f'{set_name}_physics_logloss{"" if kind == "raw" else "_prior_corrected"}': physics_logloss.history[set_name][kind]
+           for set_name in ["train", "validation", "test"] for kind in ["raw", "prior_corrected"]},
+        'is_best_iteration': [i == model.best_iteration for i in range(num_iterations)]
+    })
+    physics_curves_df.write_csv(output_dir / "physics_weighted_loss_curves.csv")
+    print(f"Saved physics-weighted loss curves to: {output_dir / 'physics_weighted_loss_curves.csv'}")
+    for set_name in ["validation", "test"]:
+        print(f"{set_name} physics-weighted log loss at best iteration: "
+              f"raw {physics_logloss.history[set_name]['raw'][model.best_iteration]:.6f}, "
+              f"prior-corrected {physics_logloss.history[set_name]['prior_corrected'][model.best_iteration]:.6f}")
+
     print("Creating probability histograms...")
     plt.figure(figsize=(20, 12))
     y_pred = model.predict(x_test)
     y_proba = model.predict_proba(x_test)
-    del x_test  # (~12 GB) no longer needed; y_pred/y_proba/y_test/w_test carry the rest
+    del x_test  # no longer needed; y_pred/y_proba/y_test/w_phys_test carry the rest
     n_categories = num_categories
     n_cols = 4
     n_rows = (n_categories + n_cols - 1) // n_cols
@@ -358,7 +386,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(20, 6))
     # Ensure confusion matrix includes all expected categories, even if they have zero events
     expected_labels = list(range(n_categories))
-    cm = confusion_matrix(y_test, y_pred, sample_weight=w_test, labels=expected_labels)
+    cm = confusion_matrix(y_test, y_pred, sample_weight=w_phys_test, labels=expected_labels)
     # Handle division by zero for normalization
     row_sums = cm.sum(axis=1)
     col_sums = cm.sum(axis=0)
@@ -414,16 +442,14 @@ if __name__ == "__main__":
 
     print("Creating prediction dataframe...")
     # Get predictions for all data (not just test set, not just presel).
-    # Predict in chunks with float32 to bound peak memory: the full matrix would be
-    # ~3.8M x 991 floats, and to_numpy/astype/predict_proba would each copy it.
-    # XGBoost casts inputs to float32 internally, so float32 here gives identical predictions.
+    # Predict in chunks to bound peak memory: the full matrix would be ~3.8M x 1000 floats.
+    # bdt_feature_matrix applies the same missing-value preprocessing as for the training.
     prediction_chunk_size = 200_000
     n_prediction_rows = all_df.height
     prob_chunks = []
     for start in range(0, n_prediction_rows, prediction_chunk_size):
         print(f"predicting chunk starting at {start}...")
-        x_chunk = all_df.slice(start, prediction_chunk_size).select(training_vars).to_numpy().astype(np.float32)
-        x_chunk[np.isinf(x_chunk)] = np.nan
+        x_chunk = bdt_feature_matrix(all_df.slice(start, prediction_chunk_size), training_vars)
         prob_chunks.append(model.predict_proba(x_chunk))
         del x_chunk
     print("concatenating chunks...")
@@ -438,7 +464,11 @@ if __name__ == "__main__":
         all_df.select("run"),
         all_df.select("subrun"),
         all_df.select("event"),
-        all_df.select("used_for_training"),
+        # used_for_training here means "not test" (train or validation split, which both shape the
+        # model via fitting / early stopping), so downstream n_test / (n_train + n_test) test-weight
+        # scaling stays correct; used_for_validation marks the validation part of it
+        all_df.select((pl.col("used_for_training") | pl.col("used_for_validation")).alias("used_for_training")),
+        all_df.select("used_for_validation"),
         all_df.select("used_for_testing")
     ]
     for i in range(n_categories):

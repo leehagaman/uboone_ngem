@@ -78,9 +78,20 @@ replaces the old standalone `create_splines_df.py`.
 ```
 nohup python -u src/train.py --name all_vars_r15_2026_09_25 > train_nohup.out 2>&1 &
 
-# hyperparameter tuning
-nohup python -u src/hyperparameter_tuning.py --study_name first_test_xgb_hp --n_trials 10 > hyperparameter_tuning_nohup.out 2>&1 &
+# hyperparameter tuning (one study per weight mode; outputs in hyperparameter_tuning_outputs/)
+nohup python -u src/hyperparameter_tuning.py --study_name hp_normalized_2026_10_14 --weight_mode normalized --n_trials 100 > hp_normalized_nohup.out 2>&1 &
+nohup python -u src/hyperparameter_tuning.py --study_name hp_unit_2026_10_14 --weight_mode unit --n_trials 100 > hp_unit_nohup.out 2>&1 &
+
+# train with the tuned hyperparameters (and the weight mode of that study)
+nohup python -u src/train.py --name tuned_2026_10_14 --params_json hyperparameter_tuning_outputs/hp_normalized_2026_10_14_best_params.json > train_nohup.out 2>&1 &
 ```
+
+Training uses the `train_test_score` split [0, 0.4) train | [0.4, 0.5) validation (early stopping and
+tuning) | [0.5, 1) test (defined in `src/bdt_training_setup.py`). In `predictions.parquet`,
+`used_for_training` covers train + validation, so `n_test / (n_train + n_test)` test-weight scaling stays correct.
+To compare weight modes, use the physics-weighted log loss: `val_physics_weighted_logloss_raw` / `val_physics_weighted_logloss`
+(after moving the class priors to the physics priors) of each study's best trial, and for trainings
+`physics_weighted_loss_curves.png/.csv` and `physics_weighted_logloss_at_best_iteration` in `training_config.json`.
 
 ## Creating PROfit root file
 ```
