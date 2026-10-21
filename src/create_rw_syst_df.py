@@ -171,6 +171,8 @@ def _get_file_metadata(filename, frac_events=1):
         filetype = "nue_overlay"
     elif "dirt" in filename.lower():
         filetype = "dirt_overlay"
+    elif "ncdelta" in filename.lower():
+        filetype = "ncdeltarad_overlay"
     elif "nc_pi0" in filename.lower() or "ncpi0" in filename.lower() or "nc_pio" in filename.lower() or "ncpio" in filename.lower():
         filetype = "nc_pi0_overlay"
     elif "ccpi0_overlay" in filename.lower():

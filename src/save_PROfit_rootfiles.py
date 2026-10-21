@@ -108,7 +108,7 @@ STUDIES = {
         weight_config_name="open_data",     # suffix of the normalizing_run_period_* / norm_goal_pot_* helper columns
         data_filetype="data",
         prediction_filetypes=[
-            "nu_overlay", "nue_overlay", "nc_pi0_overlay", "numucc_pi0_overlay",
+            "nu_overlay", "nue_overlay", "nc_pi0_overlay", "ncdeltarad_overlay", "numucc_pi0_overlay",
             "dirt_overlay", "ext",
             "numucc_rad_corr_sim", "NC_coherent_1g_reweighted",
         ],
@@ -128,7 +128,7 @@ STUDIES = {
         weight_config_name="nuwro",
         data_filetype="nuwro_fake_data",
         prediction_filetypes=[
-            "nu_overlay", "nue_overlay", "nc_pi0_overlay", "numucc_pi0_overlay",
+            "nu_overlay", "nue_overlay", "nc_pi0_overlay", "ncdeltarad_overlay", "numucc_pi0_overlay",
             "numucc_rad_corr_sim", "NC_coherent_1g_reweighted",
         ],
         excluded_filetypes=[
@@ -176,6 +176,7 @@ FILETYPE_CODES = {
     # 12 was "numuCC_rad_corrected" (reweighted del1g rows, removed 2026-10-06); don't reuse
     "NC_coherent_1g_reweighted": 13,
     "numucc_rad_corr_sim": 14,
+    "ncdeltarad_overlay": 15,
 }
 
 

@@ -74,65 +74,58 @@ def change_dtypes(df):
 def _orthogonalization_masks():
     """Return the per-event-type Polars mask expressions used for orthogonalization.
 
-    These define how the dedicated samples (nc_pi0/nue/numucc_pi0 overlays) and the
+    These define how the dedicated samples (ncdeltarad/nc_pi0/nue/numucc_pi0 overlays) and the
     inclusive nu_overlay are split into non-overlapping truth classes, plus the
     simple per-filetype masks (dirt/ext/nuwro/del1g/iso1g/fullosc/rad_corr_sim/data).  Returned as a
     dict so both do_orthogonalization_and_POT_weighting and the weighting helpers
     share one definition.
     """
+    def is_filetype(filetype):
+        return pl.col("filetype") == filetype
+
+    # ── Truth building blocks ──
+    in_fv = pl.col("wc_truth_vtxInside") == 1
+    is_nc = pl.col("wc_truth_isCC") == 0
+    is_cc = pl.col("wc_truth_isCC") == 1
+    is_nue = pl.col("wc_truth_nuPdg").abs() == 12
+    is_numu = pl.col("wc_truth_nuPdg") == 14
+    one_prim_pi0 = pl.col("wc_truth_NprimPio") == 1
+    # wc_truth_NCDelta flags both NC and CC Delta radiative, so is_nc is required below
+    delta_rad = pl.col("wc_truth_NCDelta") == 1
+
+    # ── Truth classes covered by a dedicated sample (all mutually disjoint) ──
+    # NC Delta rad takes precedence over NC 1pi0: the ~1.5% of NC Delta rad events
+    # that also have one primary pi0 belong to the NC Delta rad class (and are dropped
+    # from nc_pi0_overlay).
+    true_nc_delta_rad = is_nc & delta_rad & in_fv
+    true_nc_1pi0 = is_nc & one_prim_pi0 & in_fv & ~true_nc_delta_rad
+    true_nue_cc = is_cc & is_nue & in_fv
+    true_numucc_pi0 = is_cc & is_numu & one_prim_pi0 & in_fv
+
+    # Each class is taken from its dedicated sample and from nu_overlay (combined POT);
+    # nu_overlay keeps everything else as "other".
     masks = {}
-    masks["nc_pi0_overlay_true_nc_1pi0"] = (
-        (pl.col("filetype") == 'nc_pi0_overlay') &
-        (pl.col("wc_truth_isCC") == 0) &
-        (pl.col("wc_truth_NprimPio") == 1) &
-        (pl.col("wc_truth_vtxInside") == 1)
+    masks["ncdeltarad_overlay_true_nc_delta_rad"] = is_filetype("ncdeltarad_overlay") & true_nc_delta_rad
+    masks["nu_overlay_true_nc_delta_rad"] = is_filetype("nu_overlay") & true_nc_delta_rad
+    masks["nc_pi0_overlay_true_nc_1pi0"] = is_filetype("nc_pi0_overlay") & true_nc_1pi0
+    masks["nu_overlay_true_nc_1pi0"] = is_filetype("nu_overlay") & true_nc_1pi0
+    masks["nue_overlay_true_nue_cc"] = is_filetype("nue_overlay") & true_nue_cc
+    masks["nu_overlay_true_nue_cc"] = is_filetype("nu_overlay") & true_nue_cc
+    masks["numucc_pi0_overlay_true_numucc_pi0"] = is_filetype("numucc_pi0_overlay") & true_numucc_pi0
+    masks["nu_overlay_true_numucc_pi0"] = is_filetype("nu_overlay") & true_numucc_pi0
+    masks["nu_overlay_other"] = is_filetype("nu_overlay") & ~(
+        true_nc_delta_rad | true_nc_1pi0 | true_nue_cc | true_numucc_pi0
     )
-    masks["nu_overlay_true_nc_1pi0"] = (
-        (pl.col("filetype") == 'nu_overlay') &
-        (pl.col("wc_truth_isCC") == 0) &
-        (pl.col("wc_truth_NprimPio") == 1) &
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    masks["nue_overlay_true_nue_cc"] = (
-        (pl.col("filetype") == 'nue_overlay') &
-        (pl.col("wc_truth_isCC") == 1) &
-        (pl.col("wc_truth_nuPdg").abs() == 12) &
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    masks["nu_overlay_true_nue_cc"] = (
-        (pl.col("filetype") == 'nu_overlay') &
-        (pl.col("wc_truth_isCC") == 1) &
-        (pl.col("wc_truth_nuPdg").abs() == 12) &
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    masks["numucc_pi0_overlay_true_numucc_pi0"] = (
-        (pl.col("filetype") == 'numucc_pi0_overlay') &
-        (pl.col("wc_truth_isCC") == 1) &
-        (pl.col("wc_truth_nuPdg") == 14) &
-        (pl.col("wc_truth_NprimPio") == 1) &
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    masks["nu_overlay_true_numucc_pi0"] = (
-        (pl.col("filetype") == 'nu_overlay') &
-        (pl.col("wc_truth_isCC") == 1) &
-        (pl.col("wc_truth_nuPdg") == 14) &
-        (pl.col("wc_truth_NprimPio") == 1) &
-        (pl.col("wc_truth_vtxInside") == 1)
-    )
-    masks["nu_overlay_other"] = (
-        (pl.col("filetype") == 'nu_overlay') &  # nu_overlay
-        ~((pl.col("wc_truth_isCC") == 0) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1)) &  # not NC 1pi0 inFV
-        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg").abs() == 12) & (pl.col("wc_truth_vtxInside") == 1)) &  # not nueCC inFV
-        ~((pl.col("wc_truth_isCC") == 1) & (pl.col("wc_truth_nuPdg") == 14) & (pl.col("wc_truth_NprimPio") == 1) & (pl.col("wc_truth_vtxInside") == 1))  # not numuCC 1pi0 inFV
-    )
-    masks["dirt"] = pl.col("filetype") == 'dirt_overlay'
-    masks["ext"] = pl.col("filetype") == 'ext'
-    masks["nuwro"] = pl.col("filetype") == 'nuwro_fake_data'
-    masks["del1g"] = pl.col("filetype") == 'delete_one_gamma_overlay'
-    masks["iso1g"] = pl.col("filetype") == 'isotropic_one_gamma_overlay'
-    masks["fullosc"] = pl.col("filetype") == 'fullosc_overlay'
-    masks["rad_corr_sim"] = pl.col("filetype") == 'numucc_rad_corr_sim'
-    masks["data"] = pl.col("filetype") == 'data'
+
+    # ── Samples taken whole ──
+    masks["dirt"] = is_filetype("dirt_overlay")
+    masks["ext"] = is_filetype("ext")
+    masks["nuwro"] = is_filetype("nuwro_fake_data")
+    masks["del1g"] = is_filetype("delete_one_gamma_overlay")
+    masks["iso1g"] = is_filetype("isotropic_one_gamma_overlay")
+    masks["fullosc"] = is_filetype("fullosc_overlay")
+    masks["rad_corr_sim"] = is_filetype("numucc_rad_corr_sim")
+    masks["data"] = is_filetype("data")
     return masks
 
 
@@ -268,12 +261,15 @@ def _compute_config_pot_dics(pot_dic, config):
 
     # Summed POTs for the overlapping truth classes (a dedicated sample plus the
     # inclusive nu_overlay share one combined denominator per group).
-    summed = {"nc_1pi0": {}, "nue_cc": {}, "numucc_pi0": {}}
+    summed = {"nc_delta_rad": {}, "nc_1pi0": {}, "nue_cc": {}, "numucc_pi0": {}}
     for nrp in normalizing_run_periods:
+        summed["nc_delta_rad"][nrp] = 0.0
         summed["nc_1pi0"][nrp] = 0.0
         summed["nue_cc"][nrp] = 0.0
         summed["numucc_pi0"][nrp] = 0.0
     for (filetype, nrp), v in normalizing_run_period_pot_dic.items():
+        if filetype in ('ncdeltarad_overlay', 'nu_overlay'):
+            summed["nc_delta_rad"][nrp] += v
         if filetype in ('nc_pi0_overlay', 'nu_overlay'):
             summed["nc_1pi0"][nrp] += v
         if filetype in ('nue_overlay', 'nu_overlay'):
@@ -333,7 +329,9 @@ def _add_config_weight_columns(df, pot_dic, masks, config):
     for nrp in normalizing_run_periods:
         in_nrp = pl.col(nrp_col) == nrp
         eventtype_expr = (
-            pl.when(masks["nc_pi0_overlay_true_nc_1pi0"] & in_nrp).then(pl.lit(summed["nc_1pi0"][nrp]))
+            pl.when(masks["ncdeltarad_overlay_true_nc_delta_rad"] & in_nrp).then(pl.lit(summed["nc_delta_rad"][nrp]))
+            .when(masks["nu_overlay_true_nc_delta_rad"] & in_nrp).then(pl.lit(summed["nc_delta_rad"][nrp]))
+            .when(masks["nc_pi0_overlay_true_nc_1pi0"] & in_nrp).then(pl.lit(summed["nc_1pi0"][nrp]))
             .when(masks["nu_overlay_true_nc_1pi0"] & in_nrp).then(pl.lit(summed["nc_1pi0"][nrp]))
             .when(masks["numucc_pi0_overlay_true_numucc_pi0"] & in_nrp).then(pl.lit(summed["numucc_pi0"][nrp]))
             .when(masks["nu_overlay_true_numucc_pi0"] & in_nrp).then(pl.lit(summed["numucc_pi0"][nrp]))
@@ -438,7 +436,8 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
     # ── Orthogonalization: keep only the events we want (config-independent) ──
     print("applying combined (orthogonalization) mask...")
     combined_mask = (
-        masks["nc_pi0_overlay_true_nc_1pi0"] | masks["nu_overlay_true_nc_1pi0"]
+        masks["ncdeltarad_overlay_true_nc_delta_rad"] | masks["nu_overlay_true_nc_delta_rad"]
+        | masks["nc_pi0_overlay_true_nc_1pi0"] | masks["nu_overlay_true_nc_1pi0"]
         | masks["numucc_pi0_overlay_true_numucc_pi0"] | masks["nu_overlay_true_numucc_pi0"]
         | masks["nue_overlay_true_nue_cc"] | masks["nu_overlay_true_nue_cc"]
         | masks["nu_overlay_other"]
@@ -1981,6 +1980,7 @@ def add_signal_categories(all_df, verify=True):
             (pl.col("filetype") == "nu_overlay") | 
             (pl.col("filetype") == "nue_overlay") | 
             (pl.col("filetype") == "nc_pi0_overlay") | 
+            (pl.col("filetype") == "ncdeltarad_overlay") | 
             (pl.col("filetype") == "numucc_pi0_overlay")
         ).alias("normal_overlay"),
         (pl.col("filetype") == "delete_one_gamma_overlay").alias("del1g_overlay"),

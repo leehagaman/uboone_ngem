@@ -57,6 +57,9 @@ FILES_TO_COPY=(
     "/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4abcd5_v10_04_07_24_BNB_CCpi0_overlay_retuple_retuple_hist_5.root"
 
     # dirt overlay files
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_dirt_overlay_surprise_reco2_hist_1.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run2_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_dirt_overlay_surprise_reco2_hist_2.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run3_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_23_BNB_dirt_overlay_surprise_reco2_hist_3.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_4a.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run4b_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_4c.root"
@@ -73,8 +76,15 @@ FILES_TO_COPY=(
     "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4bcd/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_4bcd.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/5/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_5.root"
 
+    # NC Delta radiative overlay files
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_26_BNB_NCDelta_overlay_surprise_reco2_hist_4a.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run4b_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_26_BNB_NCDelta_overlay_surprise_reco2_hist_4b.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_26_BNB_NCDelta_overlay_surprise_reco2_hist_4c.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_26_BNB_NCDelta_overlay_surprise_reco2_hist_4d.root"
+
     # numuCC rad. corr. overlay files
-    "/exp/uboone/data/users/lhagaman/numucc_radcorr_1g_larger_v02_splines.root"
+    "/exp/uboone/data/users/uboonepro/SURPRISE/checkout_numucc_radcorr_1g_v01_splines.root"
+    #"/exp/uboone/data/users/lhagaman/numucc_radcorr_1g_larger_v02_splines.root" # older, smaller file without WC post-processing
 
     # EXT files
     "/exp/uboone/data/users/uboonepro/SURPRISE/run1_full_samples/BNB/checkout_MCC9.10_Run123_v10_04_07_20_BNB_beam_off_data_surprise_reco2_hist_1.root"

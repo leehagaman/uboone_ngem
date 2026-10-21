@@ -191,6 +191,8 @@ def _filetype_from_filename(filename):
         return "nue_overlay"
     if "dirt" in fn:
         return "dirt_overlay"
+    if "ncdelta" in fn:
+        return "ncdeltarad_overlay"
     if "nc_pi0" in fn or "ncpi0" in fn or "nc_pio" in fn or "ncpio" in fn:
         return "nc_pi0_overlay"
     if "ccpi0" in fn:
@@ -202,13 +204,6 @@ def _filetype_from_filename(filename):
     if "beam_on" in fn:
         return "data"
     raise ValueError("Unknown filetype!", filename)
-
-# TEMPORARY, RAD CORR SIM FILES NEED WC BDT PROCESSING
-RAD_CORR_SIM_MISSING_WC_SCORES = {
-    "nc_delta_score", "nc_pio_score",
-    "single_photon_numu_score", "single_photon_other_score",
-    "single_photon_ncpi0_score", "single_photon_nue_score",
-}
 
 
 def _get_file_metadata(filename, frac_events=1):
@@ -239,16 +234,11 @@ def _get_file_metadata(filename, frac_events=1):
     # Some productions (v10_04_07_09, and every Run4b v10_04_07_20/24 retuple file) lack
     # the WCPMTInfo* branches in T_BDTvars.  Detect that from the tree itself rather than
     # by filename; the columns are null-filled by the diagonal concat downstream.
-    # The dedicated rad-corr simulation was processed with a reduced WC T_BDTvars that also
-    # lacks the WC NC-Delta / NC-pi0 / single-photon BDT scores (not training features of
-    # our BDTs, but used by the WC reference selections in the notebooks, which these
-    # events therefore never pass).
     curr_wc_T_BDT_including_training_vars = wc_T_BDT_including_training_vars
     bdt_keys = set(f["wcpselection"]["T_BDTvars"].keys())
     missing_bdt_vars = [var for var in wc_T_BDT_including_training_vars if var not in bdt_keys]
     if missing_bdt_vars:
-        tolerated = [v for v in missing_bdt_vars if "WCPMTInfo" in v
-                     or (filetype == "numucc_rad_corr_sim" and v in RAD_CORR_SIM_MISSING_WC_SCORES)]
+        tolerated = [v for v in missing_bdt_vars if "WCPMTInfo" in v]
         untolerated = [v for v in missing_bdt_vars if v not in tolerated]
         if untolerated:
             raise KeyError(f"{filename}: T_BDTvars is missing non-WCPMTInfo branches: {untolerated}")
@@ -898,7 +888,7 @@ if __name__ == "__main__":
             # Validate filetype column immediately after concatenation
             known_filetypes = {
                 "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
-                "nc_pi0_overlay", "numucc_pi0_overlay",
+                "nc_pi0_overlay", "ncdeltarad_overlay", "numucc_pi0_overlay",
                 "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
                 "fullosc_overlay", "numucc_rad_corr_sim",
             }

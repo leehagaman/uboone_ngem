@@ -38,6 +38,8 @@ def _filetype_from_filename(filename):
         return "nue_overlay"
     if "dirt" in fn:
         return "dirt_overlay"
+    if "ncdelta" in fn:
+        return "ncdeltarad_overlay"
     if "nc_pi0" in fn or "ncpi0" in fn or "nc_pio" in fn or "ncpio" in fn:
         return "nc_pi0_overlay"
     if "ccpi0" in fn:
