@@ -79,8 +79,10 @@ replaces the old standalone `create_splines_df.py`.
 nohup python -u src/train.py --name all_vars_r15_2026_09_25 > train_nohup.out 2>&1 &
 
 # hyperparameter tuning (one study per weight mode; outputs in hyperparameter_tuning_outputs/)
-nohup python -u src/hyperparameter_tuning.py --study_name hp_normalized_2026_10_14 --weight_mode normalized --n_trials 100 > hp_normalized_nohup.out 2>&1 &
-nohup python -u src/hyperparameter_tuning.py --study_name hp_unit_2026_10_14 --weight_mode unit --n_trials 100 > hp_unit_nohup.out 2>&1 &
+# When running both at once, split the 64 cores between them (--nthread 32 each): oversubscribed
+# XGBoost threads run many times slower.
+nohup python -u src/hyperparameter_tuning.py --study_name hp_normalized_2026_10_20b --weight_mode normalized --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_normalized_nohup.out 2>&1 &
+nohup python -u src/hyperparameter_tuning.py --study_name hp_unit_2026_10_20b --weight_mode unit --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_unit_nohup.out 2>&1 &
 
 # train with the tuned hyperparameters (and the weight mode of that study)
 nohup python -u src/train.py --name tuned_2026_10_14 --params_json hyperparameter_tuning_outputs/hp_normalized_2026_10_14_best_params.json > train_nohup.out 2>&1 &

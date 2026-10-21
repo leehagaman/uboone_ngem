@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import time
 from datetime import datetime
 
 import numpy as np
@@ -61,7 +62,11 @@ def parse_args():
     parser.add_argument("--max_boost_rounds", type=int, default=5000,
                         help="Upper limit on boosting rounds; trials normally end by early stopping first")
     parser.add_argument("--early_stopping_rounds", type=int, default=50)
-    parser.add_argument("--nthread", type=int, default=0, help="XGBoost threads (0 = all cores)")
+    parser.add_argument("--nthread", type=int, default=0,
+                        help="XGBoost threads (0 = all cores). When running several tuning processes at once, "
+                             "split the cores between them: oversubscribed XGBoost threads slow down many-fold")
+    parser.add_argument("--print_every", type=int, default=50,
+                        help="Print the trial's validation loss and speed every this many boosting rounds")
     parser.add_argument("--seed", type=int, default=None,
                         help="Optuna sampler seed (use different seeds for parallel processes sharing one study)")
     parser.add_argument("--allow_setup_mismatch", action="store_true",
@@ -86,6 +91,24 @@ def load_data(args, training_vars):
         data[f"y_{split}"] = get_labels(df, args.signal_categories)
         data[f"w_phys_{split}"] = get_physics_weights(df, args.signal_categories)
     return data
+
+
+class ProgressCallback(xgb.callback.TrainingCallback):
+    """Prints the validation loss and speed every `print_every` boosting rounds."""
+
+    def __init__(self, trial_number, metric_key, print_every):
+        self.trial_number = trial_number
+        self.metric_key = metric_key
+        self.print_every = print_every
+        self.start_time = time.time()
+
+    def after_iteration(self, model, epoch, evals_log):
+        if (epoch + 1) % self.print_every == 0:
+            elapsed = time.time() - self.start_time
+            loss = evals_log["validation"][self.metric_key][-1]
+            print(f"  trial {self.trial_number}: round {epoch + 1}, validation {self.metric_key} {loss:.5f}, "
+                  f"{elapsed / (epoch + 1):.2f} s/round", flush=True)
+        return False # don't stop training
 
 
 def make_objective(args, dtrain, dval, num_categories, y_val, w_phys_val, prior_correction):
@@ -123,7 +146,8 @@ def make_objective(args, dtrain, dval, num_categories, y_val, w_phys_val, prior_
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 10.0, log=True),
         }
 
-        callbacks = []
+        print(f"trial {trial.number} started: {params}", flush=True)
+        callbacks = [ProgressCallback(trial.number, base_params["eval_metric"], args.print_every)]
         if not (args.no_pruning or args.tune_learning_rate):
             callbacks.append(XGBoostPruningCallback(trial, pruning_key))
 
