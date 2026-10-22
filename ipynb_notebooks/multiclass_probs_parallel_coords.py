@@ -56,7 +56,7 @@ def _(intermediate_files_location, pl, prob_cols, select_bdt_test_events):
 
     keep_cols = [
         "filetype", "run", "subrun", "event",
-        "used_for_training", "used_for_testing",
+        "bdt_role",
         "wc_kine_reco_Enu", "wc_net_weight",
         "del1g_simple_signal_category",
         *prob_cols,
@@ -74,12 +74,12 @@ def _(intermediate_files_location, pl, prob_cols, select_bdt_test_events):
         & (pl.col("filetype") != "nuwro_fake_data")
     )
 
-    # BDT test events, scaled up by the test fraction, plus the samples the BDT never
-    # trained on (BDT_WHOLE_SAMPLE_FILETYPES, e.g. numucc_rad_corr_sim), kept whole
-    test_lf, _frac_test = select_bdt_test_events(merged_lf, ["wc_net_weight"])
+    # BDT test events, scaled up to the full normalization, plus the events the BDT never
+    # trained on (bdt_role "not_trained", e.g. numucc_rad_corr_sim), kept whole; generic
+    # preselection first, since events failing it have no BDT prediction
+    test_lf = select_bdt_test_events(merged_lf.filter(pl.col("wc_kine_reco_Enu") > 0), ["wc_net_weight"])
     test_df = (
         test_lf
-        .filter(pl.col("wc_kine_reco_Enu") > 0)
         .select(keep_cols)
         .collect()
     )

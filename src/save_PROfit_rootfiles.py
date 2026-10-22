@@ -47,7 +47,7 @@ from tqdm import tqdm
 from file_locations import intermediate_files_location
 from df_helpers import format_duration
 from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL
-from df_helpers import BDT_WHOLE_SAMPLE_FILETYPES
+from df_helpers import select_bdt_test_events
 from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL, UNIT_BASE_WEIGHT_FILETYPES
 from signal_categories import train_category_labels
 from ntuple_variables.variables import combined_training_vars
@@ -60,12 +60,6 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ============================================================================
 
 DEFAULT_TRAINING = "all_vars_r15_2026_09_11"
-
-# Filetypes that are never in the BDT train/test split but are usable as prediction
-# (nothing was trained on them): kept whole, left out of the frac_test counts, and not
-# test-half upweighted, if a study lists them among its prediction filetypes
-# (fullosc_overlay, numucc_rad_corr_sim).
-WHOLE_SAMPLE_FILETYPES = BDT_WHOLE_SAMPLE_FILETYPES
 
 # Filetypes with no GENIE spline weights that are written with constant unit spline
 # branches (the data role of each study, and EXT when it is part of the prediction).
@@ -772,25 +766,10 @@ def build_minimal_df(training, study):
         raise ValueError(f"{n_unweighted} prediction rows have a null {net_weight_col}; the weighting config "
                          f"does not cover one of {study['prediction_filetypes']}")
 
-    # Use only test events (the BDT trained on the train half), weighted up by
-    # 1/frac_test so the total normalization is preserved.  WHOLE_SAMPLE_FILETYPES are
-    # never in the split: kept whole, left out of the counts, not upweighted.
-    in_split = ~pl.col("filetype").is_in(WHOLE_SAMPLE_FILETYPES)
-    counts = pred.filter(in_split).select([
-        pl.col("used_for_training").sum().alias("n_train"),
-        pl.col("used_for_testing").sum().alias("n_test"),
-    ]).collect(engine="streaming")
-    num_train, num_test = counts["n_train"][0], counts["n_test"][0]
-    frac_test = num_test / (num_train + num_test)
-    print(f"  train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}")
-    pred = pred.with_columns(
-        pl.when(pl.col("used_for_testing") & in_split)
-        .then(pl.col(net_weight_col) / frac_test)
-        .otherwise(pl.col(net_weight_col))
-        .alias(net_weight_col)
-    ).filter(pl.col("used_for_testing") | ~in_split)
+    # BDT test events (scaled up to the full normalization) and not_trained events (kept whole)
+    pred = select_bdt_test_events(pred, [net_weight_col])
 
-    # the data role is kept whole (real data or NuWro fake data: never in the split)
+    # the data role is kept whole (real data or NuWro fake data: never trained on)
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
     combined = pl.concat([pred, data], how="vertical")

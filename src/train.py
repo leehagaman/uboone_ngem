@@ -19,7 +19,7 @@ import json
 import time
 
 from bdt_training_setup import (
-    NON_TRAINING_FILETYPES, WEIGHT_MODES, get_training_vars, get_signal_categories, add_split_columns,
+    WEIGHT_MODES, get_training_vars, get_signal_categories, add_bdt_role_columns,
     select_training_events, get_labels, get_physics_weights, get_training_weights,
     class_prior_correction, PhysicsWeightedLoglossMetric, bdt_feature_matrix,
 )
@@ -89,13 +89,14 @@ if __name__ == "__main__":
 
     all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
 
-    # Assign train/validation/test flags in place (avoids duplicating the full dataframe with pl.concat).
-    # The validation split is used for early stopping, so the test split stays untouched by the training.
-    all_df = add_split_columns(all_df)
+    # Assign each event's BDT role (train / validation / test / not_trained) in place (avoids duplicating
+    # the full dataframe with pl.concat). The validation split is used for early stopping, so the test
+    # split stays untouched by the training.
+    all_df = add_bdt_role_columns(all_df)
 
     # Preselection: WC generic neutrino selection
     # (should already be applied in the presel_df_train_vars.pkl file)
-    original_num_events = all_df.filter(~pl.col("filetype").is_in(NON_TRAINING_FILETYPES)).height
+    original_num_events = all_df.filter(pl.col("bdt_role") != "not_trained").height
     presel_df = select_training_events(all_df, args.signal_categories)
 
     preselected_num_events = presel_df.height
@@ -104,9 +105,9 @@ if __name__ == "__main__":
     num_categories = len(signal_category_labels)
     print(f"{num_categories=}")
 
-    presel_train_df = presel_df.filter(pl.col("used_for_training") == True)
-    presel_val_df = presel_df.filter(pl.col("used_for_validation") == True)
-    presel_test_df = presel_df.filter(pl.col("used_for_testing") == True)
+    presel_train_df = presel_df.filter(pl.col("bdt_role") == "train")
+    presel_val_df = presel_df.filter(pl.col("bdt_role") == "validation")
+    presel_test_df = presel_df.filter(pl.col("bdt_role") == "test")
     del presel_df
     print(f"Train: {presel_train_df.height}, Val: {presel_val_df.height}, Test: {presel_test_df.height}")
 
@@ -464,12 +465,9 @@ if __name__ == "__main__":
         all_df.select("run"),
         all_df.select("subrun"),
         all_df.select("event"),
-        # used_for_training here means "not test" (train or validation split, which both shape the
-        # model via fitting / early stopping), so downstream n_test / (n_train + n_test) test-weight
-        # scaling stays correct; used_for_validation marks the validation part of it
-        all_df.select((pl.col("used_for_training") | pl.col("used_for_validation")).alias("used_for_training")),
-        all_df.select("used_for_validation"),
-        all_df.select("used_for_testing")
+        # how each event may be used downstream (df_helpers.select_bdt_test_events)
+        all_df.select("bdt_role"),
+        all_df.select("bdt_prediction_weight_factor"),
     ]
     for i in range(n_categories):
         print(f"adding prediction column {i}...")

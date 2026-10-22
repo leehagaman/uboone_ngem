@@ -19,7 +19,7 @@ import optuna
 from optuna.integration import XGBoostPruningCallback
 
 from bdt_training_setup import (
-    WEIGHT_MODES, get_training_vars, get_signal_categories, add_split_columns,
+    WEIGHT_MODES, get_training_vars, get_signal_categories, add_bdt_role_columns,
     select_training_events, get_labels, get_physics_weights, get_training_weights,
     class_prior_correction, apply_prior_correction, weighted_logloss, bdt_feature_matrix,
 )
@@ -77,11 +77,11 @@ def parse_args():
 def load_data(args, training_vars):
     print("Loading dataframe...")
     all_df = pl.read_parquet(INPUT_FILE)
-    presel_df = select_training_events(add_split_columns(all_df), args.signal_categories)
+    presel_df = select_training_events(add_bdt_role_columns(all_df), args.signal_categories)
     del all_df
 
-    train_df = presel_df.filter(pl.col("used_for_training"))
-    val_df = presel_df.filter(pl.col("used_for_validation"))
+    train_df = presel_df.filter(pl.col("bdt_role") == "train")
+    val_df = presel_df.filter(pl.col("bdt_role") == "validation")
     del presel_df
     print(f"Train: {train_df.height}, Val: {val_df.height}")
 

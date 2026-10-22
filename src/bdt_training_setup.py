@@ -10,25 +10,29 @@ import numpy as np
 import polars as pl
 
 from signal_categories import topological_category_labels, train_category_labels
-from df_helpers import BDT_DATA_ROLE_FILETYPES, BDT_WHOLE_SAMPLE_FILETYPES
 from ntuple_variables.variables import (
     wc_training_vars, combined_training_vars, lantern_training_vars,
     glee_training_vars, pandora_training_vars, pandora_scalar_training_vars,
     combined_postprocessing_training_vars,
 )
 
-# These events are never used for BDT training (training, validation, or the training-script
-# test evaluation) in any signal_categories mode, and all their split flags are False: the data
-# roles, and the prediction samples kept whole downstream (df_helpers.select_bdt_test_events),
-# the fullosc sample and the dedicated numuCC rad. corr. simulation
-NON_TRAINING_FILETYPES = BDT_DATA_ROLE_FILETYPES + BDT_WHOLE_SAMPLE_FILETYPES
-
-# train_test_score split:
-#   [0, 0.4)   training
-#   [0.4, 0.5) validation (early stopping and hyperparameter tuning)
-#   [0.5, 1)   testing (only used for evaluation and the final analysis)
+# Every event's BDT role (bdt_role column) is decided here, in add_bdt_role_columns, and written to
+# predictions.parquet; everything downstream uses only that (via df_helpers.select_bdt_test_events).
+#   "train"       [0, 0.4) of train_test_score: fit
+#   "validation"  [0.4, 0.5): early stopping and hyperparameter tuning
+#   "test"        [0.5, 1): evaluation, and the analysis prediction (weights x 1/0.5)
+#   "not_trained" never trained on in any signal_categories mode, so usable in full (weights x 1)
 TRAIN_SCORE_MAX = 0.4
 VALIDATION_SCORE_MAX = 0.5
+TEST_WEIGHT_FACTOR = 1 / (1 - VALIDATION_SCORE_MAX)
+
+# not_trained: the data roles (real data, NuWro fake data), the fullosc sample, and the
+# dedicated numuCC rad. corr. simulation...
+NOT_TRAINED_FILETYPES = ["data", "nuwro_fake_data", "fullosc_overlay", "numucc_rad_corr_sim"]
+# ...and the true Delta radiative events (NC or numuCC, in or out of FV) in every other sample:
+# neither signal nor background, so the BDT doesn't learn the kinematics of these specific
+# processes.  Null for EXT (no truth) -> False.
+NOT_TRAINED_EVENTS = (pl.col("wc_truth_NCDeltaRad") | pl.col("wc_truth_numuCCDeltaRad")).fill_null(False)
 
 # How the event weights enter the XGBoost training:
 #   "normalized": physics weights (wc_net_weight_open_data), scaled so the mean training weight
@@ -85,24 +89,30 @@ def get_signal_categories(name):
         raise ValueError(f"Invalid signal_categories: {name}")
 
 
-def add_split_columns(df):
-    """Adds used_for_training / used_for_validation / used_for_testing.
-
-    For NON_TRAINING_FILETYPES, `~is_in(...)` is False, so all three flags are False
-    regardless of train_test_score (Kleene: False & anything == False).
-    """
-    trainable = ~pl.col("filetype").is_in(NON_TRAINING_FILETYPES)
+def add_bdt_role_columns(df):
+    """Adds bdt_role and bdt_prediction_weight_factor (see the top of this file)."""
     score = pl.col("train_test_score")
-    return df.with_columns([
-        (trainable & (score < TRAIN_SCORE_MAX)).alias("used_for_training"),
-        (trainable & (score >= TRAIN_SCORE_MAX) & (score < VALIDATION_SCORE_MAX)).alias("used_for_validation"),
-        (trainable & (score >= VALIDATION_SCORE_MAX)).alias("used_for_testing"),
-    ])
+    role = (
+        pl.when(pl.col("filetype").is_in(NOT_TRAINED_FILETYPES) | NOT_TRAINED_EVENTS).then(pl.lit("not_trained"))
+        .when(score < TRAIN_SCORE_MAX).then(pl.lit("train"))
+        .when(score < VALIDATION_SCORE_MAX).then(pl.lit("validation"))
+        .otherwise(pl.lit("test"))
+    )
+    df = df.with_columns(role.alias("bdt_role"))
+    factor = (
+        pl.when(pl.col("bdt_role") == "test").then(pl.lit(TEST_WEIGHT_FACTOR))
+        .when(pl.col("bdt_role") == "not_trained").then(pl.lit(1.0))
+        .otherwise(pl.lit(0.0))
+    )
+    return df.with_columns(factor.alias("bdt_prediction_weight_factor"))
 
 
 def select_training_events(df, signal_categories):
-    """Events used for training/validation/testing (before the split)."""
-    presel_df = df.filter(~pl.col("filetype").is_in(NON_TRAINING_FILETYPES))
+    """The train/validation/test events this signal_categories mode uses (needs add_bdt_role_columns).
+    Mode-specific exclusions below keep their role: they are not trained on in this mode, but
+    the events (or their parent iso1g/del1g events) may be in another, so their test half is
+    still the one that is unbiased."""
+    presel_df = df.filter(pl.col("bdt_role") != "not_trained")
     presel_df = presel_df.filter(pl.col("wc_kine_reco_Enu") > 0) # should already be applied in presel_df_train_vars.parquet
 
     if signal_categories == "nc_coh_1g_vs_bkg":
@@ -118,11 +128,6 @@ def select_training_events(df, signal_categories):
     else:
         # don't use NC Coherent 1g events for training/testing, since these are already included in the Del1g and Iso1g training
         presel_df = presel_df.filter(pl.col("filetype") != "NC_coherent_1g_reweighted")
-
-    present = set(presel_df.select(pl.col("filetype").unique()).to_series().to_list())
-    leaked = present & set(NON_TRAINING_FILETYPES)
-    if leaked:
-        raise ValueError(f"Filetypes that must never be used for BDT training were selected: {sorted(leaked)}")
 
     return presel_df
 

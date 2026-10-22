@@ -106,10 +106,10 @@ for i, signal_category in enumerate(reco_categories):
 generic_pred_df = full_pred.filter(pl.col("wc_kine_reco_Enu") > 0)
 del full_pred
 
-# Only BDT test events are used for the prediction (training events would be biased), scaled up by
-# the test fraction. Samples the BDT never trained on (BDT_WHOLE_SAMPLE_FILETYPES, e.g.
-# numucc_rad_corr_sim) are kept whole and unscaled.
-generic_test_pred_df, frac_test = select_bdt_test_events(generic_pred_df, ["wc_net_weight", "run4b_only_wc_net_weight"])
+# Only BDT test events (scaled up to the full normalization) and events the BDT never trained on
+# (bdt_role "not_trained", e.g. numucc_rad_corr_sim and true Delta radiative; kept whole) are used
+# for the prediction: training/validation events would be biased.
+generic_test_pred_df = select_bdt_test_events(generic_pred_df, ["wc_net_weight", "run4b_only_wc_net_weight"])
 del generic_pred_df
 
 generic_data_df = full_data.filter(pl.col("wc_kine_reco_Enu") > 0)

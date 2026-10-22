@@ -38,42 +38,41 @@ def lazy_height(lf):
     return lf.select(pl.len()).collect().item()
 
 
-# Filetypes never used for BDT training (src/bdt_training_setup.py NON_TRAINING_FILETYPES is
-# the union of these two lists):
-#   data roles: real data and the NuWro fake data
-#   whole-sample prediction filetypes: nothing was trained on them, so they need no test-half
-#     selection and are kept whole (all events, no 1/frac_test upweighting)
-BDT_DATA_ROLE_FILETYPES = ["data", "nuwro_fake_data"]
-BDT_WHOLE_SAMPLE_FILETYPES = ["fullosc_overlay", "numucc_rad_corr_sim"]
+# BDT bookkeeping columns, set in src/bdt_training_setup.py (add_bdt_role_columns, the one place
+# that decides how each event is used) and written to predictions.parquet by train.py:
+#   bdt_role: "train", "validation", "test", or "not_trained" (see bdt_training_setup)
+#   bdt_prediction_weight_factor: what to multiply an event's weights by when it enters a
+#     prediction that uses BDT scores: 0 for train/validation events (their scores are biased),
+#     1/(test fraction) for test events, and 1 for not_trained events (kept whole)
 
 
 def select_bdt_test_events(pred_df, weight_cols):
-    """The prediction events usable with BDT scores: the BDT test-half events, with
-    `weight_cols` scaled up by 1/frac_test so the total normalization is preserved, plus every
-    BDT_WHOLE_SAMPLE_FILETYPES event, kept whole and unscaled.
+    """The prediction events usable with BDT scores, with `weight_cols` multiplied by
+    bdt_prediction_weight_factor: the test events, scaled up so the total normalization is
+    preserved, and the not_trained events, kept whole.
 
-    Whole-sample filetypes are recognized by filetype rather than by their split flags, so
-    this is also correct for predictions.parquet files from trainings that still gave them
-    train/test flags. Works on a DataFrame or a LazyFrame. Returns (selected_df, frac_test).
+    Every row needs a BDT prediction (pred_df joined with a predictions.parquet from a training
+    that writes bdt_prediction_weight_factor); raises otherwise. Works on a DataFrame or a
+    LazyFrame.
     """
-    in_split = ~pl.col("filetype").is_in(BDT_WHOLE_SAMPLE_FILETYPES)
-    counts = pred_df.filter(in_split).select(
-        pl.col("used_for_training").sum().alias("n_train"),
-        pl.col("used_for_testing").sum().alias("n_test"),
-    )
-    if isinstance(counts, pl.LazyFrame):
-        counts = counts.collect()
-    num_train, num_test = counts["n_train"][0], counts["n_test"][0]
-    frac_test = num_test / (num_train + num_test)
-    print(f"BDT train={num_train}, test={num_test} -> scaling test weights by 1/{frac_test:.4f}; "
-          f"keeping {BDT_WHOLE_SAMPLE_FILETYPES} whole")
+    schema = pred_df.collect_schema()
+    if "bdt_prediction_weight_factor" not in schema.names():
+        raise ValueError("no bdt_prediction_weight_factor column: join a predictions.parquet from a "
+                         "training made after the bdt_role refactor (2026-10-22)")
+    factor = pl.col("bdt_prediction_weight_factor")
 
-    is_test = in_split & pl.col("used_for_testing")
-    selected = pred_df.with_columns([
-        pl.when(is_test).then(pl.col(c) / frac_test).otherwise(pl.col(c)).alias(c)
-        for c in weight_cols
-    ]).filter(is_test | ~in_split)
-    return selected, frac_test
+    summary = pred_df.group_by("bdt_role", factor).agg(pl.len()).sort("bdt_role", nulls_last=True)
+    if isinstance(summary, pl.LazyFrame):
+        summary = summary.collect()
+    if summary["bdt_prediction_weight_factor"].is_null().any():
+        n_null = summary.filter(factor.is_null())["len"].sum()
+        raise ValueError(f"{n_null} rows have no BDT prediction (bdt_prediction_weight_factor is null)")
+    print("BDT events: " + ", ".join(
+        f"{row['bdt_role']}={row['len']} (x{row['bdt_prediction_weight_factor']:g})"
+        for row in summary.iter_rows(named=True)))
+
+    # cast back so e.g. Float32 weight columns stay Float32
+    return pred_df.filter(factor > 0).with_columns([(pl.col(c) * factor).cast(schema[c]).alias(c) for c in weight_cols])
 
 def get_vals(df, var):
     if isinstance(df, pl.LazyFrame):
