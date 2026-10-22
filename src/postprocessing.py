@@ -4204,6 +4204,9 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     print("  collecting coherent_1g rows...")
     coherent_1g_df = _spread_coherent_run_periods(coherent_1g_lf.collect())
     print(f"  produced {coherent_1g_df.height} coherent-1g rows")
+    # these are copies of iso1g rows: reassign their signal categories (every category scheme has
+    # a NC_coherent_1g_reweighted category) instead of keeping their parents'
+    coherent_1g_df = add_signal_categories(coherent_1g_df)
 
     if is_lazy:
         return coherent_1g_df

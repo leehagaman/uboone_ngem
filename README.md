@@ -81,7 +81,7 @@ replaces the old standalone `create_splines_df.py`.
 ## Training Multi-Class BDT
 
 ```
-nohup python -u src/train.py --name all_vars_r15_2026_09_25 > train_nohup.out 2>&1 &
+nohup python -u src/train.py --name all_vars_2026_10_22 > train_nohup.out 2>&1 &
 
 # hyperparameter tuning (one study per weight mode; outputs in hyperparameter_tuning_outputs/)
 # When running both at once, split the 64 cores between them (--nthread 32 each): oversubscribed

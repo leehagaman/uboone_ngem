@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 from src.signal_categories import del1g_detailed_category_labels, del1g_detailed_category_colors, del1g_detailed_category_labels_latex
 from src.signal_categories import del1g_detailed_category_hatches, del1g_detailed_categories_dic, del1g_detailed_category_queries
 from src.signal_categories import train_category_labels, train_category_labels_latex
+from src.reco_categories import get_reco_category_queries
 
 from src.file_locations import intermediate_files_location
 
@@ -85,10 +86,6 @@ prob_categories = ["prob_" + cat for cat in reco_categories]
 for prob in prob_categories:
     merged_df_no_data_drop = merged_df_no_data_drop.with_columns(pl.col(prob).fill_null(-1))
     
-    # Get the probabilities and find argmax index for each row
-merged_df_no_data_drop = merged_df_no_data_drop.with_columns(
-    pl.concat_list(prob_categories).list.arg_max().alias("reco_category_argmax_index")
-)
 
 # removing data and training-only events that aren't part of the prediction
 # the fullosc sample and the NuWro fake data are not part of this prediction
@@ -97,11 +94,6 @@ full_pred = merged_df_no_data_drop.filter(
                                "fullosc_overlay", "nuwro_fake_data"])
 )
 full_data = merged_df_no_data_drop.filter(pl.col("filetype") == "data")
-
-# Build list of query strings
-reco_category_argmax_queries = []
-for i, signal_category in enumerate(reco_categories):
-    reco_category_argmax_queries.append(pl.col("reco_category_argmax_index") == i)
 
 generic_pred_df = full_pred.filter(pl.col("wc_kine_reco_Enu") > 0)
 del full_pred
@@ -174,7 +166,7 @@ plot_cols = ["filetype", "run", "subrun", "event",
              "wc_truth_nuEnergy",
              #"wc_mcflux_dk2gen", "wc_mcflux_gen2vtx",
              # reco category query columns:
-             "reco_category_argmax_index"] + [f"prob_{cat}" for cat in reco_categories]
+             ] + [f"prob_{cat}" for cat in reco_categories]
 
 run4b_generic_test_pred_data_df = run4b_generic_test_pred_data_lazy_df.select(plot_cols).collect()
 
@@ -201,52 +193,8 @@ make_histogram_plot(
 # In[12]:
 
 
-name_expr_priority_vals_w_None = [
-    ("1gNp", pl.col("prob_1gNp") > 0.3, 1),
-    ("1g0p", pl.col("prob_1g0p") > 0.9, 2),
-    ("1gNp1mu", pl.col("prob_1gNp1mu") > 0.5, 3),
-    ("1g0p1mu", pl.col("prob_1g0p1mu") > 0.2, 4),
-    ("1g_outFV", pl.col("prob_1g_outFV") > 0.5, 5),
-    ("NC1pi0_Np", None, 6),
-    ("NC1pi0_0p", None, 7),
-    ("numuCC1pi0_Np", pl.col("prob_numuCC1pi0_Np") > 0.1, 9),
-    ("numuCC1pi0_0p", pl.col("prob_numuCC1pi0_0p") > 0.15, 8), # 0p takes priority over Np in orthogonality
-    ("1pi0_outFV", pl.col("prob_1pi0_outFV") > 0.1, 10),
-    ("nueCC_Np", pl.col("prob_nueCC_Np") > 0.05, 12),
-    ("nueCC_0p", pl.col("prob_nueCC_0p") > 0.05, 11), # 0p takes priority over Np in orthogonality
-    ("numuCC_Np", pl.col("prob_numuCC_Np") > 0.5, 13),
-    ("numuCC_0p", pl.col("prob_numuCC_0p") > 0.5, 14),
-    ("other_outFV_dirt", None, 15),
-    ("multi_pi0", pl.col("prob_multi_pi0") > 0.02, 16),
-    ("eta_other", pl.col("prob_eta_other") > 0.01, 17),
-    ("pi0_dalitz_decay", pl.col("prob_pi0_dalitz_decay") > 0.1, 5.5), # high priority for dalitz, rare topology
-    ("NC_no_gamma", None, 19),
-    ("ext", None, 20),
-]
-
-name_expr_priority_vals_possible_overlap = []
-for i, name_expr_priority_val_w_None in enumerate(name_expr_priority_vals_w_None):
-    name, expr, priority = name_expr_priority_val_w_None
-    if expr is None:
-        expr = reco_category_argmax_queries[i]
-    name_expr_priority_vals_possible_overlap.append((name, expr, priority))
-
-name_expr_priority_vals_possible_overlap.sort(key=lambda x: x[2])
-
-name_expr_priority_vals = []
-for i, name_expr_priority_val_possible_overlap in enumerate(name_expr_priority_vals_possible_overlap):
-    name, expr, priority = name_expr_priority_val_possible_overlap
-    for j in range(i):
-        expr = expr & ~name_expr_priority_vals_possible_overlap[j][1]
-    name_expr_priority_vals.append((name, expr, priority))
-
-reco_category_query_dic = {}
-for name, expr, priority in name_expr_priority_vals:
-    reco_category_query_dic[name] = expr
-
-reco_category_queries = []
-for reco_category in reco_categories:
-    reco_category_queries.append(reco_category_query_dic[reco_category])
+# the nominal multi-class selection (src/reco_categories.py)
+reco_category_queries = get_reco_category_queries(reco_categories)
 
 
 # In[13]:
@@ -893,10 +841,6 @@ presel_detvar_df.collect()["vartype"].value_counts()
 
 for prob in prob_categories:
     presel_detvar_df = presel_detvar_df.with_columns(pl.col(prob).fill_null(-1))
-
-presel_detvar_df = presel_detvar_df.with_columns(
-    pl.concat_list(prob_categories).list.arg_max().alias("reco_category_argmax_index")
-)
 
 expr = pl.when(reco_category_queries[0]).then(0)
 for i in range(1, len(reco_categories)):

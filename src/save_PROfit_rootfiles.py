@@ -50,6 +50,7 @@ from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_
 from df_helpers import select_bdt_test_events
 from postprocessing import GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL, UNIT_BASE_WEIGHT_FILETYPES
 from signal_categories import train_category_labels
+from reco_categories import reco_category_expr
 from ntuple_variables.variables import combined_training_vars
 from bdt_training_setup import bdt_feature_matrix
 
@@ -241,33 +242,6 @@ OUTPUT_SCALAR_COLUMNS = [
     "afro_1mu1p_Q2"
 ]
 
-# reco_category selection.  For each category:  (prob threshold on prob_<category>,
-# priority).  A threshold of None means the category is selected by the argmax of the
-# prob_ columns instead of a fixed cut.  Lower priority number wins; each category's
-# mask additionally excludes every higher-priority category (orthogonalization).
-RECO_CATEGORY_THRESHOLDS = {
-    "1gNp": (0.3, 1),
-    "1g0p": (0.9, 2),
-    "1gNp1mu": (0.5, 3),
-    "1g0p1mu": (0.2, 4),
-    "1g_outFV": (0.5, 5),
-    "pi0_dalitz_decay": (0.1, 5.5),   # high priority for the rare Dalitz topology
-    "NC1pi0_Np": (None, 6),
-    "NC1pi0_0p": (None, 7),
-    "numuCC1pi0_0p": (0.15, 8),       # 0p takes priority over Np for orthogonality
-    "numuCC1pi0_Np": (0.1, 9),
-    "1pi0_outFV": (0.1, 10),
-    "nueCC_0p": (0.05, 11),           # 0p takes priority over Np
-    "nueCC_Np": (0.05, 12),
-    "numuCC_Np": (0.5, 13),
-    "numuCC_0p": (0.5, 14),
-    "other_outFV_dirt": (None, 15),
-    "multi_pi0": (0.02, 16),
-    "eta_other": (0.01, 17),
-    "NC_no_gamma": (None, 19),
-    "ext": (None, 20),
-}
-
 # Batch size for the DetVar BDT inference.
 DETVAR_INFERENCE_BATCH_SIZE = 100_000
 
@@ -280,46 +254,10 @@ def _prob_cols():
     return [f"prob_{c}" for c in RECO_CATEGORIES]
 
 
-def build_reco_category_exprs():
-    """Return one polars mask expression per reco category (in RECO_CATEGORIES order).
-
-    Reproduces the notebook's priority/orthogonalization logic: build each category's
-    raw mask (a prob cut, or the argmax of the prob_ columns when the threshold is
-    None), sort by priority, then AND each mask with the negation of every
-    higher-priority raw mask so the categories are mutually exclusive.
-    """
-    missing = set(RECO_CATEGORIES) - set(RECO_CATEGORY_THRESHOLDS)
-    if missing:
-        raise ValueError(f"RECO_CATEGORY_THRESHOLDS is missing categories: {sorted(missing)}")
-
-    argmax_query = {cat: (pl.col("reco_category_argmax_index") == i)
-                    for i, cat in enumerate(RECO_CATEGORIES)}
-
-    # (name, raw_mask, priority)
-    triples = []
-    for cat in RECO_CATEGORIES:
-        threshold, priority = RECO_CATEGORY_THRESHOLDS[cat]
-        raw = argmax_query[cat] if threshold is None else (pl.col(f"prob_{cat}") > threshold)
-        triples.append((cat, raw, priority))
-    triples.sort(key=lambda t: t[2])
-
-    ortho = {}
-    for i, (name, raw, _priority) in enumerate(triples):
-        expr = raw
-        for j in range(i):
-            expr = expr & ~triples[j][1]   # exclude every higher-priority raw mask
-        ortho[name] = expr
-
-    return [ortho[cat] for cat in RECO_CATEGORIES]
-
-
 def _reco_category_expr():
-    """when/then chain assigning each event its reco category index (else null)."""
-    exprs = build_reco_category_exprs()
-    expr = pl.when(exprs[0]).then(0)
-    for i in range(1, len(exprs)):
-        expr = expr.when(exprs[i]).then(i)
-    return expr.otherwise(None).cast(pl.Int32)
+    """Each event's reco category (src/reco_categories.py) as its index in RECO_CATEGORIES (else null)."""
+    return reco_category_expr(RECO_CATEGORIES).replace_strict(
+        {cat: i for i, cat in enumerate(RECO_CATEGORIES)}, default=None, return_dtype=pl.Int32)
 
 
 # ROOT branch format (kept identical to the notebook's proven PyROOT writer): scalar
@@ -750,11 +688,8 @@ def build_minimal_df(training, study):
     present = merged.select(pl.col("filetype").unique()).collect(engine="streaming")["filetype"].to_list()
     _check_filetypes(present, study)
 
-    # BDT scores: fill missing with -1, then the per-event argmax over the prob columns
+    # BDT scores: fill missing with -1
     merged = merged.with_columns([pl.col(p).fill_null(-1) for p in prob_cols])
-    merged = merged.with_columns(
-        pl.concat_list(prob_cols).list.arg_max().alias("reco_category_argmax_index")
-    )
 
     pred = merged.filter(pl.col("filetype").is_in(study["prediction_filetypes"]))
     data = merged.filter(pl.col("filetype") == study["data_filetype"])
@@ -938,9 +873,6 @@ def score_detvar_df(training, extra_cols=()):
 
     presel = presel.with_columns([pl.Series(prob_cols[i], probs[:, i]) for i in range(len(prob_cols))])
     presel = presel.with_columns([pl.col(p).fill_null(-1) for p in prob_cols])
-    presel = presel.with_columns(
-        pl.concat_list(prob_cols).list.arg_max().alias("reco_category_argmax_index")
-    )
     presel = presel.with_columns(_reco_category_expr().alias("reco_category"))
     presel = presel.with_columns([
         _filetype_code_expr(),
