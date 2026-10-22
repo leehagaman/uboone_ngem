@@ -35,10 +35,15 @@ parallel, then BDT training; stops at the first failure, each step logging to it
 `*_nohup.out` file):
 
 ```
-nohup bash run_full_reprocessing.sh all_vars_r16_2026_10_06 > reprocess_nohup.out 2>&1 &
+nohup bash run_full_reprocessing.sh all_vars_2026_10_21 > reprocess_nohup.out 2>&1 &
 ```
 
-The argument is the training name (default `all_vars_<YYYY_MM_DD>`).
+The argument is the training name (default `all_vars_<YYYY_MM_DD>`). Add `--no_train` to
+skip the BDT training step:
+
+```
+nohup bash run_full_reprocessing.sh --no_train > reprocess_nohup.out 2>&1 &
+```
 
 
 ## Creating Dataframes
@@ -89,8 +94,11 @@ nohup python -u src/train.py --name tuned_2026_10_14 --params_json hyperparamete
 ```
 
 Training uses the `train_test_score` split [0, 0.4) train | [0.4, 0.5) validation (early stopping and
-tuning) | [0.5, 1) test (defined in `src/bdt_training_setup.py`). In `predictions.parquet`,
-`used_for_training` covers train + validation, so `n_test / (n_train + n_test)` test-weight scaling stays correct.
+tuning) | [0.5, 1) test. Events never trained on (data, NuWro fake data, fullosc, the rad. corr. sim,
+and true NC/numuCC Delta radiative events) are `not_trained`. This `bdt_role` is decided only in
+`add_bdt_role_columns` (`src/bdt_training_setup.py`) and written to `predictions.parquet` together with
+`bdt_prediction_weight_factor` (0 for train/validation, 2 for test, 1 for not_trained); predictions that
+use BDT scores just apply it with `df_helpers.select_bdt_test_events`.
 To compare weight modes, use the physics-weighted log loss: `val_physics_weighted_logloss_raw` / `val_physics_weighted_logloss`
 (after moving the class priors to the physics priors) of each study's best trial, and for trainings
 `physics_weighted_loss_curves.png/.csv` and `physics_weighted_logloss_at_best_iteration` in `training_config.json`.
