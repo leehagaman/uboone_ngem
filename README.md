@@ -35,7 +35,7 @@ parallel, then BDT training; stops at the first failure, each step logging to it
 `*_nohup.out` file):
 
 ```
-nohup bash run_full_reprocessing.sh all_vars_2026_10_21 > reprocess_nohup.out 2>&1 &
+nohup bash run_full_reprocessing.sh all_vars_2026_10_23 > reprocess_nohup.out 2>&1 &
 ```
 
 The argument is the training name (default `all_vars_<YYYY_MM_DD>`). Add `--no_train` to
@@ -86,11 +86,12 @@ nohup python -u src/train.py --name all_vars_2026_10_22 > train_nohup.out 2>&1 &
 # hyperparameter tuning (one study per weight mode; outputs in hyperparameter_tuning_outputs/)
 # When running both at once, split the 64 cores between them (--nthread 32 each): oversubscribed
 # XGBoost threads run many times slower.
-nohup python -u src/hyperparameter_tuning.py --study_name hp_normalized_2026_10_20b --weight_mode normalized --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_normalized_nohup.out 2>&1 &
-nohup python -u src/hyperparameter_tuning.py --study_name hp_unit_2026_10_20b --weight_mode unit --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_unit_nohup.out 2>&1 &
+nohup python -u src/hyperparameter_tuning.py --study_name hp_normalized_2026_10_20b --weighted --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_normalized_nohup.out 2>&1 &
+nohup python -u src/hyperparameter_tuning.py --study_name hp_unit_2026_10_20b --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_unit_nohup.out 2>&1 &
 
-# train with the tuned hyperparameters (and the weight mode of that study)
-nohup python -u src/train.py --name tuned_2026_10_14 --params_json hyperparameter_tuning_outputs/hp_normalized_2026_10_14_best_params.json > train_nohup.out 2>&1 &
+# train with the tuned hyperparameters (unit event weights by default; add --weighted for the physics
+# weights, with hyperparameters tuned with --weighted)
+nohup python -u src/train.py --name tuned_2026_10_20 --params_json hyperparameter_tuning_outputs/hp_unit_2026_10_20b_best_params.json > train_nohup.out 2>&1 &
 ```
 
 Training uses the `train_test_score` split [0, 0.4) train | [0.4, 0.5) validation (early stopping and

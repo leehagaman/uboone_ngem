@@ -19,7 +19,7 @@ import optuna
 from optuna.integration import XGBoostPruningCallback
 
 from bdt_training_setup import (
-    WEIGHT_MODES, get_training_vars, get_signal_categories, add_bdt_role_columns,
+    get_training_vars, get_signal_categories, add_bdt_role_columns,
     select_training_events, get_labels, get_physics_weights, get_training_weights,
     class_prior_correction, apply_prior_correction, weighted_logloss, bdt_feature_matrix,
 )
@@ -44,9 +44,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--training_vars", type=str, default="combined")
     parser.add_argument("--signal_categories", type=str, default="del1g_simple")
-    parser.add_argument("--weight_mode", type=str, default="normalized", choices=WEIGHT_MODES,
-                        help="Event weights used in the XGBoost training (see bdt_training_setup.WEIGHT_MODES). "
-                             "Run each weight mode as its own study, and compare their best trials with the "
+    parser.add_argument("--weighted", action="store_true",
+                        help="Train with the physics event weights (weight mode \"normalized\"); default: unit "
+                             "weights (weight mode \"unit\"), see bdt_training_setup.WEIGHT_MODES. Run each weight "
+                             "mode as its own study, and compare their best trials with the "
                              "val_physics_weighted_logloss trial attribute.")
     parser.add_argument("--n_trials", type=int, default=100)
     parser.add_argument("--study_name", type=str, default=None,
@@ -71,7 +72,9 @@ def parse_args():
                         help="Optuna sampler seed (use different seeds for parallel processes sharing one study)")
     parser.add_argument("--allow_setup_mismatch", action="store_true",
                         help="Allow resuming a study whose input file / variables / settings differ from this run")
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.weight_mode = "normalized" if args.weighted else "unit"
+    return args
 
 
 def load_data(args, training_vars):

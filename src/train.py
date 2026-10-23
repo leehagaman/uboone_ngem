@@ -19,7 +19,7 @@ import json
 import time
 
 from bdt_training_setup import (
-    WEIGHT_MODES, get_training_vars, get_signal_categories, add_bdt_role_columns,
+    get_training_vars, get_signal_categories, add_bdt_role_columns,
     select_training_events, get_labels, get_physics_weights, get_training_weights,
     class_prior_correction, PhysicsWeightedLoglossMetric, bdt_feature_matrix,
 )
@@ -36,9 +36,9 @@ if __name__ == "__main__":
     parser.add_argument("--params_json", type=str, default=None,
                         help="Hyperparameters from hyperparameter_tuning.py (its <study_name>_best_params.json); "
                              "default: XGBoost defaults")
-    parser.add_argument("--weight_mode", type=str, default=None, choices=WEIGHT_MODES,
-                        help="Event weights used in the training (see bdt_training_setup.WEIGHT_MODES); "
-                             "default: from --params_json, else normalized")
+    parser.add_argument("--weighted", action="store_true",
+                        help="Train with the physics event weights (weight mode \"normalized\"); default: unit "
+                             "weights (weight mode \"unit\"), see bdt_training_setup.WEIGHT_MODES")
     parser.add_argument("--n_estimators", type=int, default=5000,
                         help="Upper limit on boosting rounds; training normally ends by early stopping first")
     parser.add_argument("--early_stopping_rounds", type=int, default=50,
@@ -51,22 +51,21 @@ if __name__ == "__main__":
         timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
         args.name = f"training_{timestamp}"
 
+    weight_mode = "normalized" if args.weighted else "unit"
+    print(f"{weight_mode=}")
+
     xgb_params = {}
-    tuned_weight_mode = None
     if args.params_json is not None:
         with open(args.params_json) as f:
             tuned = json.load(f)
         xgb_params = tuned["xgb_params"]
-        tuned_weight_mode = tuned["weight_mode"]
         print(f"Using hyperparameters from {args.params_json}: {xgb_params}")
         setup = tuned.get("setup", {})
         for key, current in [("training_vars", args.training_vars), ("signal_categories", args.signal_categories)]:
             if setup.get(key) != current:
                 print(f"WARNING: hyperparameters were tuned with {key}={setup.get(key)}, training with {current}")
-        if args.weight_mode is not None and args.weight_mode != tuned_weight_mode:
-            print(f"WARNING: hyperparameters were tuned with weight_mode={tuned_weight_mode}, training with {args.weight_mode}")
-    weight_mode = args.weight_mode or tuned_weight_mode or "normalized"
-    print(f"{weight_mode=}")
+        if tuned["weight_mode"] != weight_mode:
+            print(f"WARNING: hyperparameters were tuned with weight_mode={tuned['weight_mode']}, training with {weight_mode}")
 
     training_vars = get_training_vars(args.training_vars)
     signal_category_labels, signal_category_var = get_signal_categories(args.signal_categories)

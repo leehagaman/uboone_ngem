@@ -34,7 +34,8 @@ NOT_TRAINED_FILETYPES = ["data", "nuwro_fake_data", "fullosc_overlay", "numucc_r
 # processes.  Null for EXT (no truth) -> False.
 NOT_TRAINED_EVENTS = (pl.col("wc_truth_NCDeltaRad") | pl.col("wc_truth_numuCCDeltaRad")).fill_null(False)
 
-# How the event weights enter the XGBoost training:
+# How the event weights enter the XGBoost training ("unit" by default; "normalized" with --weighted
+# in train.py / hyperparameter_tuning.py):
 #   "normalized": physics weights (wc_net_weight_open_data), scaled so the mean training weight
 #                 is one. The scale doesn't change the unregularized optimum, but it puts
 #                 min_child_weight and reg_lambda (sums of hessian*weight) in units of ~events.
