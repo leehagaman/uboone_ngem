@@ -1,8 +1,10 @@
-"""The nominal multi-class BDT selection: assigns each event at most one reco category.
+"""The nominal multi-class BDT selection: assigns each scored event exactly one reco category.
 
 Each reco category is selected by a cut on its own BDT probability (or, where the threshold is
 None, by being the argmax category). Events passing several cuts go to the category with the
-lowest priority value, so the categories are mutually exclusive.
+lowest priority value, so the categories are mutually exclusive. Events with a BDT prediction that pass
+none of the cuts (their argmax category has a cut they fail) are "unselected", so every scored event gets
+exactly one category.
 
 Used by the notebooks (as src.reco_categories) and by the scripts in src/, so it imports nothing
 from the project: the functions take the BDT's category list (train_category_labels), whose order
@@ -36,25 +38,25 @@ RECO_CATEGORY_THRESHOLDS = {
 }
 
 
-def reco_category_expr(categories):
-    """Polars expression for each event's reco category name (null if in none of them).
-    `categories` is the BDT's category list (train_category_labels); events with no BDT
-    prediction (null probabilities) are in no category."""
-    if set(categories) != set(RECO_CATEGORY_THRESHOLDS):
-        raise ValueError(f"categories don't match RECO_CATEGORY_THRESHOLDS: "
-                         f"{sorted(set(categories) ^ set(RECO_CATEGORY_THRESHOLDS))}")
+def reco_category_expr(categories, thresholds=RECO_CATEGORY_THRESHOLDS):
+    """Polars expression for each event's reco category name: one of `categories`, "unselected" if it
+    passes none of the cuts, or null if it has no BDT prediction (null probabilities).
+    `categories` is the BDT's category list (train_category_labels). `thresholds` (same format as
+    RECO_CATEGORY_THRESHOLDS) allows studying modified cuts."""
+    if set(categories) != set(thresholds):
+        raise ValueError(f"categories don't match the thresholds: {sorted(set(categories) ^ set(thresholds))}")
     argmax = pl.concat_list([f"prob_{cat}" for cat in categories]).list.arg_max()
     # the first matching cut, in priority order, wins
     expr = pl.when(pl.lit(False)).then(pl.lit(None, dtype=pl.String))
-    for cat in sorted(RECO_CATEGORY_THRESHOLDS, key=lambda c: RECO_CATEGORY_THRESHOLDS[c][1]):
-        threshold = RECO_CATEGORY_THRESHOLDS[cat][0]
+    for cat in sorted(thresholds, key=lambda c: thresholds[c][1]):
+        threshold = thresholds[cat][0]
         cut = (argmax == categories.index(cat)) if threshold is None else (pl.col(f"prob_{cat}") > threshold)
         expr = expr.when(cut).then(pl.lit(cat))
-    return expr.otherwise(pl.lit(None, dtype=pl.String))
+    return expr.when(argmax.is_not_null()).then(pl.lit("unselected")).otherwise(pl.lit(None, dtype=pl.String))
 
 
-def get_reco_category_queries(categories):
+def get_reco_category_queries(categories, thresholds=RECO_CATEGORY_THRESHOLDS):
     """Mutually exclusive Polars selection expressions, one per reco category, in `categories`
-    order (see reco_category_expr)."""
-    category = reco_category_expr(categories)
+    order (see reco_category_expr; the "unselected" events are in none of them)."""
+    category = reco_category_expr(categories, thresholds)
     return [category == cat for cat in categories]

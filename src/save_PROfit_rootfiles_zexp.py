@@ -163,9 +163,10 @@ def _prob_cols():
 
 
 def _reco_category_expr():
-    """Each event's reco category (src/reco_categories.py) as its index in RECO_CATEGORIES (else null)."""
-    return reco_category_expr(RECO_CATEGORIES).replace_strict(
-        {cat: i for i, cat in enumerate(RECO_CATEGORIES)}, default=None, return_dtype=pl.Int32)
+    """Each event's reco category (src/reco_categories.py) as its index in RECO_CATEGORIES, or
+    len(RECO_CATEGORIES) for "unselected" events (null for events without a BDT prediction)."""
+    indices = {cat: i for i, cat in enumerate(RECO_CATEGORIES)} | {"unselected": len(RECO_CATEGORIES)}
+    return reco_category_expr(RECO_CATEGORIES).replace_strict(indices, default=None, return_dtype=pl.Int32)
 
 
 # ROOT branch format (kept identical to the notebook's proven PyROOT writer): scalar
