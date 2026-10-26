@@ -1,4 +1,5 @@
-"""Overlays the Iso1g and Del1g efficiency vs purity curves of several BDT trainings.
+"""Compares several BDT trainings: a summary table (learning rate, best boosting round, fit time, validation
+physics-weighted log loss) and overlaid Iso1g and Del1g efficiency vs purity curves.
 
 Same definitions as ipynb_notebooks/efficiencies.ipynb: the signals are the true in-FV events of the
 injected iso1g / del1g overlays (scaled by the same injected normalization factors), the background is
@@ -7,12 +8,12 @@ relative to all true signal events before any selection. Each curve scans the su
 the signal's reco categories; the star is the nominal selection (src/reco_categories.py).
 
 Usage:
-    python src/compare_bdt_trainings.py --tag 2026_10_23
-        (the four trainings of run_bdt_comparison_trainings.sh with that tag)
-    python src/compare_bdt_trainings.py --trainings all_vars_2026_10_22 bdt_cmp_unweighted_tuned_2026_10_23
+    python src/compare_bdt_trainings.py --output_name lr_scan_2026_10_26 --trainings lr_scan_0.3_2026_10_26 lr_scan_0.1_2026_10_26
+        (run_learning_rate_scan.sh prints the command for its trainings)
 """
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -42,14 +43,6 @@ SIGNALS = {
                   truth=["del1g_Np", "del1g_0p", "del1g_Np1mu", "del1g_0p1mu"],
                   reco=["1gNp", "1g0p", "1gNp1mu", "1g0p1mu"]),
 }
-
-COMPARISON_TRAININGS = {
-    "bdt_cmp_weighted_default": "weighted, default params",
-    "bdt_cmp_weighted_tuned": "weighted, tuned params",
-    "bdt_cmp_unweighted_default": "unweighted, default params",
-    "bdt_cmp_unweighted_tuned": "unweighted, tuned params",
-}
-
 
 def load_events():
     """All events needed by every training: generic-selected prediction and signal-sample events, plus the
@@ -109,17 +102,20 @@ def training_curves(events, training):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--tag", help="tag of the run_bdt_comparison_trainings.sh trainings")
-    group.add_argument("--trainings", nargs="+", help="training_outputs directory names (labeled by name)")
+    parser.add_argument("--trainings", nargs="+", required=True, help="training_outputs directory names")
+    parser.add_argument("--output_name", required=True, help="name of this comparison, used in the plot file names")
     parser.add_argument("--output_dir", default=str(PROJECT_ROOT / "plots" / "bdt_comparison"))
     args = parser.parse_args()
+    trainings = {name: name for name in args.trainings}
 
-    if args.tag is not None:
-        trainings = {f"{prefix}_{args.tag}": label for prefix, label in COMPARISON_TRAININGS.items()}
-    else:
-        trainings = {name: name for name in args.trainings}
-    suffix = args.tag if args.tag is not None else "_".join(trainings)
+    print(f"{'training':<40s} {'learning rate':>13s} {'best round':>10s} {'fit min':>8s} {'val physics-weighted loss':>26s}")
+    for training in trainings:
+        with open(PROJECT_ROOT / "training_outputs" / training / "training_config.json") as f:
+            config = json.load(f)
+        fit_minutes = config.get("fit_minutes")
+        print(f"{training:<40s} {config['xgb_params'].get('learning_rate', 0.3):>13g} {config['best_iteration']:>10d} "
+              f"{'' if fit_minutes is None else f'{fit_minutes:.1f}':>8s} "
+              f"{config['physics_weighted_logloss_at_best_iteration']['validation']['prior_corrected']:>26.5f}")
 
     print("loading events...")
     events = load_events()
@@ -146,7 +142,7 @@ def main():
         ax.set_title(f"True {sig['label']} (x{sig['norm_factor']:g} on top of the open-data prediction)")
         ax.legend(loc="lower left")
         fig.tight_layout()
-        savename = output_dir / f"eff_vs_pur_{name}_{suffix}.png"
+        savename = output_dir / f"eff_vs_pur_{name}_{args.output_name}.png"
         fig.savefig(savename, dpi=150)
         print(f"saved {savename}")
 

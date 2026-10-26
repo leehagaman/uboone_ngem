@@ -70,6 +70,9 @@ def parse_args():
                         help="Print the trial's validation loss and speed every this many boosting rounds")
     parser.add_argument("--seed", type=int, default=None,
                         help="Optuna sampler seed (use different seeds for parallel processes sharing one study)")
+    parser.add_argument("--start_from", type=str, nargs="+", default=[],
+                        help="<study_name>_best_params.json files of earlier studies: a new study tries their "
+                             "hyperparameters right after the XGBoost defaults")
     parser.add_argument("--allow_setup_mismatch", action="store_true",
                         help="Allow resuming a study whose input file / variables / settings differ from this run")
     args = parser.parse_args()
@@ -141,12 +144,14 @@ def make_objective(args, dtrain, dval, num_categories, y_val, w_phys_val, prior_
             "nthread": args.nthread,
             "verbosity": 0,
             "learning_rate": learning_rate,
-            "max_depth": trial.suggest_int("max_depth", 2, 10),
+            # ranges widened 2026-10-26: the best hp_2026_10_25 trials were at the edges of the old ranges
+            # (max_depth 2-10, colsample_bytree 0.5-1, min_child_weight 0.1-1e3, reg_lambda 1e-3-100, reg_alpha 1e-4-10)
+            "max_depth": trial.suggest_int("max_depth", 2, 14),
             "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-            "min_child_weight": trial.suggest_float("min_child_weight", 0.1, 1000.0, log=True),
-            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 100.0, log=True),
-            "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 10.0, log=True),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.2, 1.0),
+            "min_child_weight": trial.suggest_float("min_child_weight", 0.1, 1e4, log=True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 1e3, log=True),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 1e3, log=True),
         }
 
         print(f"trial {trial.number} started: {params}", flush=True)
@@ -259,13 +264,22 @@ if __name__ == "__main__":
             raise ValueError(message + "\nUse a new --study_name, or pass --allow_setup_mismatch")
         print("WARNING: " + message)
 
-    # Enqueue the XGBoost defaults as a baseline for a new study
+    # A new study starts with the XGBoost defaults (a baseline), then the best hyperparameters of earlier studies
     if len(study.trials) == 0:
         print("adding trial to queue with default parameters...")
         default_params = dict(DEFAULT_PARAMS)
         if not args.tune_learning_rate:
             default_params.pop("learning_rate")
         study.enqueue_trial(default_params)
+        for path in args.start_from:
+            with open(path) as f:
+                params = dict(json.load(f)["xgb_params"])
+            if not args.tune_learning_rate:
+                params.pop("learning_rate", None)
+            print(f"adding trial to queue with the parameters from {path}: {params}")
+            study.enqueue_trial(params)
+    elif args.start_from:
+        print(f"WARNING: --start_from is ignored when resuming a study ({len(study.trials)} trials already)")
 
     objective = make_objective(args, dtrain, dval, num_categories,
                                data["y_val"], data["w_phys_val"], prior_correction)

@@ -39,6 +39,9 @@ if __name__ == "__main__":
     parser.add_argument("--weighted", action="store_true",
                         help="Train with the physics event weights (weight mode \"normalized\"); default: unit "
                              "weights (weight mode \"unit\"), see bdt_training_setup.WEIGHT_MODES")
+    parser.add_argument("--learning_rate", type=float, default=None,
+                        help="Learning rate, overriding the one from --params_json (e.g. for a learning rate scan "
+                             "with fixed tuned hyperparameters)")
     parser.add_argument("--n_estimators", type=int, default=5000,
                         help="Upper limit on boosting rounds; training normally ends by early stopping first")
     parser.add_argument("--early_stopping_rounds", type=int, default=50,
@@ -66,6 +69,9 @@ if __name__ == "__main__":
                 print(f"WARNING: hyperparameters were tuned with {key}={setup.get(key)}, training with {current}")
         if tuned["weight_mode"] != weight_mode:
             print(f"WARNING: hyperparameters were tuned with weight_mode={tuned['weight_mode']}, training with {weight_mode}")
+    if args.learning_rate is not None:
+        xgb_params = {**xgb_params, "learning_rate": args.learning_rate}
+        print(f"learning rate: {args.learning_rate}")
 
     training_vars = get_training_vars(args.training_vars)
     signal_category_labels, signal_category_var = get_signal_categories(args.signal_categories)
@@ -181,6 +187,7 @@ if __name__ == "__main__":
 
     print("fitting model...")
 
+    fit_start_time = time.time()
     model.fit(
         x_train, y_train, 
         sample_weight=w_train,
@@ -189,8 +196,10 @@ if __name__ == "__main__":
         verbose=10
     )
 
+    fit_minutes = (time.time() - fit_start_time) / 60
     if model.best_iteration is not None:
         print(f"Early stopping: best_iteration={model.best_iteration}")
+    print(f"fit time: {fit_minutes:.1f} min")
 
     # x_train is no longer needed after fitting; eval_set/eval_weights also hold
     # references to it, so drop them too to actually free the memory.
@@ -207,6 +216,7 @@ if __name__ == "__main__":
             "n_estimators": args.n_estimators,
             "early_stopping_rounds": args.early_stopping_rounds,
             "best_iteration": model.best_iteration,
+            "fit_minutes": fit_minutes,
             # comparable between weight modes (see physics_weighted_loss_curves.png)
             "physics_weighted_logloss_at_best_iteration": {
                 set_name: {kind: values[model.best_iteration] for kind, values in curves.items()}

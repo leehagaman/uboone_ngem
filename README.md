@@ -83,15 +83,17 @@ replaces the old standalone `create_splines_df.py`.
 ```
 nohup python -u src/train.py --name all_vars_2026_10_22 > train_nohup.out 2>&1 &
 
-# hyperparameter tuning (one study per weight mode; outputs in hyperparameter_tuning_outputs/)
-# When running both at once, split the 64 cores between them (--nthread 32 each): oversubscribed
-# XGBoost threads run many times slower.
-nohup python -u src/hyperparameter_tuning.py --study_name hp_normalized_2026_10_20b --weighted --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_normalized_nohup.out 2>&1 &
-nohup python -u src/hyperparameter_tuning.py --study_name hp_unit_2026_10_20b --nthread 32 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_unit_nohup.out 2>&1 &
+# hyperparameter tuning at a fixed learning rate (outputs in hyperparameter_tuning_outputs/; analyze a study with
+# ipynb_notebooks/hyperparameter_tuning_analysis.ipynb). A new study first tries the XGBoost defaults, then the
+# best hyperparameters of the studies given with --start_from.
+nohup python -u src/hyperparameter_tuning.py --study_name hp_2026_10_26 --start_from hyperparameter_tuning_outputs/hp_2026_10_25_best_params.json --nthread 64 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_nohup.out 2>&1 &
+
+# learning rate scan with the tuned hyperparameters (it prints the src/compare_bdt_trainings.py command to compare them)
+nohup bash run_learning_rate_scan.sh hyperparameter_tuning_outputs/hp_2026_10_26_best_params.json > lr_scan_nohup.out 2>&1 &
 
 # train with the tuned hyperparameters (unit event weights by default; add --weighted for the physics
-# weights, with hyperparameters tuned with --weighted)
-nohup python -u src/train.py --name tuned_2026_10_20 --params_json hyperparameter_tuning_outputs/hp_unit_2026_10_20b_best_params.json > train_nohup.out 2>&1 &
+# weights, with hyperparameters tuned with --weighted); --learning_rate overrides the tuned one
+nohup python -u src/train.py --name tuned_2026_10_25 --params_json hyperparameter_tuning_outputs/hp_2026_10_25_best_params.json > train_nohup.out 2>&1 &
 ```
 
 Training uses the `train_test_score` split [0, 0.4) train | [0.4, 0.5) validation (early stopping and
