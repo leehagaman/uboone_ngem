@@ -88,10 +88,10 @@ for prob in prob_categories:
     
 
 # removing data and training-only events that aren't part of the prediction
-# the fullosc sample and the NuWro fake data are not part of this prediction
+# the fullosc sample and the NuWro / GiBUU fake data are not part of this prediction
 full_pred = merged_df_no_data_drop.filter(
     ~pl.col("filetype").is_in(["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay",
-                               "fullosc_overlay", "nuwro_fake_data"])
+                               "fullosc_overlay", "nuwro_fake_data", "gibuu_fake_data"])
 )
 full_data = merged_df_no_data_drop.filter(pl.col("filetype") == "data")
 

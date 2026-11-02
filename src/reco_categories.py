@@ -25,8 +25,8 @@ RECO_CATEGORY_THRESHOLDS = {
     "numuCC1pi0_Np":    (0.1, 9),
     "numuCC1pi0_0p":    (0.15, 8),   # 0p takes priority over Np
     "1pi0_outFV":       (0.1, 10),
-    "nueCC_Np":         (0.05, 12),
-    "nueCC_0p":         (0.05, 11),  # 0p takes priority over Np
+    "nueCC_Np":         (0.9, 12),
+    "nueCC_0p":         (0.8, 11),  # 0p takes priority over Np
     "numuCC_Np":        (0.5, 13),
     "numuCC_0p":        (0.5, 14),
     "other_outFV_dirt": (None, 15),

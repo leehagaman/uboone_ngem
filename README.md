@@ -35,7 +35,7 @@ parallel, then BDT training; stops at the first failure, each step logging to it
 `*_nohup.out` file):
 
 ```
-nohup bash run_full_reprocessing.sh all_vars_2026_10_23 > reprocess_nohup.out 2>&1 &
+nohup bash run_full_reprocessing.sh all_vars_2026_10_28_baddel1giso1g > reprocess_nohup.out 2>&1 &
 ```
 
 The argument is the training name (default `all_vars_<YYYY_MM_DD>`). Add `--no_train` to

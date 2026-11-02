@@ -1,0 +1,86 @@
+ ▐▛███▛█   Claude Code v2.1.311
+▝▜██████▀  Opus 5.5 · Claude Team
+ ▝▝   ▝▝   ~/uboone_ngem
+
+
+● The setup should work once the files are downloaded. Two things would have
+  crashed it, and both are fixed: the GiBUU file had no filetype, and one of the
+  new nue DetVar files had a name the run-period parser couldn't read. I
+  haven't been able to open the actual GiBUU file, since it isn't downloaded
+  yet.
+
+  Checks I ran
+  - All 236 files in the script have unique basenames, so none overwrite each
+    other.
+  - Every non-DetVar file maps to exactly one (filetype, run period) pair, and
+    every DetVar file gets a filetype, variation type and run period.
+  - I ran the weighting step on a small synthetic dataframe covering every
+    filetype and run period. It passes the checks, and GiBUU events come out
+    with unit weight in the new gibuu config.
+  - All the edited modules compile, and the signal-category tables still have
+    matching lengths.
+
+  What would have broken, now fixed
+  1. GiBUU filetype. checkout_prodgibuu_BNB_mix_overlay_run4c_..._hist.root
+     matched no pattern, so create_df.py would have stopped with "Unknown
+     filetype". create_rw_syst_df.py would also have tried to treat it as a
+     GENIE overlay.
+  2. nue DetVar run-2 CV.
+     ..._intrinsic_nue_overlay_cv_2_surprise_reco2_hist.root has no _2.root
+     suffix, so create_detvar_df.py would have raised "Invalid detailed run
+     period". I added a _cv_2_ → run 2 rule.
+
+  The new gibuu_fake_data filetype is handled the same way as nuwro_fake_data:
+  - Weighting: it gets unit base weight, no hA2025 pion-FSI or π0 Dalitz
+    reweighting, and no de-excitation blip injection. It's excluded from the
+    GENIE systematics files and from BDT training.
+  - Categories: every signal-category table has its own gibuu_fake_data entry,
+    which the exhaustiveness check requires. It's also in the known filetypes
+    list and in plot_helpers.
+  - New weight config gibuu (column wc_net_weight_gibuu): GiBUU only exists for
+    run 4c, so I folded the run 4b/4c/4d/4bcd overlays into one "4c" group, as
+    the NuWro config does. It excludes data, EXT, dirt and NuWro. GiBUU in turn
+    is excluded from the full_pred, open_data and nuwro configs.
+  - PROfit: save_PROfit_rootfiles.py lists it as excluded in both studies and
+    gives it filetype code 16. There's no --gibuu study yet; I can add one if
+    you want it.
+
+  NC π0 DetVar needed no code changes. All 80 files (CV and 9 variations × 8
+  periods) parse correctly, and the existing CV-group matching and weighting
+  already handle nc_pi0_overlay.
+
+  Things to check or decide
+  - The fake-data comparison won't be like-for-like yet. The GiBUU sample is
+    in-TPC only, but the GENIE overlay prediction still includes cryostat and
+    out-of-TPC vertices. You'll want a truth vertex cut on the MC side, which
+    the config format can't express right now.
+  - Check the GiBUU POT. The gibuu config takes its POT from the file's T_pot.
+    Check that its events per POT look sensible against the run 4c nu_overlay,
+    and whether GiBUU events carry per-event weights that should be applied.
+  - The DetVar CV mix is now tilted toward NC π0. NC π0 DetVar covers every
+    period, but nu_overlay DetVar only covers runs 1, 3 and 5 (run 4d is still
+    skipped as misaligned). Each period is scaled to the full-dataset POT, so
+    the CV over-represents true NC 1π0 relative to other event types by roughly
+    1.8×. nue already had this issue. It affects how the fractional DetVar
+    uncertainty is weighted across event types.
+  - PROfit XML. Your earlier note that the DetVar matching variables still need
+    filetype_code matters more now, because NC π0 is a third sample mixed into
+    the DetVar files.
+
+  I left save_PROfit_rootfiles_zexp.py alone, since GiBUU rows have no open-data
+  weight and are already dropped there. I also saved a memory note about the
+  GiBUU setup.
+
+✻ Sautéed for 5m 16s · done Monday 4:32 PM
+
+※ recap: The goal was getting the pipeline ready for the newly listed NC π0 DetVar and GiBUU fake-data files, including adding a gibuu_fake_data filetype, and that's done. Next, download the files, then check the GiBUU POT and decide on an in-TPC truth cut for the MC. (disable recaps in /config)
+  ⎿  Read ../.claude/projects/-nevis-houston-home-leehagaman-uboone-ngem/memory/
+     project_gibuu_fake_data.md (16 lines)
+  ⎿  Referenced file src/create_detvar_df.py
+  ⎿  Referenced file download_input_files.sh
+  ⎿  Referenced file ../.claude/projects/-nevis-houston-home-leehagaman-uboone-n
+     gem/fa402983-ade8-48c0-92ea-cd87b4bec98c/tool-results/bglaao0dd.txt
+  ⎿  Referenced file src/save_PROfit_rootfiles_zexp.py
+
+● Compacted while idle, before the prompt cache expired · turn off with 
+  "idleCompaction": false in settings.json

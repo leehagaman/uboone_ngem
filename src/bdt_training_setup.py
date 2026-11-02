@@ -26,9 +26,9 @@ TRAIN_SCORE_MAX = 0.4
 VALIDATION_SCORE_MAX = 0.5
 TEST_WEIGHT_FACTOR = 1 / (1 - VALIDATION_SCORE_MAX)
 
-# not_trained: the data roles (real data, NuWro fake data), the fullosc sample, and the
+# not_trained: the data roles (real data, NuWro / GiBUU fake data), the fullosc sample, and the
 # dedicated numuCC rad. corr. simulation...
-NOT_TRAINED_FILETYPES = ["data", "nuwro_fake_data", "fullosc_overlay", "numucc_rad_corr_sim"]
+NOT_TRAINED_FILETYPES = ["data", "nuwro_fake_data", "gibuu_fake_data", "fullosc_overlay", "numucc_rad_corr_sim"]
 # ...and the true Delta radiative events (NC or numuCC, in or out of FV) in every other sample:
 # neither signal nor background, so the BDT doesn't learn the kinematics of these specific
 # processes.  Null for EXT (no truth) -> False.

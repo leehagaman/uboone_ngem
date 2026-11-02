@@ -76,7 +76,7 @@ def _orthogonalization_masks():
 
     These define how the dedicated samples (ncdeltarad/nc_pi0/nue/numucc_pi0 overlays) and the
     inclusive nu_overlay are split into non-overlapping truth classes, plus the
-    simple per-filetype masks (dirt/ext/nuwro/del1g/iso1g/fullosc/rad_corr_sim/data).  Returned as a
+    simple per-filetype masks (dirt/ext/nuwro/gibuu/del1g/iso1g/fullosc/rad_corr_sim/data).  Returned as a
     dict so both do_orthogonalization_and_POT_weighting and the weighting helpers
     share one definition.
     """
@@ -121,6 +121,7 @@ def _orthogonalization_masks():
     masks["dirt"] = is_filetype("dirt_overlay")
     masks["ext"] = is_filetype("ext")
     masks["nuwro"] = is_filetype("nuwro_fake_data")
+    masks["gibuu"] = is_filetype("gibuu_fake_data")
     masks["del1g"] = is_filetype("delete_one_gamma_overlay")
     masks["iso1g"] = is_filetype("isotropic_one_gamma_overlay")
     masks["fullosc"] = is_filetype("fullosc_overlay")
@@ -130,11 +131,11 @@ def _orthogonalization_masks():
 
 
 # Filetypes whose base (cv*spline) weight is forced to 1.0: real data, cosmic
-# EXT, and NuWro fake data (a different generator, so GENIE tune/spline weights
+# EXT, and NuWro / GiBUU fake data (different generators, so GENIE tune/spline weights
 # do not apply).  In configs where these play the "data" role their net weight
 # is goal_pot / their own POT; in configs where they are excluded they get a
 # null weight instead.
-UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data")
+UNIT_BASE_WEIGHT_FILETYPES = ("data", "ext", "nuwro_fake_data", "gibuu_fake_data")
 
 # Source of the GENIE CV (MicroBooNE tune) and spline weights that form the base weight.
 #
@@ -441,13 +442,13 @@ def do_orthogonalization_and_POT_weighting(df, pot_dic, weight_configs):
         | masks["numucc_pi0_overlay_true_numucc_pi0"] | masks["nu_overlay_true_numucc_pi0"]
         | masks["nue_overlay_true_nue_cc"] | masks["nu_overlay_true_nue_cc"]
         | masks["nu_overlay_other"]
-        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["del1g"] | masks["iso1g"] | masks["fullosc"] | masks["rad_corr_sim"] | masks["data"]
+        | masks["dirt"] | masks["ext"] | masks["nuwro"] | masks["gibuu"] | masks["del1g"] | masks["iso1g"] | masks["fullosc"] | masks["rad_corr_sim"] | masks["data"]
     )
     df = df.filter(combined_mask)
     gc.collect()
 
     # ── Base weight: cv*spline (Pandora weightTune*weightSpline, see GENIE_CV_WEIGHT_COL),
-    #    forced to 1.0 for data/ext/nuwro and invalid ──
+    #    forced to 1.0 for data/ext/nuwro/gibuu and invalid ──
     print(f"adding base weight_cv_weight_spline (from {GENIE_CV_WEIGHT_COL} * {GENIE_SPLINE_WEIGHT_COL})...")
     missing = [c for c in (GENIE_CV_WEIGHT_COL, GENIE_SPLINE_WEIGHT_COL) if c not in df.columns]
     if missing:

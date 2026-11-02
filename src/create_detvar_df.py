@@ -133,6 +133,8 @@ def _get_file_metadata(filename, frac_events=1):
         detailed_run_period = "3b_500k"
     elif "13a" in filename.lower() and "3.root" in filename: # the run-3 part of the 13a detvar batch is run 3a only
         detailed_run_period = "3a"
+    elif "_cv_2_" in filename.lower(): # the run 2 nue_overlay CV file has no trailing run suffix ("..._cv_2_surprise_reco2_hist.root")
+        detailed_run_period = "2"
     elif "1.root" in filename:
         detailed_run_period = "1"
     elif "2.root" in filename:

@@ -22,6 +22,7 @@ NET_WEIGHT_CONFIG_NAME = {
     "wc_net_weight_full_pred": "full_pred",
     "wc_net_weight_open_data": "open_data",
     "wc_net_weight_nuwro": "nuwro",
+    "wc_net_weight_gibuu": "gibuu",
     "run4b_only_wc_net_weight": "run4b_only",
     "wc_net_weight": "detvar",
     "wc_net_weight_sce_recomb2": "detvar_sce_recomb2",

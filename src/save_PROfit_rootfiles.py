@@ -64,7 +64,7 @@ DEFAULT_TRAINING = "all_vars_r15_2026_09_11"
 
 # Filetypes with no GENIE spline weights that are written with constant unit spline
 # branches (the data role of each study, and EXT when it is part of the prediction).
-NO_SPLINE_FILETYPES = ["data", "ext", "nuwro_fake_data"]
+NO_SPLINE_FILETYPES = ["data", "ext", "nuwro_fake_data", "gibuu_fake_data"]
 
 # Per-event flag (written as a branch) for a valid GENIE tune weight; where it is False the
 # GENIE-derived spline weights are written as one (see unit_genie_weights_where_invalid).
@@ -109,6 +109,7 @@ STUDIES = {
         ],
         excluded_filetypes=[
             "nuwro_fake_data",               # only in the --nuwro study
+            "gibuu_fake_data",               # GiBUU fake data (no PROfit study yet)
             "isotropic_one_gamma_overlay",   # raw 1g overlay, kept as NC_coherent_1g_reweighted
             "delete_one_gamma_overlay",      # raw 1g overlay
             "fullosc_overlay",               # evaluation-only sample
@@ -130,6 +131,7 @@ STUDIES = {
             "data",                          # real data: not part of the fake-data study
             "ext",                           # no weight in the NuWro config (no beam-off in the fake data)
             "dirt_overlay",                  # no weight in the NuWro config (no dirt in the fake data)
+            "gibuu_fake_data",               # GiBUU fake data (no PROfit study yet)
             "isotropic_one_gamma_overlay",
             "delete_one_gamma_overlay",
             "fullosc_overlay",
@@ -172,6 +174,7 @@ FILETYPE_CODES = {
     "NC_coherent_1g_reweighted": 13,
     "numucc_rad_corr_sim": 14,
     "ncdeltarad_overlay": 15,
+    "gibuu_fake_data": 16,
 }
 
 

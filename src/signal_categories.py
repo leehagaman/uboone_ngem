@@ -106,6 +106,7 @@ del1g_detailed_categories = [
     ("fullosc",      "pl.col('filetype') == 'fullosc_overlay'",                                                                                                                                   "xkcd:goldenrod", None),
     ("data",         "pl.col('filetype') == 'data'",                                                                                                                                              "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'", "xkcd:violet", None),
 ]
 del1g_detailed_category_queries = [cat[1] for cat in del1g_detailed_categories]
 del1g_detailed_category_labels = [cat[0] for cat in del1g_detailed_categories]
@@ -170,6 +171,7 @@ del1g_detailed_category_labels_latex = [
     r"$\nu_\mu\rightarrow\nu_e$ fullosc",
     r"data",
     r"NuWro fake data",
+    r"GiBUU fake data",
 ]
 del1g_detailed_categories_dic = {del1g_detailed_category_labels[i]: i for i in range(len(del1g_detailed_category_labels))}
 
@@ -205,6 +207,7 @@ del1g_simple_categories = [
     ("fullosc",                 get_cut_from_del1g('fullosc'),                                                                                          "xkcd:goldenrod", None),
     ("data",                    get_cut_from_del1g('data'),                                                                                             "xkcd:black", None),
     ("nuwro_fake_data",         get_cut_from_del1g('nuwro_fake_data'),                                                                                   "xkcd:magenta", None),
+    ("gibuu_fake_data",         get_cut_from_del1g('gibuu_fake_data'),                                                                                   "xkcd:violet", None),
 ]
 del1g_simple_category_queries = [cat[1] for cat in del1g_simple_categories]
 del1g_simple_category_labels = [cat[0] for cat in del1g_simple_categories]
@@ -236,6 +239,7 @@ del1g_simple_category_labels_latex = [
     r"$\nu_\mu\rightarrow\nu_e$ fullosc",
     r"data",
     r"NuWro fake data",
+    r"GiBUU fake data",
 ]
 del1g_simple_categories_dic = {del1g_simple_category_labels[i]: i for i in range(len(del1g_simple_category_labels))}
 
@@ -245,7 +249,7 @@ train_category_colors = []
 train_category_hatches = []
 train_category_labels_latex = []
 for i in range(len(del1g_simple_category_labels)):
-    if 'data' not in del1g_simple_category_labels[i] and 'numucc_rad_corr' not in del1g_simple_category_labels[i] and 'NC_coherent_1g_reweighted' not in del1g_simple_category_labels[i] and 'nuwro_fake_data' not in del1g_simple_category_labels[i] and 'fullosc' not in del1g_simple_category_labels[i]:
+    if 'data' not in del1g_simple_category_labels[i] and 'numucc_rad_corr' not in del1g_simple_category_labels[i] and 'NC_coherent_1g_reweighted' not in del1g_simple_category_labels[i] and 'nuwro_fake_data' not in del1g_simple_category_labels[i] and 'gibuu_fake_data' not in del1g_simple_category_labels[i] and 'fullosc' not in del1g_simple_category_labels[i]:
         train_category_queries.append(del1g_simple_category_queries[i])
         train_category_labels.append(del1g_simple_category_labels[i])
         train_category_colors.append(del1g_simple_category_colors[i])
@@ -275,6 +279,7 @@ topological_categories = [
     ("fullosc",     "pl.col('filetype') == 'fullosc_overlay'",                                                                        "xkcd:goldenrod", None),
     ("data",        "pl.col('filetype') == 'data'",                                                                                   "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'", "xkcd:violet", None),
 ]
 topological_category_queries = [cat[1] for cat in topological_categories]
 topological_category_labels = [cat[0] for cat in topological_categories]
@@ -302,6 +307,7 @@ topological_category_labels_latex = [
     r"$\nu_\mu\rightarrow\nu_e$ fullosc",
     r"data",
     r"NuWro fake data",
+    r"GiBUU fake data",
 ]
 topological_categories_dic = {topological_category_labels[i]: i for i in range(len(topological_category_labels))}
 
@@ -320,6 +326,7 @@ filetype_categories = [
     ("fullosc_overlay", "pl.col('filetype') == 'fullosc_overlay'",               "xkcd:goldenrod", None),
     ("data",           "pl.col('filetype') == 'data'",                           "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'",    "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'",    "xkcd:violet", None),
 ]
 filetype_category_queries = [cat[1] for cat in filetype_categories]
 filetype_category_labels = [cat[0] for cat in filetype_categories]
@@ -342,6 +349,7 @@ erin_categories = [
     ("fullosc",        "pl.col('filetype') == 'fullosc_overlay'",                                                                                                                    "xkcd:goldenrod", None),
     ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'",                                                                                                                        "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'",                                                                                                                        "xkcd:violet", None),
 ]
 
 erin_category_queries = [cat[1] for cat in erin_categories]
@@ -363,6 +371,7 @@ erin_category_labels_latex = [
     "fullosc",
     "data",
     "NuWro fake data",
+    "GiBUU fake data",
 ]
 
 erin_Np0p_categories = [
@@ -382,6 +391,7 @@ erin_Np0p_categories = [
     ("fullosc",        "pl.col('filetype') == 'fullosc_overlay'",                                                                                                                    "xkcd:goldenrod", None),
     ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'", "xkcd:violet", None),
 ]
 erin_Np0p_category_queries = [cat[1] for cat in erin_Np0p_categories]
 erin_Np0p_category_labels = [cat[0] for cat in erin_Np0p_categories]
@@ -404,6 +414,7 @@ erin_Np0p_category_labels_latex = [
     "fullosc",
     "data",
     "NuWro fake data",
+    "GiBUU fake data",
 ]
 
 erin_Np0pNn0n_categories = [
@@ -425,6 +436,7 @@ erin_Np0pNn0n_categories = [
     ("fullosc",        "pl.col('filetype') == 'fullosc_overlay'",                                                                                                                    "xkcd:goldenrod", None),
     ("data",           "pl.col('filetype') == 'data'",                                                                                                                                          "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'", "xkcd:violet", None),
 ]
 erin_Np0pNn0n_category_queries = [cat[1] for cat in erin_Np0pNn0n_categories]
 erin_Np0pNn0n_category_labels = [cat[0] for cat in erin_Np0pNn0n_categories]
@@ -449,6 +461,7 @@ erin_Np0pNn0n_category_labels_latex = [
     "fullosc",
     "data",
     "NuWro fake data",
+    "GiBUU fake data",
 ]
 
 erin_Np0pNn0n_pi0_categories = [
@@ -469,6 +482,7 @@ erin_Np0pNn0n_pi0_categories = [
     ("fullosc",        "pl.col('filetype') == 'fullosc_overlay'",                                                                                                                    "xkcd:goldenrod", None),
     ("data",                         "pl.col('filetype') == 'data'",                                                                                                                                                                            "xkcd:black", None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'", "xkcd:magenta", None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'", "xkcd:violet", None),
 ]
 erin_Np0pNn0n_pi0_category_queries = [cat[1] for cat in erin_Np0pNn0n_pi0_categories]
 erin_Np0pNn0n_pi0_category_labels = [cat[0] for cat in erin_Np0pNn0n_pi0_categories]
@@ -492,6 +506,7 @@ erin_Np0pNn0n_pi0_category_labels_latex = [
     "fullosc",
     "data",
     "NuWro fake data",
+    "GiBUU fake data",
 ]
 
 erin_intmode_categories = [
@@ -515,6 +530,7 @@ erin_intmode_categories = [
     ("fullosc",        "pl.col('filetype') == 'fullosc_overlay'",                                                                                                                    "xkcd:goldenrod", None),
     ("data",                    "pl.col('filetype') == 'data'",                                                                                                                                  "xkcd:black",        None),
     ("nuwro_fake_data", "pl.col('filetype') == 'nuwro_fake_data'",                                                                                                                        "xkcd:magenta",      None),
+    ("gibuu_fake_data", "pl.col('filetype') == 'gibuu_fake_data'",                                                                                                                        "xkcd:violet",      None),
 ]
 erin_intmode_category_queries  = [cat[1] for cat in erin_intmode_categories]
 erin_intmode_category_labels   = [cat[0] for cat in erin_intmode_categories]
@@ -541,4 +557,5 @@ erin_intmode_category_labels_latex = [
     "fullosc",
     "data",
     "NuWro fake data",
+    "GiBUU fake data",
 ]

@@ -165,6 +165,8 @@ def _get_file_metadata(filename, frac_events=1):
         filetype = "ext"
     elif "nuwro" in filename.lower():
         filetype = "nuwro_fake_data"
+    elif "gibuu" in filename.lower():
+        filetype = "gibuu_fake_data"
     elif "nu_overlay" in filename.lower():
         filetype = "nu_overlay"
     elif "nue_overlay" in filename.lower():
@@ -186,7 +188,7 @@ def _get_file_metadata(filename, frac_events=1):
     else:
         raise ValueError("Unknown filetype!", filename)
 
-    if filetype in ("data", "ext", "nuwro_fake_data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"):
+    if filetype in ("data", "ext", "nuwro_fake_data", "gibuu_fake_data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"):
         raise ValueError(f"{filetype} files are treated like data and have no GENIE systematics variables!", filename)
 
     root_file_size_gb = os.path.getsize(f"{data_files_location}/{filename}") / 1024**3
@@ -478,10 +480,10 @@ if __name__ == "__main__":
     def _is_systematics_root_file(fn):
         """Overlay ROOT files that carry GENIE systematics.  Skips non-.root inputs (the
         directory also holds e.g. evtgen_pi0_dalitz.csv), auxiliary/unused files, and the
-        samples treated like data -- real data, EXT, NuWro fake data, and the 1g overlays
-        -- as well as detvar files.  NuWro is a different generator (no GENIE multisim
-        `weights` map and no spline_weights tree), so it is the "data" role in the nuwro
-        config and gets no systematic bands."""
+        samples treated like data -- real data, EXT, NuWro / GiBUU fake data, and the 1g
+        overlays -- as well as detvar files.  NuWro and GiBUU are different generators (no
+        GENIE multisim `weights` map and no spline_weights tree), so they are the "data"
+        role in their fake-data configs and get no systematic bands."""
         if not fn.endswith(".root"):
             return False
         if "UNUSED" in fn or "older_downloads" in fn or "nfs000000150070ba7d00000751" in fn:
@@ -490,7 +492,7 @@ if __name__ == "__main__":
         return not (
             "beam_on" in low or "beamon" in low
             or "beam_off" in low or "beamoff" in low or "ext" in low
-            or "one_gamma" in low or "nuwro" in low or "detvar" in low
+            or "one_gamma" in low or "nuwro" in low or "gibuu" in low or "detvar" in low
         )
 
     if args.merge_only:

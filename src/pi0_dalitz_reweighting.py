@@ -251,10 +251,10 @@ def _load_weight_grid():
 
 
 # Filetypes that never get the Dalitz shape correction (weight fixed at 1.0).  The
-# NuWro sample plays the *data* role in the fake-data study, and a fake dataset must
+# NuWro and GiBUU samples play the *data* role in the fake-data studies, and a fake dataset must
 # stay unweighted (integer counts) -- it is what the corrected prediction is compared
 # against.  Real data / EXT have no truth and never satisfy the Dalitz mask anyway.
-NO_DALITZ_REWEIGHT_FILETYPES = ("nuwro_fake_data",)
+NO_DALITZ_REWEIGHT_FILETYPES = ("nuwro_fake_data", "gibuu_fake_data")
 
 
 def apply_pi0_dalitz_reweighting(df, make_plots=True):
@@ -268,8 +268,8 @@ def apply_pi0_dalitz_reweighting(df, make_plots=True):
     Unlike the rad-corr / coherent-1g reweightings (which APPEND new derived rows),
     this is a pure shape correction to events already in the df, so it adds no rows.
     It adds a standalone ``pi0_dalitz_reweight_weight`` column (1.0 for non-Dalitz
-    events and for every row of NO_DALITZ_REWEIGHT_FILETYPES, i.e. the NuWro fake
-    data, which is kept unweighted as the data-role sample; those rows are also left
+    events and for every row of NO_DALITZ_REWEIGHT_FILETYPES, i.e. the NuWro / GiBUU
+    fake data, which is kept unweighted as the data-role sample; those rows are also left
     out of the monitoring plots).  The caller is responsible for folding that factor into each per-config
     net-weight column (create_df multiplies it into every wc_net_weight_* column),
     since there is no single canonical net-weight column anymore.

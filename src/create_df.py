@@ -66,7 +66,7 @@ def get_weight_configs():
             goal_pot=expected_full_dataset_data_POT,
             goal_pot_filetypes=None,
             total_pot=None,
-            exclude_filetypes=["data", "nuwro_fake_data"],
+            exclude_filetypes=["data", "nuwro_fake_data", "gibuu_fake_data"],
         ),
         # Runs 1-5 open data: overlays normalized per-group to the open data POT.
         #   run 1 overlays      -> run 1 open data
@@ -83,7 +83,7 @@ def get_weight_configs():
             goal_pot=None,
             goal_pot_filetypes=["data"],
             total_pot=None,
-            exclude_filetypes=["nuwro_fake_data"],
+            exclude_filetypes=["nuwro_fake_data", "gibuu_fake_data"],
         ),
         # NuWro fake data: overlays normalized per-group to the NuWro fake-data POT
         # (NuWro plays the data role).  NuWro exists for periods 1, 2, 3, 4a, 4c, 5;
@@ -100,7 +100,21 @@ def get_weight_configs():
             goal_pot=None,
             goal_pot_filetypes=["nuwro_fake_data"],
             total_pot=None,
-            exclude_filetypes=["data", "ext", "dirt_overlay"],
+            exclude_filetypes=["data", "ext", "dirt_overlay", "gibuu_fake_data"],
+        ),
+        # GiBUU fake data: overlays normalized to the GiBUU fake-data POT (GiBUU
+        # plays the data role).  GiBUU only exists for run 4c (a first, in-TPC-only
+        # test sample), so only the run 4b/4c/4d/4bcd overlays are weighted, folded
+        # into one run 4c group like the NuWro config.  EXT, dirt, real data and
+        # NuWro are excluded (not part of the fake-data study).
+        dict(
+            name="gibuu",
+            weight_col="wc_net_weight_gibuu",
+            run_period_map={"4b": "4c", "4c": "4c", "4d": "4c", "4bcd": "4c"},
+            goal_pot=None,
+            goal_pot_filetypes=["gibuu_fake_data"],
+            total_pot=None,
+            exclude_filetypes=["data", "ext", "dirt_overlay", "nuwro_fake_data"],
         ),
         # Legacy run-4b-only weighting (kept for notebooks that still use
         # run4b_only_wc_net_weight): only run 4b events get a weight.
@@ -185,6 +199,8 @@ def _filetype_from_filename(filename):
         return "ext"
     if "nuwro" in fn:
         return "nuwro_fake_data"
+    if "gibuu" in fn:
+        return "gibuu_fake_data"
     if "nu_overlay" in fn:
         return "nu_overlay"
     if "nue_overlay" in fn:
@@ -365,10 +381,10 @@ def _load_chunk(filename, filetype, detailed_run_period, file_POT,
     # the "hN charge correction" -- GENIE's official pi0-only charge treatment
     # in HAIntranuke2025::HadronFateHA, the model hA2025 actually samples; the
     # rwgtNtupleFSI.C macro lacks that piece), so it is skipped for data/EXT
-    # (no truth), NuWro fake data (a different generator), and the isotropic
+    # (no truth), NuWro / GiBUU fake data (different generators), and the isotropic
     # one-gamma overlay; those are left without the column (-> filled 1.0 when it
     # is folded into wc_net_weight below).
-    if filetype not in ("data", "ext", "nuwro_fake_data", "isotropic_one_gamma_overlay"):
+    if filetype not in ("data", "ext", "nuwro_fake_data", "gibuu_fake_data", "isotropic_one_gamma_overlay"):
         mcg = f["nuselection"]["NeutrinoSelectionFilter"].arrays(
             ["mc_generator_pdg", "mc_generator_mother", "mc_generator_rescatter",
              "mc_generator_statuscode", "mc_generator_E", "mc_generator_px",
@@ -887,7 +903,7 @@ if __name__ == "__main__":
 
             # Validate filetype column immediately after concatenation
             known_filetypes = {
-                "ext", "data", "nuwro_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
+                "ext", "data", "nuwro_fake_data", "gibuu_fake_data", "nu_overlay", "nue_overlay", "dirt_overlay",
                 "nc_pi0_overlay", "ncdeltarad_overlay", "numucc_pi0_overlay",
                 "delete_one_gamma_overlay", "isotropic_one_gamma_overlay",
                 "fullosc_overlay", "numucc_rad_corr_sim",
@@ -1059,7 +1075,7 @@ if __name__ == "__main__":
                     all_df = all_df.with_columns(pl.lit(1.0).alias(_col))
                 all_df = all_df.with_columns(pl.col(_col).fill_null(1.0).cast(pl.Float32))
             # pi0 Dalitz shape reweight: adds standalone pi0_dalitz_reweight_weight (1.0
-            # for non-Dalitz events, and always 1.0 for the NuWro fake data, which must
+            # for non-Dalitz events, and always 1.0 for the NuWro / GiBUU fake data, which must
             # stay unweighted as the data-role sample).  Per-row lookup, so safe per part.
             all_df = apply_pi0_dalitz_reweighting(all_df, make_plots=False)
             # Fold the per-event pi0-Dalitz and hA2025 pion-FSI factors into every

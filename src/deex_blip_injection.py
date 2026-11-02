@@ -106,7 +106,7 @@ INJECTED_SCATTYPES = (SCATTYPE_QE, SCATTYPE_DIS, SCATTYPE_RES, SCATTYPE_MEC)
 
 # filetypes with no (usable) GENIE truth: never injected, _deexadded == nominal
 NO_INJECTION_FILETYPES = (
-    "data", "ext", "nuwro_fake_data",
+    "data", "ext", "nuwro_fake_data", "gibuu_fake_data",
     "isotropic_one_gamma_overlay", "delete_one_gamma_overlay",
 )
 
