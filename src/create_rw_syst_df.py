@@ -179,9 +179,9 @@ def _get_file_metadata(filename, frac_events=1):
         filetype = "nc_pi0_overlay"
     elif "ccpi0_overlay" in filename.lower():
         filetype = "numucc_pi0_overlay"
-    elif "delete_one_gamma" in filename.lower():
+    elif "delete_one_gamma" in filename.lower() or "del1g" in filename.lower():
         filetype = "delete_one_gamma_overlay"
-    elif "isotropic_one_gamma" in filename.lower():
+    elif "isotropic_one_gamma" in filename.lower() or "iso1g" in filename.lower():
         filetype = "isotropic_one_gamma_overlay"
     elif "beam_on" in filename.lower():
         filetype = "data"
@@ -231,6 +231,10 @@ def _get_file_metadata(filename, frac_events=1):
     elif "4d.root" in filename_for_period:
         detailed_run_period = "4d"
     elif "4bcd.root" in filename_for_period:
+        detailed_run_period = "4bcd"
+    # the v10_04_07_26 del1g/iso1g retuples name the combined run 4b/4c/4d file "..._hist_4.root"
+    # (their "Run4abcd5" tag would otherwise match the "4a" substring check below)
+    elif "_hist_4.root" in filename_for_period:
         detailed_run_period = "4bcd"
     elif "5.root" in filename_for_period:
         detailed_run_period = "5"
@@ -492,7 +496,7 @@ if __name__ == "__main__":
         return not (
             "beam_on" in low or "beamon" in low
             or "beam_off" in low or "beamoff" in low or "ext" in low
-            or "one_gamma" in low or "nuwro" in low or "gibuu" in low or "detvar" in low
+            or "one_gamma" in low or "del1g" in low or "iso1g" in low or "nuwro" in low or "gibuu" in low or "detvar" in low
         )
 
     if args.merge_only:

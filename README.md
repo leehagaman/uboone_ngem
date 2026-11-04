@@ -45,6 +45,13 @@ skip the BDT training step:
 nohup bash run_full_reprocessing.sh --no_train > reprocess_nohup.out 2>&1 &
 ```
 
+Add `--no_detvar` to skip `create_detvar_df.py` (the existing detvar df is left untouched); the
+flags can be combined:
+
+```
+nohup bash run_full_reprocessing.sh --no_detvar all_vars_2026_11_04 > reprocess_nohup.out 2>&1 &
+```
+
 
 ## Creating Dataframes
 You can add --frac_events (-f) 0.01 to load only 1% of the events from each file, making this faster (and less RAM consuming) for small tests. You can also add --just_one_file to only process one file for small tests.
@@ -81,7 +88,7 @@ replaces the old standalone `create_splines_df.py`.
 ## Training Multi-Class BDT
 
 ```
-nohup python -u src/train.py --name all_vars_2026_10_22 > train_nohup.out 2>&1 &
+nohup python -u src/train.py --name all_vars_2026_11_04 > train_nohup.out 2>&1 &
 
 # hyperparameter tuning at a fixed learning rate (outputs in hyperparameter_tuning_outputs/; analyze a study with
 # ipynb_notebooks/hyperparameter_tuning_analysis.ipynb). A new study first tries the XGBoost defaults, then the

@@ -1,20 +1,22 @@
 #!/bin/bash
 # Full re-processing chain:
 #   1. create_df.py (file-level dfs + merge)
-#   2. create_rw_syst_df.py and create_detvar_df.py, in parallel
+#   2. create_rw_syst_df.py and create_detvar_df.py, in parallel (detvar skipped with --no_detvar)
 #   3. train.py (skipped with --no_train)
 # Each step logs to the same *_nohup.out file as the README commands. The chain stops
 # at the first failed step.
 #
 # Usage (from anywhere; runs for several hours, so usually in the background):
-#   nohup bash run_full_reprocessing.sh [--no_train] [training_name] > reprocess_nohup.out 2>&1 &
+#   nohup bash run_full_reprocessing.sh [--no_train] [--no_detvar] [training_name] > reprocess_nohup.out 2>&1 &
 # training_name defaults to all_vars_<YYYY_MM_DD>.
 
 DO_TRAIN=1
+DO_DETVAR=1
 TRAIN_NAME=""
 for arg in "$@"; do
     case "$arg" in
         --no_train) DO_TRAIN=0 ;;
+        --no_detvar) DO_DETVAR=0 ;;
         -*) echo "unknown option: $arg"; exit 1 ;;
         *)
             [ -z "$TRAIN_NAME" ] || { echo "more than one training_name given: $TRAIN_NAME, $arg"; exit 1; }
@@ -36,6 +38,9 @@ if [ $DO_TRAIN -eq 1 ]; then
 else
     echo "--no_train: skipping BDT training"
 fi
+if [ $DO_DETVAR -eq 0 ]; then
+    echo "--no_detvar: skipping create_detvar_df (the existing detvar df is left as is)"
+fi
 
 step_start "create_df"
 python -u src/create_df.py -m --create_file_dfs --merge_file_dfs > create_file_dfs_nohup.out 2>&1 \
@@ -44,16 +49,25 @@ step_done "create_df"
 
 # rw needs presel_df_train_vars.parquet from create_df (for the derived coherent-1g rows);
 # detvar is independent. Their intermediate file names don't overlap.
-step_start "create_rw_syst_df + create_detvar_df (parallel)"
+if [ $DO_DETVAR -eq 1 ]; then
+    step_name="create_rw_syst_df + create_detvar_df (parallel)"
+else
+    step_name="create_rw_syst_df"
+fi
+step_start "$step_name"
 python -u src/create_rw_syst_df.py -m > weights_nohup.out 2>&1 &
 rw_pid=$!
-python -u src/create_detvar_df.py -m > detvar_nohup.out 2>&1 &
-detvar_pid=$!
-wait $rw_pid;     rw_status=$?
-wait $detvar_pid; detvar_status=$?
-[ $rw_status -eq 0 ]     || fail "create_rw_syst_df" weights_nohup.out
-[ $detvar_status -eq 0 ] || fail "create_detvar_df" detvar_nohup.out
-step_done "create_rw_syst_df + create_detvar_df (parallel)"
+if [ $DO_DETVAR -eq 1 ]; then
+    python -u src/create_detvar_df.py -m > detvar_nohup.out 2>&1 &
+    detvar_pid=$!
+fi
+wait $rw_pid; rw_status=$?
+[ $rw_status -eq 0 ] || fail "create_rw_syst_df" weights_nohup.out
+if [ $DO_DETVAR -eq 1 ]; then
+    wait $detvar_pid; detvar_status=$?
+    [ $detvar_status -eq 0 ] || fail "create_detvar_df" detvar_nohup.out
+fi
+step_done "$step_name"
 
 if [ $DO_TRAIN -eq 1 ]; then
     step_start "train"

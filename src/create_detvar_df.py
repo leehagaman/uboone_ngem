@@ -44,9 +44,9 @@ def _filetype_from_filename(filename):
         return "nc_pi0_overlay"
     if "ccpi0" in fn:
         return "numucc_pi0_overlay"
-    if "delete_one_gamma" in fn:
+    if "delete_one_gamma" in fn or "del1g" in fn:
         return "delete_one_gamma_overlay"
-    if "isotropic_one_gamma" in fn:
+    if "isotropic_one_gamma" in fn or "iso1g" in fn:
         return "isotropic_one_gamma_overlay"
     raise ValueError("Unknown filetype!", filename)
 
@@ -150,6 +150,10 @@ def _get_file_metadata(filename, frac_events=1):
     elif "4d.root" in filename:
         detailed_run_period = "4d"
     elif "4bcd.root" in filename:
+        detailed_run_period = "4bcd"
+    # the v10_04_07_26 del1g/iso1g retuples name the combined run 4b/4c/4d file "..._hist_4.root"
+    # (their "Run4abcd5" tag would otherwise match the "4a" substring check below)
+    elif "_hist_4.root" in filename:
         detailed_run_period = "4bcd"
     elif "5.root" in filename:
         detailed_run_period = "5"

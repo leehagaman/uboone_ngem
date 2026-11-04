@@ -170,6 +170,10 @@ def _detailed_run_period_from_filename(filename):
         return "4d"
     elif "4bcd.root" in filename:
         return "4bcd"
+    # the v10_04_07_26 del1g/iso1g retuples name the combined run 4b/4c/4d file "..._hist_4.root"
+    # (their "Run4abcd5" tag would otherwise match the "4a" substring check below)
+    elif "_hist_4.root" in filename:
+        return "4bcd"
     elif "5.root" in filename:
         return "5"
     # if the filename doesn't end with the run period, look for run strings
@@ -213,9 +217,9 @@ def _filetype_from_filename(filename):
         return "nc_pi0_overlay"
     if "ccpi0" in fn:
         return "numucc_pi0_overlay"
-    if "delete_one_gamma" in fn:
+    if "delete_one_gamma" in fn or "del1g" in fn:
         return "delete_one_gamma_overlay"
-    if "isotropic_one_gamma" in fn:
+    if "isotropic_one_gamma" in fn or "iso1g" in fn:
         return "isotropic_one_gamma_overlay"
     if "beam_on" in fn:
         return "data"

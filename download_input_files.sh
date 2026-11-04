@@ -70,17 +70,21 @@ FILES_TO_COPY=(
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4d_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_4d.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run4acd5_v10_04_07_20_BNB_dirt_overlay_retuple_retuple_hist_5.root"
 
-    # Del1g overlay files, runs 4-5
-    # WARNING: These need re-tupling, NuGraph distributions are different from other files!
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/4a/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist_4a.root"
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/4bcd/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist_4bcd.root"
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/5/checkout_delete_one_gamma_run45_reco2_prod_reco2_hist_5.root"
+    # Del1g overlay files, runs 1-5
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/1/checkout_delete_one_gamma_run123_reco2_prod_reco2_hist_1.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/2/checkout_delete_one_gamma_run123_reco2_prod_reco2_hist_2.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/3/checkout_delete_one_gamma_run123_reco2_prod_reco2_hist_3.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/4a/checkout_MCC9.10_Run4abcd5_v10_04_07_26_del1g_retuple_retuple_hist_4a.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/4bcd/checkout_MCC9.10_Run4abcd5_v10_04_07_26_del1g_retuple_retuple_hist_4.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/delete_one_gamma/5/checkout_MCC9.10_Run4abcd5_v10_04_07_26_del1g_retuple_retuple_hist_5.root"
 
-    # Iso1g overlay files, runs 4-5
-    # WARNING: These need re-tupling, NuGraph distributions are different from other files!
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4a/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_4a.root"
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4bcd/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_4bcd.root"
-    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/5/checkout_isotropic_one_gamma_run45_reco2_prod_reco2_hist_5.root"
+    # Iso1g overlay files, runs 1-5
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/1/checkout_isotropic_one_gamma_run123_reco2_prod_reco2_hist_1.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/2/checkout_isotropic_one_gamma_run123_reco2_prod_reco2_hist_2.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/3/checkout_isotropic_one_gamma_run123_reco2_prod_reco2_hist_3.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4a/checkout_MCC9.10_Run4abcd5_v10_04_07_26_iso1g_retuple_retuple_hist_4a.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/4bcd/checkout_MCC9.10_Run4abcd5_v10_04_07_26_iso1g_retuple_retuple_hist_4.root"
+    "/pnfs/uboone/persistent/users/uboonepro/surprise/isotropic_one_gamma/5/checkout_MCC9.10_Run4abcd5_v10_04_07_26_iso1g_retuple_retuple_hist_5.root"
 
     # NC Delta radiative overlay files, run 4
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4a_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_26_BNB_NCDelta_overlay_surprise_reco2_hist_4a.root"
