@@ -235,25 +235,44 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
         plotting run.  A ragged result is refetched once (a transient race gives a clean second
         read); if it is still ragged, the anomalous events fall back to unit weights with a loud
         warning instead of crashing.
+
+        Empty/null lists are not ragged: they are samples with no universes of this family (e.g.
+        numucc_rad_corr_sim has no reint universes), so they get unit weights (no variation) and
+        the universe count comes from the other events.  A selection made up mostly (or only) of
+        such events is therefore fine.
         """
         for attempt in range(2):
             uni = _fetch_universe_weights(col_name)
-            lengths = np.array([len(a) if a is not None else -1 for a in uni])
-            values, counts = np.unique(lengths, return_counts=True)
-            if len(values) == 1 and values[0] > 0:
-                return uni
+            lengths = np.array([len(a) if a is not None else 0 for a in uni])
+            filled_values, filled_counts = np.unique(lengths[lengths > 0], return_counts=True)
+            if len(filled_values) <= 1:
+                break
             print(f"WARNING: non-uniform universe weight lengths for '{col_name}' "
-                  f"(attempt {attempt + 1}): length counts {dict(zip(values.tolist(), counts.tolist()))}"
+                  f"(attempt {attempt + 1}): length counts {dict(zip(filled_values.tolist(), filled_counts.tolist()))}"
                   + (", refetching..." if attempt == 0 else ""))
-        num_unis = int(values[np.argmax(counts)])
-        if num_unis <= 0:
-            raise ValueError(f"universe weights for '{col_name}' are entirely null/empty, cannot recover")
-        bad_indices = np.where(lengths != num_unis)[0]
-        print(f"WARNING: universe weights for '{col_name}' still non-uniform after refetch; "
-              f"assigning unit weights to {len(bad_indices)} of {len(uni)} events "
-              f"(possible polars data corruption under load, treat this covariance with caution)")
-        uni = np.array(list(uni), dtype=object)
-        for idx in bad_indices:
+        # with no filled events at all there is no variation; one unit universe gives a zero covariance
+        num_unis = int(filled_values[np.argmax(filled_counts)]) if len(filled_values) > 0 else 1
+        if len(filled_values) > 1:
+            bad_indices = np.where((lengths > 0) & (lengths != num_unis))[0]
+            print(f"WARNING: universe weights for '{col_name}' still non-uniform after refetch; "
+                  f"assigning unit weights to {len(bad_indices)} of {len(uni)} events "
+                  f"(possible polars data corruption under load, treat this covariance with caution)")
+            uni = np.array(list(uni), dtype=object)
+            for idx in bad_indices:
+                uni[idx] = np.ones(num_unis, dtype=np.float32)
+            lengths[bad_indices] = num_unis
+
+        empty_indices = np.where(lengths == 0)[0]
+        if len(empty_indices) == 0:
+            return uni
+        print(f"  {len(empty_indices)} of {len(uni)} events have no '{col_name}' universes "
+              f"(a sample without this weight family); assigning them unit weights")
+        # an explicit 1D object array: when every list is empty, polars returns a 2D (n_events, 0)
+        # array, into whose rows a unit-weight array would silently broadcast to nothing
+        filled_uni = np.empty(len(uni), dtype=object)
+        filled_uni[:] = list(uni)
+        uni = filled_uni
+        for idx in empty_indices:
             uni[idx] = np.ones(num_unis, dtype=np.float32)
         return uni
 
