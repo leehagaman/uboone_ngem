@@ -77,6 +77,66 @@ def _vartype_from_filename(filename):
     raise ValueError("Unknown vartype!", filename)
 
 
+def _detailed_run_period_from_filename(filename):
+    """Infer the DetVar detailed_run_period (e.g. "1", "3a", "3b_1mil", "4bcd") from a filename
+    (string-only, no ROOT open)."""
+    # the two run 3b CV files have no trailing run suffix; they get distinct periods so each
+    # can be put in only its own CV group's weight config (see df_helpers.detvar_weight_col)
+    if "_3b_1mil_" in filename:
+        return "3b_1mil"
+    elif "_3b_500k_" in filename:
+        return "3b_500k"
+    elif "13a" in filename.lower() and "3.root" in filename: # the run-3 part of the 13a detvar batch is run 3a only
+        return "3a"
+    elif "_cv_2_" in filename.lower(): # the run 2 nue_overlay CV file has no trailing run suffix ("..._cv_2_surprise_reco2_hist.root")
+        return "2"
+    elif "1.root" in filename:
+        return "1"
+    elif "2.root" in filename:
+        return "2"
+    elif "3.root" in filename:
+        return "3"
+    elif "4a.root" in filename:
+        return "4a"
+    elif "4b.root" in filename:
+        return "4b"
+    elif "4c.root" in filename:
+        return "4c"
+    elif "4d.root" in filename:
+        return "4d"
+    elif "4bcd.root" in filename:
+        return "4bcd"
+    # the v10_04_07_26 del1g/iso1g retuples name the combined run 4b/4c/4d file "..._hist_4.root"
+    # (their "Run4abcd5" tag would otherwise match the "4a" substring check below)
+    elif "_hist_4.root" in filename:
+        return "4bcd"
+    elif "5.root" in filename:
+        return "5"
+    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
+        return "4a"
+    elif "run4b" in filename.lower():
+        return "4b"
+    elif "run4c" in filename.lower():
+        return "4c"
+    elif "run4d" in filename.lower():
+        return "4d"
+    elif "run4bcd" in filename.lower():
+        return "4bcd"
+    elif "run5" in filename.lower():
+        return "5"
+    else:
+        raise ValueError("Invalid detailed run period!", filename)
+
+
+def _is_temporarily_skipped(filename):
+    """TEMPORARY: the v10_04_07_19 run 4d nu_overlay DetVar files have a misaligned
+    singlephotonana/vertex_tree (re-confirmed 2026-09-03: only 97.5% of entries match T_eval,
+    first mismatch at entry 19273), and assert_ntuple_trees_aligned would refuse them anyway.
+    Remove this skip once fixed run 4d files replace them in download_input_files.sh."""
+    return (_filetype_from_filename(filename) == "nu_overlay"
+            and ("4d.root" in filename or "run4d" in filename.lower()))
+
+
 def _get_file_metadata(filename, frac_events=1):
     """Open a ROOT file briefly to collect per-file metadata without reading branch data.
 
@@ -124,53 +184,7 @@ def _get_file_metadata(filename, frac_events=1):
     file_POT_total = np.sum(f["wcpselection"]["T_pot"].arrays("pot_tor875good", library="np")["pot_tor875good"])
     f.close()
 
-    detailed_run_period = "?"
-    # the two run 3b CV files have no trailing run suffix; they get distinct periods so each
-    # can be put in only its own CV group's weight config (see df_helpers.detvar_weight_col)
-    if "_3b_1mil_" in filename:
-        detailed_run_period = "3b_1mil"
-    elif "_3b_500k_" in filename:
-        detailed_run_period = "3b_500k"
-    elif "13a" in filename.lower() and "3.root" in filename: # the run-3 part of the 13a detvar batch is run 3a only
-        detailed_run_period = "3a"
-    elif "_cv_2_" in filename.lower(): # the run 2 nue_overlay CV file has no trailing run suffix ("..._cv_2_surprise_reco2_hist.root")
-        detailed_run_period = "2"
-    elif "1.root" in filename:
-        detailed_run_period = "1"
-    elif "2.root" in filename:
-        detailed_run_period = "2"
-    elif "3.root" in filename:
-        detailed_run_period = "3"
-    elif "4a.root" in filename:
-        detailed_run_period = "4a"
-    elif "4b.root" in filename:
-        detailed_run_period = "4b"
-    elif "4c.root" in filename:
-        detailed_run_period = "4c"
-    elif "4d.root" in filename:
-        detailed_run_period = "4d"
-    elif "4bcd.root" in filename:
-        detailed_run_period = "4bcd"
-    # the v10_04_07_26 del1g/iso1g retuples name the combined run 4b/4c/4d file "..._hist_4.root"
-    # (their "Run4abcd5" tag would otherwise match the "4a" substring check below)
-    elif "_hist_4.root" in filename:
-        detailed_run_period = "4bcd"
-    elif "5.root" in filename:
-        detailed_run_period = "5"
-    elif "4a" in filename.lower(): # if the filename doesn't end with the run period, look for run strings in the file names
-        detailed_run_period = "4a"
-    elif "run4b" in filename.lower():
-        detailed_run_period = "4b"
-    elif "run4c" in filename.lower():
-        detailed_run_period = "4c"
-    elif "run4d" in filename.lower():
-        detailed_run_period = "4d"
-    elif "run4bcd" in filename.lower():
-        detailed_run_period = "4bcd"
-    elif "run5" in filename.lower():
-        detailed_run_period = "5"
-    else:
-        raise ValueError("Invalid detailed run period!", filename)
+    detailed_run_period = _detailed_run_period_from_filename(filename)
 
     file_POT = file_POT_total * frac_events
 
@@ -342,13 +356,7 @@ if __name__ == "__main__":
         if not "detvar" in filename.lower():
             continue
 
-        # The v10_04_07_19 run 4d nu_overlay DetVar files have a misaligned
-        # singlephotonana/vertex_tree (re-confirmed 2026-09-03: only 97.5% of entries
-        # match T_eval, first mismatch at entry 19273), and assert_ntuple_trees_aligned
-        # would refuse them anyway.  Remove this skip once fixed run 4d files replace
-        # them in download_input_files.sh.
-        if (_filetype_from_filename(filename) == "nu_overlay"
-                and ("4d.root" in filename or "run4d" in filename.lower())):
+        if _is_temporarily_skipped(filename):
             print(f"TEMPORARY, SKIPPING RUN 4D NU_OVERLAY DETVAR, "
                   f"MISALIGNED singlephotonana/vertex_tree RSE! ({filename})")
             continue

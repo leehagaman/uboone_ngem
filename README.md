@@ -119,6 +119,47 @@ python src/save_PROfit_rootfiles.py            # runs 1-5 open data: minimal_wit
 python src/save_PROfit_rootfiles.py --nuwro    # NuWro fake-data study: minimal_withspline_nuwro_df.root + minimal_detvar_nuwro_<vartype>_df.root
 ```
 
+## Running PROfit
+The PROfit XMLs live in `profit_xmls/` and read the root files above by absolute path (in
+`intermediate_files_location`):
+
+```
+cd /nevis/manannan/share/leehagaman/PROfit/PROfit/build;
+cmake ..;
+make -j 30;
+cd /nevis/manannan/share/leehagaman/PROfit/ngem/outputs;
+```
+
+`run_profit.sh` uses the compiled PROfit in `<profit_location>/build/bin`, runs `process` (builds the binary
+caches from the root files), `plot` (pre-fit error bands), and a systematics-only `profile` twice,
+normally and with `--legacy-postfit-error` (output quantifier `legacypostfiterror`). It merges the
+20 per-channel pages of each plot PDF into one 4x5 grid page (+ jpg) with `src/pdf_grid.py`.
+All plots go to `plots/profit/<tag>/`. The rest of the outputs (binary caches, root files, text
+outputs, a copy of the XML used, and the logs of each step) stay in
+`<profit_output_location>/<tag>/`. Both locations are set in `src/file_locations.py`.
+`profile` takes a while, so run it in the background:
+```
+nohup bash run_profit.sh bagels_full_open_data open_data_2026_11_05 > profit_nohup.out 2>&1 &
+```
+`NTHREAD` (default 40, for `profile`) can be set in the environment. `process` saves the processed inputs as `<tag>_*.bin` caches, which `plot` and
+`profile` load (refusing them if the XML hash changed), so use a new tag for each new XML or set of
+root files to keep older results.
+
+The individual commands, e.g. for running with other options (`--shapeonly`,
+`--use-fake-data --inject-systs MACCQE 3`, other `-p` presets, ...), from inside the output directory:
+```
+PROfit -x <repo>/profit_xmls/bagels_full_open_data.xml -t <tag> -v3 --log process.log process
+PROfit -x <repo>/profit_xmls/bagels_full_open_data.xml -t <tag> -v3 --seed 404 --log plot.log \
+    --plot-bounds ratmin 0 ratmax 2 --scale-by-width plot
+PROfit -x <repo>/profit_xmls/bagels_full_open_data.xml -t <tag> -v2 -n40 --seed 404 -p grad-deep --log profile.log \
+    --syst-only --plot-bounds ratmin 0 ratmax 2 --scale-by-width --progress profile
+python <repo>/src/pdf_grid.py <tag>_v1_PROplot_Variable_0_ErrorBand.pdf merged_plots_<tag>.pdf --trim 20,0,20,0
+python <repo>/src/pdf_grid.py <tag>_v1_PROfile_hists.pdf merged_hist_plots_<tag>.pdf --trim 20,0,20,0
+```
+`-p grad-deep` matters: the default preset gave very large post-fit errors. Add `-o <name>` to
+write a second set of outputs under the same tag (e.g. a different `profile` option) without
+re-running `process`.
+
 ## Creating Many Plots
 
 ```

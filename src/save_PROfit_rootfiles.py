@@ -60,7 +60,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Configuration
 # ============================================================================
 
-DEFAULT_TRAINING = "all_vars_r15_2026_09_11"
+DEFAULT_TRAINING = "all_vars_2026_11_04"
 
 # Filetypes with no GENIE spline weights that are written with constant unit spline
 # branches (the data role of each study, and EXT when it is part of the prediction).
@@ -370,9 +370,12 @@ def write_df_to_root(df_to_save, output_path, desc="writing"):
 def _spline_list_lengths(spline_path):
     """Return (fixed_len, head_len) for every list column of the spline parquet.
 
-    fixed_len[c] is the common length if every row agrees (enables the memcpy fast
-    path), else None.  head_len[c] is the first row's length, used to build the
-    data/ext unit spline lists (same source of truth as the old lit([1.0]*len))."""
+    fixed_len[c] is the common length if every non-empty row agrees (enables the memcpy
+    fast path), else None.  Empty/null lists are samples without that weight family
+    (e.g. numucc_rad_corr_sim has no weightsReint universes); _fill_root_batch writes them
+    as fixed_len unit weights (no variation), since PROfit aborts on a universe count that
+    differs between events.  head_len[c] is the first row's length (the common length if
+    that row is empty), used to build the data/ext unit spline lists."""
     schema = pl.scan_parquet(spline_path).collect_schema()
     list_cols = [c for c, dt in schema.items() if isinstance(dt, pl.List)]
     if not list_cols:
@@ -385,12 +388,18 @@ def _spline_list_lengths(spline_path):
     # garbage min/max (observed weightsReint min=0 max=39696000 when every row is
     # exactly 1000), which demotes fixed-length columns to the slow push_back path.
     for c in list_cols:
+        filled_len = pl.col(c).list.len().filter(pl.col(c).list.len().fill_null(0) > 0)
         agg = pl.scan_parquet(spline_path).select(
-            mn=pl.col(c).list.len().min(), mx=pl.col(c).list.len().max()
+            mn=filled_len.min(), mx=filled_len.max(),
+            n_empty=(pl.col(c).list.len().fill_null(0) == 0).sum(),
         ).collect(engine="streaming")
-        mn, mx = agg["mn"][0], agg["mx"][0]
-        fixed_len[c] = int(mn) if (mn is not None and mn == mx and mn > 0) else None
-        head_len[c] = int(heads[c][0])
+        mn, mx, n_empty = agg["mn"][0], agg["mx"][0], agg["n_empty"][0]
+        fixed_len[c] = int(mn) if (mn is not None and mn == mx) else None
+        head = heads[c][0]
+        head_len[c] = int(head) if head else (int(mx) if mx is not None else 0)
+        if n_empty:
+            print(f"  {c}: {n_empty} rows with no universes are written as "
+                  f"{fixed_len[c] if fixed_len[c] is not None else 'empty'} unit weights", flush=True)
     n_fixed = sum(v is not None for v in fixed_len.values())
     print(f"  {n_fixed}/{len(list_cols)} list columns use the fixed-length memcpy fast path", flush=True)
     return fixed_len, head_len
@@ -440,8 +449,12 @@ def _fill_root_batch(tree, batch, out_cols, kinds, fixed_len, buffers, views, de
         if kind == "list":
             L = fixed_len.get(col)
             if L is not None:
-                # (n, L) contiguous float64 -- one Arrow->numpy conversion for the batch
-                data[col] = ("list_fixed", s.list.to_array(L).to_numpy())
+                # (n, L) contiguous float64 -- one Arrow->numpy conversion for the batch;
+                # empty/null rows (samples without this weight family) stay unit weights
+                filled = (s.list.len().fill_null(0) > 0).to_numpy()
+                arr = np.ones((len(s), L), dtype=np.float64)
+                arr[filled] = s.filter(filled).list.to_array(L).to_numpy()
+                data[col] = ("list_fixed", arr)
             else:
                 data[col] = ("list_var", s.fill_null([]).to_list())
         elif kind == "str":
