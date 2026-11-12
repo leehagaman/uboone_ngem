@@ -114,71 +114,272 @@ def add_underflow_overflow(bins, display_bins, include_overflow, include_underfl
     return bins, display_bins
 
 
-def auto_binning(all_vals):
+# values that are always treated as sentinels when they sit at the edge of a variable's
+# distribution, however rare: float max (ROOT/pandora defaults), +-2^31 (int defaults), and
+# common hand-chosen defaults
+KNOWN_SENTINEL_VALUES = [
+    -3.4028234663852886e+38, 3.4028234663852886e+38, -3.402408285460702e+38, 3.402408285460702e+38,
+    -2147483648.0, 2147483648.0, 2147483647.0, -9999999.0, -999999.0, -99999.0, -9999.0, 9999.0, -999.0,
+]
+SENTINEL_MIN_FRACTION = 0.01   # a value holding at least this fraction of events can be a sentinel...
+SENTINEL_MIN_GAP_FRACTION = 0.5  # ...if it lies further than this fraction of the other values' 5%-95% width outside them
+MAX_SENTINELS = 6
+TARGET_NUM_BINS = 20
 
-    include_underflow = False
-    include_overflow = False
-    log_x = False
+
+def _is_known_sentinel(val):
+    return any(np.isclose(val, s, rtol=1e-6, atol=0) for s in KNOWN_SENTINEL_VALUES)
+
+
+def _find_sentinels(vals, unique_vals, unique_counts):
+    """Values that look like sentinels (default values for "not filled"), split into those below
+    and above the bulk of the distribution.
+
+    Candidates are known default values (any frequency) and any value holding at least
+    SENTINEL_MIN_FRACTION of events.  A candidate is a sentinel if it lies outside the 5%-95%
+    range of the non-sentinel values by more than SENTINEL_MIN_GAP_FRACTION of that range's width
+    (known defaults only need to lie outside it), or if it is negative while essentially all other
+    values (above their 0.1% percentile) are non-negative.  Natural point masses at a boundary (e.g. 0 for
+    a non-negative variable, or cos = -1) are deliberately not sentinels.  For integer-valued variables it must also be more than 1 away from all other values, so that
+    e.g. a zero count next to counts of 1-2 is not called a sentinel; at least 3 other distinct
+    values are required.  Rare
+    garbage values beyond a sentinel don't hide it; they go into underflow/overflow bins."""
+    # everything works on the distinct values and their counts, so this stays fast for millions of events
+    n_total = unique_counts.sum()
+    is_integer_valued = np.all(np.mod(unique_vals, 1) == 0)
+    frequent = unique_vals[unique_counts / n_total >= SENTINEL_MIN_FRACTION]
+    known_mask = np.zeros(len(unique_vals), dtype=bool)
+    for known_val in KNOWN_SENTINEL_VALUES:
+        known_mask |= np.abs(unique_vals - known_val) <= 1e-6 * abs(known_val)
+    known = unique_vals[known_mask].tolist()
+    candidates = sorted(set(frequent.tolist()) | set(known),
+                        key=lambda v: -unique_counts[np.searchsorted(unique_vals, v)])
+    finite_mask = np.abs(unique_vals) < 1e10
+
+    def percentiles(mask, qs):
+        # inverse-CDF percentiles of the values selected by mask, from the counts
+        sel_vals, sel_counts = unique_vals[mask], unique_counts[mask]
+        cum = np.cumsum(sel_counts)
+        idx = np.searchsorted(cum, np.asarray(qs) / 100 * cum[-1], side="left")
+        return sel_vals[np.clip(idx, 0, len(sel_vals) - 1)]
+
+    is_sentinel = np.zeros(len(unique_vals), dtype=bool)
+    # repeat, since removing one sentinel can expose another (two sentinels distort each other's percentiles)
+    for _ in range(3):
+        changed = False
+        for cand in candidates:
+            cand_idx = np.searchsorted(unique_vals, cand)
+            if is_sentinel[cand_idx] or is_sentinel.sum() >= MAX_SENTINELS:
+                continue
+            rest_mask = ~is_sentinel
+            rest_mask[cand_idx] = False
+            finite_rest_mask = rest_mask & finite_mask
+            if finite_rest_mask.sum() < 3:
+                continue
+            p_min, p5, p95 = percentiles(finite_rest_mask, [0.1, 5, 95])
+            known_cand = _is_known_sentinel(cand)
+            min_gap = 0.0 if known_cand else SENTINEL_MIN_GAP_FRACTION * (p95 - p5)
+            # integer-valued: a sentinel must be more than one unit away from the other values
+            rest_vals = unique_vals[rest_mask]
+            int_gap_ok = known_cand or not is_integer_valued or (cand < rest_vals[0] - 1 or cand > rest_vals[-1] + 1)
+            far_outside = cand < p5 - min_gap or cand > p95 + min_gap
+            # a negative value under an otherwise non-negative variable (energies, distances,
+            # masses), where a heavy tail can make the 5%-95% width too large for the gap rule
+            negative_under_nonnegative = cand < 0 and p_min >= 0
+            if int_gap_ok and (far_outside or negative_under_nonnegative):
+                is_sentinel[cand_idx] = True
+                changed = True
+        if not changed:
+            break
+
+    rest_mask = ~is_sentinel
+    if np.any(rest_mask & finite_mask):
+        rest_mask = rest_mask & finite_mask
+    rest_median = percentiles(rest_mask, [50])[0]
+    sentinels = unique_vals[is_sentinel]
+    low = sorted(v for v in sentinels if v < rest_median)
+    high = sorted(v for v in sentinels if v > rest_median)
+    return low, high
+
+
+def _format_sentinel(val):
+    if abs(val) > 1e37:
+        return "-FLT_MAX" if val < 0 else "FLT_MAX"
+    if float(val).is_integer() and abs(val) < 1e12:
+        return f"{int(val)}"
+    return f"{val:.4g}"
+
+
+def _low_side_edges(unique_vals, sentinels, reg_lo):
+    """Edges and bin kinds below the regular range, in increasing order, ending just before
+    reg_lo.  Each sentinel gets a bin holding exactly that value (edges at midpoints to its
+    neighbouring distinct values); the stretches of values between sentinels / below the first
+    one / between the last one and reg_lo get an "underflow" bin only if they contain values."""
+    edges, kinds = [], []
+    current = -np.inf  # lower edge of the next bin to open
+    prev_special = -np.inf
+    for s in sorted(sentinels) + [reg_lo]:
+        is_end = s == reg_lo and s not in sentinels
+        between = unique_vals[(unique_vals > prev_special) & (unique_vals < s)]
+        if len(between) > 0:
+            # an underflow bin for the values strictly between the previous special point and s
+            edges.append(current)
+            kinds.append("underflow")
+            current = s if is_end else (between[-1] + s) / 2
+        if is_end:
+            break
+        edges.append(current)
+        kinds.append(f"sentinel:{s}")
+        above = unique_vals[unique_vals > s]
+        current = (s + above[0]) / 2 if len(above) > 0 else np.inf
+        prev_special = s
+    # the last bin opened ends at reg_lo, the first regular edge
+    return edges, kinds
+
+
+def auto_binning(all_vals, return_sentinel_bins=False):
+    """Automatic binning for a variable's values.
+
+    Sentinel values (see _find_sentinels) get their own bins, displayed one bin width each
+    outside the main range, together with underflow/overflow bins in value order.  The main range
+    covers the 5%-95% percentiles of the non-sentinel values.  Integer-valued variables get
+    integer-aligned bins.
+
+    Returns bins, display_bins, display_bin_centers, log_x, and with return_sentinel_bins=True also
+    a list of (display_lo, display_hi, label, side) for the sentinel bins, for annotate_sentinel_bins.
+    """
+
+    all_vals = np.asarray(all_vals)
+    if all_vals.dtype == bool:
+        all_vals = all_vals.astype(int)
+    all_vals = all_vals.astype(float)
 
     # Filter out NaN and infinite values
     all_vals = all_vals[np.isfinite(all_vals)]
-    
     if len(all_vals) == 0:
         raise ValueError("all_vals contains no finite values after filtering NaN/inf")
 
-    if all_vals.dtype == bool:
-        all_vals = all_vals.astype(int)
+    log_x = False
+    unique_vals, unique_counts = np.unique(all_vals, return_counts=True)
 
-    all_vals = np.array(all_vals)
+    # two-valued variables (flags): one bin per value, no sentinel handling
+    if len(unique_vals) <= 2:
+        if len(unique_vals) == 1:
+            bins = np.array([unique_vals[0] - 0.5, unique_vals[0] + 0.5])
+        else:
+            bins = np.array([unique_vals[0] - 0.5, (unique_vals[0] + unique_vals[1]) / 2, unique_vals[1] + 0.5])
+        print("choosing two bins:", bins)
+        display_bins = bins.copy()
+        display_bin_centers = (display_bins[:-1] + display_bins[1:]) / 2
+        if return_sentinel_bins:
+            return bins, display_bins, display_bin_centers, log_x, []
+        return bins, display_bins, display_bin_centers, log_x
 
-    min_val = np.min(all_vals)
-    max_val = np.max(all_vals)
+    low_sentinels, high_sentinels = _find_sentinels(all_vals, unique_vals, unique_counts)
+    if low_sentinels or high_sentinels:
+        print(f"sentinel bins: low {low_sentinels}, high {high_sentinels}")
+    vals = all_vals[~np.isin(all_vals, low_sentinels + high_sentinels)]
 
-    # calculate the 5% and 95% edges of all_vals
-    lower_common_edge = np.percentile(all_vals[(all_vals > -1e10) & (all_vals < 1e10)], 5)
-    upper_common_edge = np.percentile(all_vals[(all_vals > -1e10) & (all_vals < 1e10)], 95)
-
-    if min_val != lower_common_edge:
-        print("including underflow")
-        include_underflow = True
-    if max_val != upper_common_edge:
-        print("including overflow")
-        include_overflow = True
+    in_range_vals = vals[(vals > -1e10) & (vals < 1e10)]
+    if len(in_range_vals) == 0:
+        in_range_vals = vals
+    min_val = np.min(vals)
+    max_val = np.max(vals)
+    lower_common_edge = np.percentile(in_range_vals, 5)
+    upper_common_edge = np.percentile(in_range_vals, 95)
+    is_integer_valued = np.all(np.mod(vals, 1) == 0)
 
     print(f"choosing bins automatically, min_val = {min_val:.4e}, max_val = {max_val:.4e}, lower_common_edge = {lower_common_edge:.4e}, upper_common_edge = {upper_common_edge:.4e}")
 
-    # if min_val, lower_common_edge, max_val, upper_common_edge are all integers, then use integers for the bins
-    if (min_val.is_integer() and lower_common_edge.is_integer() and max_val.is_integer() and upper_common_edge.is_integer()
-                and -1e6 < lower_common_edge and upper_common_edge < 1e6 and upper_common_edge - lower_common_edge <= 30):
-        bins = np.arange(lower_common_edge, upper_common_edge + 2) - 0.5
-        print("choosing integer bins:", bins)
-    elif len(np.unique(all_vals)) == 2:
-        bins = np.array([min_val - 0.5, (min_val + max_val) / 2, max_val + 0.5])
-        print("choosing two bins: ", bins)
-        include_overflow = False
-        include_underflow = False
+    if is_integer_valued and -1e6 < lower_common_edge and upper_common_edge < 1e6:
+        lo = np.floor(lower_common_edge)
+        hi = np.ceil(upper_common_edge)
+        # integer-aligned bins, each holding the same number of integer values
+        step = max(1, int(np.ceil((hi - lo + 1) / TARGET_NUM_BINS)))
+        num_bins = int(np.ceil((hi - lo + 1) / step))
+        reg_bins = lo - 0.5 + step * np.arange(num_bins + 1)
+        print(f"choosing integer bins (step {step}):", reg_bins)
     elif 0 < lower_common_edge and 10_000 < upper_common_edge and np.log10(upper_common_edge) - np.log10(lower_common_edge) > 3:
-        bins = np.logspace(np.log10(lower_common_edge) - 0.01, np.log10(upper_common_edge) + 0.01, 21)
-        print("choosing log bins:", bins)
+        reg_bins = np.logspace(np.log10(lower_common_edge) - 0.01, np.log10(upper_common_edge) + 0.01, TARGET_NUM_BINS + 1)
+        print("choosing log bins:", reg_bins)
         log_x = True
     else:
         width = upper_common_edge - lower_common_edge
-        bins = np.linspace(lower_common_edge - 0.01, upper_common_edge + 0.01, 21)
-        print("choosing linear bins:", bins)
+        pad = 1e-3 * width if width > 0 else 0.01 * max(abs(lower_common_edge), 1.0)
+        reg_bins = np.linspace(lower_common_edge - pad, upper_common_edge + pad, TARGET_NUM_BINS + 1)
+        print("choosing linear bins:", reg_bins)
 
-    # Initialize display_bins before calling add_underflow_overflow
-    display_bins = bins.copy()
-    bins, display_bins = add_underflow_overflow(bins, display_bins, include_overflow, include_underflow, log_x)
+    # a sentinel that ends up inside the (padded) regular range is just binned normally
+    low_sentinels = [v for v in low_sentinels if v < reg_bins[0]]
+    high_sentinels = [v for v in high_sentinels if v > reg_bins[-1]]
+    low_edges, low_kinds = _low_side_edges(unique_vals[unique_vals < reg_bins[0]], low_sentinels, reg_bins[0])
+    # the high side is the mirror image of the low side
+    neg_edges, neg_kinds = _low_side_edges(np.sort(-unique_vals[unique_vals > reg_bins[-1]]),
+                                           sorted(-v for v in high_sentinels), -reg_bins[-1])
+    high_edges = [-e for e in neg_edges[::-1]]
+    high_kinds = [f"sentinel:{-float(k[9:])}" if k.startswith("sentinel:") else "overflow" for k in neg_kinds[::-1]]
+    bins = np.concatenate([low_edges, reg_bins, high_edges])
+
+    # display edges: every extra bin (underflow, overflow, sentinel) gets the width of the
+    # neighbouring regular bin, in log10 space for log_x
+    to_u = np.log10 if log_x else (lambda x: x)
+    from_u = (lambda u: 10**u) if log_x else (lambda u: u)
+    reg_u = to_u(reg_bins)
+    low_width = reg_u[1] - reg_u[0]
+    high_width = reg_u[-1] - reg_u[-2]
+    display_u = np.concatenate([
+        reg_u[0] - low_width * np.arange(len(low_kinds), 0, -1),
+        reg_u,
+        reg_u[-1] + high_width * np.arange(1, len(high_kinds) + 1),
+    ])
+    display_bins = from_u(display_u)
+
+    sentinel_bins = []
+    n_reg = len(reg_bins) - 1
+    for i, kind in enumerate(low_kinds):
+        if kind.startswith("sentinel:"):
+            sentinel_bins.append((display_bins[i], display_bins[i + 1], _format_sentinel(float(kind[9:])), "low"))
+    for j, kind in enumerate(high_kinds):
+        i = len(low_kinds) + n_reg + j
+        if kind.startswith("sentinel:"):
+            sentinel_bins.append((display_bins[i], display_bins[i + 1], _format_sentinel(float(kind[9:])), "high"))
 
     if not np.all(np.diff(bins) > 0):
         raise ValueError(f"bins is not sorted: {bins}")
+    if len(bins) != len(display_bins):
+        raise ValueError(f"bins and display_bins have different lengths: {bins}, {display_bins}")
 
     if log_x:
         display_bin_centers = np.sqrt(display_bins[:-1] * display_bins[1:])
     else:
         display_bin_centers = (display_bins[:-1] + display_bins[1:]) / 2
 
+    if return_sentinel_bins:
+        return bins, display_bins, display_bin_centers, log_x, sentinel_bins
     return bins, display_bins, display_bin_centers, log_x
+
+
+def annotate_sentinel_bins(axes, sentinel_bins, label_ax=None):
+    """Shade sentinel bins on each of `axes`, and mark each with a tick at its centre, labelled
+    with the sentinel's value (rotated) on label_ax, normally the bottom axis.  When there are
+    sentinel bins, the regular x ticks are restricted to the non-sentinel range, since tick values
+    inside the sentinel bins would be meaningless."""
+    if not sentinel_bins:
+        return
+    inner_lo = max([hi for lo, hi, _, side in sentinel_bins if side == "low"], default=-np.inf)
+    inner_hi = min([lo for lo, hi, _, side in sentinel_bins if side == "high"], default=np.inf)
+    for ax in axes:
+        x_lo, x_hi = ax.get_xlim()
+        for lo, hi, _, _ in sentinel_bins:
+            ax.axvspan(lo, hi, color="0.85", alpha=0.5, zorder=0, lw=0)
+        ticks = [t for t in ax.get_xticks() if inner_lo <= t <= inner_hi]
+        ax.set_xticks(ticks)
+        # sentinel ticks are minor ticks, so the regular (major) tick labels keep their formatting
+        centers = [np.sqrt(lo * hi) if ax.get_xscale() == "log" else (lo + hi) / 2 for lo, hi, _, _ in sentinel_bins]
+        labels = [label for _, _, label, _ in sentinel_bins] if ax is label_ax else [""] * len(sentinel_bins)
+        ax.set_xticks(centers, labels, minor=True)
+        ax.tick_params(axis="x", which="minor", labelrotation=90, labelsize=8)
+        ax.set_xlim(x_lo, x_hi)
 
 
 def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov, mc_pred_counts, pred_counts,
@@ -417,8 +618,9 @@ def make_histogram_plot(
         selname=None,
         dont_load_rw_from_systematic_cache=False, dont_load_detvar_from_systematic_cache=False,
         use_rw_systematics=False, weights_df=None,
+        require_all_rw_events=False,  # raise SuspectedPolarsCorruption if any prediction event lacks weights
         use_detvar_systematics=False, detvar_df=None,
-        use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=5000, num_bootstrap_samples_detvar=5000,
+        use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=None, num_bootstrap_samples_detvar=None,  # None = exact analytic bootstrap limit
         return_p_value_info=False,
 
         # optional detector variation histogram plot
@@ -474,8 +676,9 @@ def make_histogram_plot(
         else:
             all_vals = pred_vals
 
-        bins, display_bins, display_bin_centers, log_x = auto_binning(all_vals)
+        bins, display_bins, display_bin_centers, log_x, sentinel_bins = auto_binning(all_vals, return_sentinel_bins=True)
     else:
+        sentinel_bins = []
         bins, display_bins = add_underflow_overflow(bins, bins, include_overflow, include_underflow, log_x)
         if log_x:
             display_bin_centers = np.sqrt(display_bins[:-1] * display_bins[1:])
@@ -616,7 +819,7 @@ def make_histogram_plot(
         rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
             pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, 
             dont_load_rw_from_systematic_cache=dont_load_rw_from_systematic_cache, weights_df=weights_df,
-            net_weight_var=net_weight_var
+            net_weight_var=net_weight_var, require_all_events=require_all_rw_events,
         )
         combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
         for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
@@ -901,6 +1104,10 @@ def make_histogram_plot(
             ax3.text(-0.1, -0.3, f"{page_num}", transform=ax3.transAxes, fontsize=8, ha="left", va="bottom")
         else:
             ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
+    annotate_sentinel_bins([ax1, ax2] if include_ratio else [ax1], sentinel_bins, label_ax=ax2 if include_ratio else ax1)
+    if include_ratio:
+        ax1.set_xticklabels([])
+
     if vertical_lines is not None:
         for x_line in vertical_lines:
             ax1.axvline(x_line, color="k", ls="--", lw=1)
