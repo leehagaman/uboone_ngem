@@ -359,6 +359,28 @@ def auto_binning(all_vals, return_sentinel_bins=False):
     return bins, display_bins, display_bin_centers, log_x
 
 
+def widen_spacer_for_xlabel(fig, gs, spacer_row, upper_ax, upper_row, lower_ax, min_gap_px=35, max_iter=5):
+    """Grow the height ratio of the blank spacer row in `gs` until upper_ax's x-axis label sits at
+    least min_gap_px above the top of lower_ax.  Long rotated sentinel tick labels push the x label
+    down into the next panel otherwise.  upper_ax's pixel height divided by its height ratio gives the
+    pixels-per-ratio-unit conversion used to size each step."""
+    ratios = list(gs.get_height_ratios())
+    for _ in range(max_iter):
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        gap = upper_ax.xaxis.label.get_window_extent(renderer).y0 - lower_ax.get_window_extent(renderer).y1
+        if gap >= min_gap_px:
+            return
+        unit_px = upper_ax.get_window_extent(renderer).height / ratios[upper_row]
+        ratios[spacer_row] += (min_gap_px - gap) / unit_px
+        gs.set_height_ratios(ratios)
+        # existing axes don't follow the gridspec automatically
+        for ax in fig.axes:
+            subplotspec = ax.get_subplotspec()
+            if subplotspec is not None and subplotspec.get_gridspec() is gs:
+                ax.set_position(subplotspec.get_position(fig))
+
+
 def annotate_sentinel_bins(axes, sentinel_bins, label_ax=None):
     """Shade sentinel bins on each of `axes`, and mark each with a tick at its centre, labelled
     with the sentinel's value (rotated) on label_ax, normally the bottom axis.  When there are
@@ -387,7 +409,9 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         include_total=True, include_pred_stat=True, include_data_stat=False, 
         include_rw=True, just_genie_breakdown=False,
         include_detvar=True, just_detvar_breakdown=False, detvar_df=None,
-        print_sys_breakdown=False):
+        print_sys_breakdown=False, ax=None, title="Systematic Breakdown", legend_fontsize=10):
+    """Fractional-error breakdown.  With ax=None a new figure is made (and optionally saved/shown);
+    otherwise the curves are drawn onto ax, e.g. a panel of a larger figure."""
 
     if include_detvar and detvar_df is None:
         raise ValueError("detvar_df must be provided if include_detvar is True")
@@ -400,14 +424,16 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         if just_genie_breakdown or include_total or include_pred_stat or include_data_stat:
             raise ValueError(f"trying to plot non-detvar systematic breakdown with just_genie_breakdown! just_genie_breakdown = {just_genie_breakdown}, include_total = {include_total}, include_pred_stat = {include_pred_stat}, include_data_stat = {include_data_stat}")
 
-    plt.figure(figsize=(10, 6))
+    own_figure = ax is None
+    if own_figure:
+        _, ax = plt.subplots(figsize=(10, 6))
 
     if include_total and include_data_stat:
-        custom_step(display_bins, np.sqrt(np.diag(tot_sys_frac_cov)), label="Total (incl. Data Stat)", ls="-", color="k")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_sys_frac_cov)), label="Total (incl. Data Stat)", ls="-", color="k")
         if print_sys_breakdown:
             print(f"Total (incl. Data Stat): {np.sqrt(np.diag(tot_sys_frac_cov))}")
     elif include_total:
-        custom_step(display_bins, np.sqrt(np.diag(tot_pred_sys_frac_cov)), label="Total (no Data Stat)", ls="-", color="k")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_pred_sys_frac_cov)), label="Total (no Data Stat)", ls="-", color="k")
         if print_sys_breakdown:
             print(f"Total (no Data Stat): {np.sqrt(np.diag(tot_pred_sys_frac_cov))}")
     
@@ -415,14 +441,14 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         denom = np.outer(pred_counts, pred_counts)
         pred_stat_frac_cov = np.divide(pred_stat_cov, denom, out=np.zeros_like(pred_stat_cov), where=(denom != 0))
         pred_stat_frac_cov = np.nan_to_num(pred_stat_frac_cov, nan=0, posinf=0, neginf=0)
-        custom_step(display_bins, np.sqrt(np.diag(pred_stat_frac_cov)), label="Pred Stat", ls="-")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(pred_stat_frac_cov)), label="Pred Stat", ls="-")
         if print_sys_breakdown:
             print(f"Pred Stat: {np.sqrt(np.diag(pred_stat_frac_cov))}")
     if include_data_stat:
         denom = np.outer(pred_counts, pred_counts)
         data_stat_frac_cov = np.divide(data_stat_cov, denom, out=np.zeros_like(data_stat_cov), where=(denom != 0))
         data_stat_frac_cov = np.nan_to_num(data_stat_frac_cov, nan=0, posinf=0, neginf=0)
-        custom_step(display_bins, np.sqrt(np.diag(data_stat_frac_cov)), label="Data Stat", ls="-")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(data_stat_frac_cov)), label="Data Stat", ls="-")
         if print_sys_breakdown:
             print(f"Data Stat: {np.sqrt(np.diag(data_stat_frac_cov))}")
 
@@ -455,13 +481,13 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
                 label = "Flux"
             elif rw_sys_name == "reinteraction":
                 label = "Reinteraction"
-            custom_step(display_bins, np.sqrt(np.diag(rw_sys_frac_cov)), label=label)
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(rw_sys_frac_cov)), label=label)
             if print_sys_breakdown:
                 print(f"{rw_sys_name}: {np.sqrt(np.diag(rw_sys_frac_cov))}")
         if just_genie_breakdown:
-            custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE", color="k")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE", color="k")
         else:
-            custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE")
         if print_sys_breakdown:
             print(f"Total GENIE: {np.sqrt(np.diag(tot_genie_frac_cov))}")
     if include_detvar:
@@ -474,42 +500,52 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
             tot_detvar_frac_cov += detvar_sys_frac_cov
             if not just_detvar_breakdown:
                 continue
-            custom_step(display_bins, np.sqrt(np.diag(detvar_sys_frac_cov)), label=detvar_sys_name)
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(detvar_sys_frac_cov)), label=detvar_sys_name)
             if print_sys_breakdown:
                 print(f"{detvar_sys_name}: {np.sqrt(np.diag(detvar_sys_frac_cov))}")
         if just_detvar_breakdown:
-            custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar", color="k")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar", color="k")
         else:
-            custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar")
         if print_sys_breakdown:
             print(f"Total Detvar: {np.sqrt(np.diag(tot_detvar_frac_cov))}")
 
-    plt.legend(ncol=1, loc='upper right', fontsize=10)
+    ax.legend(ncol=1, loc='upper right', fontsize=legend_fontsize)
 
     if log_x:
-        plt.xscale("log")
+        ax.set_xscale("log")
 
-    plt.xlabel(display_var)
-    plt.ylabel("Fractional Error")
-    plt.title("Systematic Breakdown")
-    plt.xlim(display_bins[0], display_bins[-1])
+    ax.set_xlabel(display_var)
+    ax.set_ylabel("Fractional Error")
+    ax.set_title(title)
+    ax.set_xlim(display_bins[0], display_bins[-1])
 
     if include_data_stat:
-        plt.ylim(0, min(1, np.max(np.sqrt(np.diag(tot_sys_frac_cov))) * 1.2))
+        ax.set_ylim(0, min(1, np.max(np.sqrt(np.diag(tot_sys_frac_cov))) * 1.2))
     else:
-        plt.ylim(0, min(1, np.max(np.sqrt(np.diag(tot_pred_sys_frac_cov))) * 1.2))
+        ax.set_ylim(0, min(1, np.max(np.sqrt(np.diag(tot_pred_sys_frac_cov))) * 1.2))
 
-    if savename is not None:
-        plt.savefig(f"../plots/{savename}_systematic_breakdown.pdf")
-    if show: plt.show()
+    if own_figure:
+        if savename is not None:
+            plt.savefig(f"../plots/{savename}_systematic_breakdown.pdf")
+        if show: plt.show()
 
 
 def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x=False, log_y=False,
         additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
-        page_num=None, savename=None, show=True, detvar_df=None):
+        page_num=None, savename=None, show=True, detvar_df=None,
+        axes=None, fractional_difference=False, legend_fontsize=12):
+    """Spectrum of each detector variation (top) and its ratio to the CV (bottom).  Each variation is
+    compared with its own matched CV events, and drawn as cv_counts * (var / matched cv).
+    axes=(ax_spectra, ax_ratio) draws into panels of an existing figure instead of a new one.
+    fractional_difference=True shows (Var - CV)/CV instead of Var/CV, the same difference the
+    DetVar covariance is built from."""
 
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    own_figure = axes is None
+    if own_figure:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    else:
+        ax1, ax2 = axes
 
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
@@ -528,6 +564,8 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
     detvar_plot_vartypes = ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
 
     total_cv_weight = np.sum(get_vals(cv_display_df, DETVAR_WEIGHT_COL))
+    # fixed colour per variation, matching the order (and so the colours) of the DetVar breakdown plot
+    vartype_colors = {vartype: f"C{i}" for i, vartype in enumerate(detvar_plot_vartypes)}
     for vartype in detvar_plot_vartypes:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
@@ -547,11 +585,11 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, weight_col)*additional_scaling_factor*match_weight, bins=bins)[0]
         matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, weight_col)*additional_scaling_factor*match_weight, bins=bins)[0]
 
-        var_over_cv_ratio = matching_cv_counts / matching_var_counts
-        var_over_cv_ratio = np.nan_to_num(var_over_cv_ratio, nan=0, posinf=0, neginf=0)
+        # bins with no matched CV events have no defined ratio; they are drawn at Var/CV = 1
+        var_over_cv_ratio = np.divide(matching_var_counts, matching_cv_counts, out=np.ones_like(cv_counts, dtype=float), where=(matching_cv_counts > 0))
         scaled_var_over_cv_ratio = var_over_cv_ratio * cv_counts
 
-        ax1.hist(display_bin_centers, weights=scaled_var_over_cv_ratio, bins=display_bins, label=vartype, histtype="step")
+        ax1.hist(display_bin_centers, weights=scaled_var_over_cv_ratio, bins=display_bins, label=vartype, histtype="step", color=vartype_colors[vartype])
 
         ratios_by_var_dic[vartype] = var_over_cv_ratio
 
@@ -561,19 +599,22 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
     ax1.set_xticklabels([])
 
     for vartype, ratios in ratios_by_var_dic.items():
+        custom_step(display_bins, ratios - 1 if fractional_difference else ratios, ax=ax2, label=vartype, color=vartype_colors[vartype])
 
-        custom_step(display_bins, ratios, ax=ax2, label=vartype)                
-
-        # Draw horizontal line at 1
-        ax2.axhline(y=1, color='k', linestyle='--', linewidth=1)
-        
-        ax2.set_xlabel(display_var)
-        ax2.set_ylabel("Var/CV")
-        ax2.set_xlim(display_bins[0], display_bins[-1])
-        #ax2.set_ylim(0.5, 1.5)
+    reference = 0 if fractional_difference else 1
+    ax2.axhline(y=reference, color='k', linestyle='--', linewidth=1)
+    ax2.set_xlabel(display_var)
+    ax2.set_ylabel("(Var $-$ CV)/CV" if fractional_difference else "Var/CV")
+    ax2.set_xlim(display_bins[0], display_bins[-1])
+    if fractional_difference:
+        # symmetric range that fits the largest difference, between +-0.1 and +-1
+        max_abs_diff = max([np.max(np.abs(r - 1)) for r in ratios_by_var_dic.values()], default=0)
+        half_range = min(1, max(0.1, 1.2 * max_abs_diff))
+        ax2.set_ylim(-half_range, half_range)
+    else:
         ax2.set_ylim(0.75, 1.25)
-        if log_x:
-            ax2.set_xscale("log")
+    if log_x:
+        ax2.set_xscale("log")
 
     ax1.set_ylabel(f"MC Pred counts (no Dirt/EXT)")
     ax1.set_xlim(display_bins[0], display_bins[-1])
@@ -584,14 +625,14 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         ax1.set_ylim(min_nonzero_y / 10, max_y * 10)
     else:
         ax1.set_ylim(0, max_y * 1.2)
-    ax1.legend(ncol=1, loc='upper right', fontsize=12)
+    ax1.legend(ncol=1, loc='upper right', fontsize=legend_fontsize)
 
-    if page_num is not None:
-        ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
-
-    if savename is not None:
-        plt.savefig(f"../plots/{savename}_det_variation_histograms.pdf")
-    if show: plt.show()
+    if own_figure:
+        if page_num is not None:
+            ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
+        if savename is not None:
+            plt.savefig(f"../plots/{savename}_det_variation_histograms.pdf")
+        if show: plt.show()
 
 def make_histogram_plot(
 
@@ -636,6 +677,13 @@ def make_histogram_plot(
         # optional detvar-only fractional uncertainty breakdown plot
         plot_detvar_breakdown=False,
 
+        # optional right-hand column on the same page: full systematic breakdown (top) and
+        # DetVar breakdown (bottom); requires use_rw_systematics and use_detvar_systematics
+        include_sys_breakdown_panels=False,
+        # optional column on the same page: each DetVar variation's spectrum (top) and its
+        # (Var - CV)/CV fractional difference (bottom); requires use_detvar_systematics
+        include_detvar_variation_panels=False,
+
         # optional saving of prediction covariance matrix
         save_pred_cov_matrix=False,
 
@@ -647,6 +695,10 @@ def make_histogram_plot(
         raise ValueError("include_decomposition requires include_data to be True")
     if include_decomposition and not use_rw_systematics:
         raise ValueError("include_decomposition requires use_rw_systematics to be True")
+    if include_sys_breakdown_panels and not (use_rw_systematics and use_detvar_systematics):
+        raise ValueError("include_sys_breakdown_panels requires use_rw_systematics and use_detvar_systematics to be True")
+    if include_detvar_variation_panels and not use_detvar_systematics:
+        raise ValueError("include_detvar_variation_panels requires use_detvar_systematics to be True")
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -687,15 +739,43 @@ def make_histogram_plot(
 
 
     # plotting the main histogram prediction, optionally with ratio and decomposition
+    extra_columns = int(include_sys_breakdown_panels) + int(include_detvar_variation_panels)
+    if extra_columns:
+        # the usual panels in the left column, each set of extra panels in a column to its right
+        fig_height = 12 if include_decomposition else (8 if include_ratio else 6)
+        fig = plt.figure(figsize=(10 * (1 + extra_columns), fig_height))
+        outer_gs = gridspec.GridSpec(1, 1 + extra_columns, figure=fig, wspace=0.2)
+        left_spec = outer_gs[0]
+        next_column = 1
+    if include_sys_breakdown_panels:
+        breakdown_gs = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=outer_gs[next_column], height_ratios=[1, 0.01, 1])
+        next_column += 1
+        ax_sys_breakdown = fig.add_subplot(breakdown_gs[0])
+        # breakdown_gs[1] is left blank as a spacer
+        ax_detvar_breakdown = fig.add_subplot(breakdown_gs[2])
+    if include_detvar_variation_panels:
+        variation_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=outer_gs[next_column], height_ratios=[2, 1], hspace=0.05)
+        next_column += 1
+        ax_variation_spectra = fig.add_subplot(variation_gs[0])
+        ax_variation_frac_diff = fig.add_subplot(variation_gs[1])
     if include_decomposition:
-        fig = plt.figure(figsize=(10, 12))
-        gs = gridspec.GridSpec(4, 1, height_ratios=[2, 1, 0.01, 1])
+        if extra_columns:
+            gs = gridspec.GridSpecFromSubplotSpec(4, 1, subplot_spec=left_spec, height_ratios=[2, 1, 0.01, 1])
+        else:
+            fig = plt.figure(figsize=(10, 12))
+            gs = gridspec.GridSpec(4, 1, height_ratios=[2, 1, 0.01, 1])
         ax1 = fig.add_subplot(gs[0])
         ax2 = fig.add_subplot(gs[1])
         # gs[2] is left blank as a spacer
         ax3 = fig.add_subplot(gs[3])
     elif include_ratio:
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+        if extra_columns:
+            ratio_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=left_spec, height_ratios=[2, 1], hspace=0.05)
+            ax1, ax2 = fig.add_subplot(ratio_gs[0]), fig.add_subplot(ratio_gs[1])
+        else:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    elif extra_columns:
+        ax1 = fig.add_subplot(left_spec)
     else:
         fig, ax1 = plt.subplots(1, 1, figsize=(10, 6))
 
@@ -1104,9 +1184,39 @@ def make_histogram_plot(
             ax3.text(-0.1, -0.3, f"{page_num}", transform=ax3.transAxes, fontsize=8, ha="left", va="bottom")
         else:
             ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
+    if include_sys_breakdown_panels:
+        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov,
+            mc_pred_counts, pred_counts, display_var, display_bins, log_x,
+            include_total=True, include_pred_stat=True, include_data_stat=False,
+            include_rw=True, just_genie_breakdown=False,
+            include_detvar=True, just_detvar_breakdown=False, detvar_df=detvar_df,
+            ax=ax_sys_breakdown, title="Systematic Breakdown", legend_fontsize=8)
+        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov,
+            mc_pred_counts, pred_counts, display_var, display_bins, log_x,
+            include_total=False, include_pred_stat=False, include_data_stat=False,
+            include_rw=False, just_genie_breakdown=False,
+            include_detvar=True, just_detvar_breakdown=True, detvar_df=detvar_df,
+            ax=ax_detvar_breakdown, title="DetVar Breakdown", legend_fontsize=8)
+
+    if include_detvar_variation_panels:
+        make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x, log_y,
+            additional_scaling_factor, detvar_df=detvar_df,
+            axes=(ax_variation_spectra, ax_variation_frac_diff), fractional_difference=True, legend_fontsize=8)
+        ax_variation_spectra.set_title("DetVar Variations")
+        annotate_sentinel_bins([ax_variation_spectra, ax_variation_frac_diff], sentinel_bins, label_ax=ax_variation_frac_diff)
+        ax_variation_spectra.tick_params(axis="x", which="both", labelbottom=False)
+
     annotate_sentinel_bins([ax1, ax2] if include_ratio else [ax1], sentinel_bins, label_ax=ax2 if include_ratio else ax1)
     if include_ratio:
         ax1.set_xticklabels([])
+    if include_decomposition and sentinel_bins:
+        widen_spacer_for_xlabel(fig, gs, spacer_row=2, upper_ax=ax2, upper_row=1, lower_ax=ax3)
+    if include_sys_breakdown_panels:
+        for breakdown_ax in (ax_sys_breakdown, ax_detvar_breakdown):
+            annotate_sentinel_bins([breakdown_ax], sentinel_bins, label_ax=breakdown_ax)
+        if sentinel_bins:
+            widen_spacer_for_xlabel(fig, breakdown_gs, spacer_row=1, upper_ax=ax_sys_breakdown, upper_row=0, lower_ax=ax_detvar_breakdown,
+                                    min_gap_px=60)  # leave room for the lower panel's title
 
     if vertical_lines is not None:
         for x_line in vertical_lines:

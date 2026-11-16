@@ -82,17 +82,28 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_plots", type=int, default=None)
-    parser.add_argument("--vars", type=str, default=None)
-    parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/all_bdt_vars before starting")
+    parser.add_argument("--vars", type=str, default=None,
+                        help="Comma-separated variables to plot, in this page order (default: all training variables, sorted)")
+    parser.add_argument("--output-name", type=str, default="all_bdt_vars",
+                        help="Pages go to plots/<name>/, the combined PDF to plots/<name>.pdf, and the p-value info to "
+                             "plots/<name>_p_value_info.pkl (plots/all_p_value_info.pkl for the default name)")
+    parser.add_argument("--sys-breakdown-panels", action="store_true",
+                        help="Add the systematic and DetVar breakdown panels to each page")
+    parser.add_argument("--detvar-variation-panels", action="store_true",
+                        help="Add each DetVar variation's spectrum and (Var - CV)/CV fractional difference to each page")
+    parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/<output-name> before starting")
     parser.add_argument("--no-systematics", action="store_true", help="Do not use systematics")
     args = parser.parse_args()
 
     if args.vars is None:
-        vars = combined_training_vars
+        vars = sorted(combined_training_vars)
     else:
-        raise ValueError(f"Invalid vars argument: {args.vars}")
-    
-    vars = sorted(vars)
+        vars = [v.strip() for v in args.vars.split(",") if v.strip()]
+        unknown_vars = [v for v in vars if v not in combined_training_vars]
+        if unknown_vars:
+            raise ValueError(f"--vars contains variables that are not training variables: {unknown_vars}")
+    if (args.sys_breakdown_panels or args.detvar_variation_panels) and args.no_systematics:
+        raise ValueError("--sys-breakdown-panels and --detvar-variation-panels require systematics")
     
     if args.num_plots is None:
         args.num_plots = len(vars)
@@ -162,7 +173,7 @@ if __name__ == "__main__":
     data_filter = pl.col("filetype") == "data"
 
     # Create directory for individual pages
-    pages_dir = PROJECT_ROOT / "plots" / "all_bdt_vars"
+    pages_dir = PROJECT_ROOT / "plots" / args.output_name
     
     # Clear previous files if requested
     if args.clear_prev:
@@ -233,6 +244,8 @@ if __name__ == "__main__":
                 include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
                 var=var, title="Preselection", selname="wc_generic_sel",
                 include_ratio=True, include_decomposition=include_decomposition,
+                include_sys_breakdown_panels=args.sys_breakdown_panels,
+                include_detvar_variation_panels=args.detvar_variation_panels,
                 use_rw_systematics=use_rw_systematics, use_detvar_systematics=use_detvar_systematics, detvar_df=detvar_df,
                 page_num=i+1, weights_df=weights_df, require_all_rw_events=True,
                 show=False, return_p_value_info=return_p_value_info,
@@ -257,7 +270,7 @@ if __name__ == "__main__":
     
     # Concatenate all pages into one PDF
     print("\nConcatenating all pages into final PDF...")
-    final_pdf_path = PROJECT_ROOT / "plots" / "all_bdt_vars.pdf"
+    final_pdf_path = PROJECT_ROOT / "plots" / f"{args.output_name}.pdf"
     pdf_writer = PdfWriter()
     
     for page_path in individual_pdf_paths:
@@ -270,7 +283,8 @@ if __name__ == "__main__":
     print(f"Final PDF saved to {final_pdf_path}")
 
     print("saving all_p_value_info to a pickle file...")
-    with open(PROJECT_ROOT / "plots" / "all_p_value_info.pkl", "wb") as f:
+    p_value_info_name = "all_p_value_info.pkl" if args.output_name == "all_bdt_vars" else f"{args.output_name}_p_value_info.pkl"
+    with open(PROJECT_ROOT / "plots" / p_value_info_name, "wb") as f:
         pickle.dump(all_p_value_info, f)
 
     main_end_time = time.time()
