@@ -17,6 +17,7 @@ from tqdm.notebook import tqdm
 import polars as pl
 
 import argparse
+import os
 import time
 import shutil
 from pypdf import PdfWriter
@@ -24,35 +25,85 @@ from pypdf import PdfWriter
 from src.signal_categories import topological_category_labels, topological_category_colors, topological_category_labels_latex, topological_category_hatches, topological_categories_dic
 from src.signal_categories import filetype_category_labels, filetype_category_colors, filetype_category_hatches
 from src.signal_categories import del1g_detailed_category_labels, del1g_detailed_category_colors, del1g_detailed_category_labels_latex, del1g_detailed_category_hatches, del1g_detailed_categories_dic
+from src.signal_categories import del1g_detailed_category_queries
 from src.signal_categories import del1g_simple_category_labels, del1g_simple_category_colors, del1g_simple_category_labels_latex, del1g_simple_category_hatches, del1g_simple_categories_dic
 from src.signal_categories import train_category_labels, train_category_labels_latex
 
-from src.ntuple_variables.pandora_variables import pandora_scalar_second_half_training_vars
 from src.file_locations import intermediate_files_location
 from src.df_helpers import format_duration
 from src.plot_helpers import make_histogram_plot
 from src.ntuple_variables.variables import combined_training_vars
-from src.systematics import get_significance_from_p_value
+from src.systematics import get_significance_from_p_value, SuspectedPolarsCorruption
+
+import signal
+import subprocess
+
+MAX_RESTARTS = 5
+CHILD_ENV_VAR = "PLOT_MANY_VARIABLES_CHILD"
+CORRUPTION_EXIT_CODE = 3
+# a crashed child (polars has segfaulted / aborted under heavy machine load) is restarted; a child
+# stopped by the user (Ctrl-C, kill) or by the OOM killer (SIGKILL) is not
+RESTARTABLE_SIGNALS = {signal.SIGSEGV, signal.SIGABRT, signal.SIGBUS, signal.SIGILL, signal.SIGFPE}
+
+
+def run_supervisor():
+    """Run the plotting in a child process, restarting it after a crash or suspected corruption.
+
+    Under heavy machine load polars 1.44 has corrupted its own memory inside this long-running
+    process: events silently dropped from the weights join, "capacity overflow" panics, and
+    segfaults.  None of that is recoverable inside the process, so the work runs in a child, and a
+    fresh child resumes at the failed variable (finished pages are skipped).  --clear-prev only
+    applies to the first child, so restarts keep the finished pages."""
+    argv = sys.argv[1:]
+    env = dict(os.environ, **{CHILD_ENV_VAR: "1"})
+    for attempt in range(MAX_RESTARTS + 1):
+        returncode = subprocess.run([sys.executable, "-X", "faulthandler", __file__] + argv, env=env).returncode
+        if returncode == 0:
+            return 0
+        crashed = returncode < 0 and -returncode in RESTARTABLE_SIGNALS
+        if not (crashed or returncode == CORRUPTION_EXIT_CODE):
+            return returncode if returncode > 0 else 128 - returncode
+        reason = f"crashed with {signal.Signals(-returncode).name}" if crashed else "reported suspected polars corruption"
+        if attempt == MAX_RESTARTS:
+            print(f"ERROR: plotting child {reason}; giving up after {MAX_RESTARTS} restarts")
+            return 1
+        print(f"\nWARNING: plotting child {reason}; restarting in a fresh process "
+              f"(restart {attempt + 1}/{MAX_RESTARTS}, finished pages are kept)...", flush=True)
+        argv = [a for a in argv if a != "--clear-prev"]
 
 plt.rcParams.update({'font.size': 12})
 
+
+if __name__ == "__main__" and os.environ.get(CHILD_ENV_VAR) != "1":
+    sys.exit(run_supervisor())
 
 if __name__ == "__main__":
     main_start_time = time.time()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_plots", type=int, default=None)
-    parser.add_argument("--vars", type=str, default=None)
-    parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/all_bdt_vars before starting")
+    parser.add_argument("--vars", type=str, default=None,
+                        help="Comma-separated variables to plot, in this page order (default: all training variables, sorted)")
+    parser.add_argument("--output-name", type=str, default="all_bdt_vars",
+                        help="Pages go to plots/<name>/, the combined PDF to plots/<name>.pdf, and the p-value info to "
+                             "plots/<name>_p_value_info.pkl (plots/all_p_value_info.pkl for the default name)")
+    parser.add_argument("--sys-breakdown-panels", action="store_true",
+                        help="Add the systematic and DetVar breakdown panels to each page")
+    parser.add_argument("--detvar-variation-panels", action="store_true",
+                        help="Add each DetVar variation's spectrum and (Var - CV)/CV fractional difference to each page")
+    parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/<output-name> before starting")
     parser.add_argument("--no-systematics", action="store_true", help="Do not use systematics")
     args = parser.parse_args()
 
     if args.vars is None:
-        vars = combined_training_vars
+        vars = sorted(combined_training_vars)
     else:
-        raise ValueError(f"Invalid vars argument: {args.vars}")
-    
-    vars = sorted(vars)
+        vars = [v.strip() for v in args.vars.split(",") if v.strip()]
+        unknown_vars = [v for v in vars if v not in combined_training_vars]
+        if unknown_vars:
+            raise ValueError(f"--vars contains variables that are not training variables: {unknown_vars}")
+    if (args.sys_breakdown_panels or args.detvar_variation_panels) and args.no_systematics:
+        raise ValueError("--sys-breakdown-panels and --detvar-variation-panels require systematics")
     
     if args.num_plots is None:
         args.num_plots = len(vars)
@@ -63,28 +114,66 @@ if __name__ == "__main__":
 
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-    print("loading presel_detvar_df_train_vars.parquet...")
-    presel_detvar_df = pl.read_parquet(f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet")
-    print(f"{presel_detvar_df.shape=}")
+    # Only the columns a plot needs are held in memory: the shared "base" columns (event keys,
+    # filetype, weights, POT normalization, and the truth columns behind the del1g_detailed
+    # categories) are loaded once, and each variable's own column is read per plot.  Reading the
+    # full files (~115 GB DetVar + ~40 GB presel + ~30 GB weights, ~200 GB peak RSS) exhausted
+    # the shared machine's memory, and under that pressure the runs were killed or polars
+    # crashed / silently corrupted joins.
+    presel_path = f"{intermediate_files_location}/presel_df_train_vars.parquet"
+    detvar_path = f"{intermediate_files_location}/detvar_presel_df_train_vars.parquet"
+    presel_schema = pl.read_parquet_schema(presel_path)
+    detvar_schema = pl.read_parquet_schema(detvar_path)
 
-    print("loading all_df.parquet...")
-    all_df = pl.read_parquet(f"{intermediate_files_location}/presel_df_train_vars.parquet")
-    print(f"{all_df.shape=}")
+    category_columns = set()
+    for query in del1g_detailed_category_queries:
+        category_columns |= set(eval(query, {"pl": pl, "__builtins__": {}}).meta.root_names())
+    base_columns = (
+        {"filename", "run", "subrun", "event", "filetype", "vartype",
+         "wc_net_weight_open_data", "wc_net_weight", "wc_net_weight_sce_recomb2", "pandora_weightTune",
+         "normal_overlay", "del1g_overlay", "iso1g_overlay"}
+        | {c for c in list(presel_schema) + list(detvar_schema) if c.startswith(("norm_goal_pot_", "normalizing_run_period_"))}
+        | category_columns
+    )
+
+    def read_base_columns(path, schema):
+        missing_vars = [v for v in vars if v not in schema]
+        if missing_vars:
+            raise ValueError(f"{path} is missing {len(missing_vars)} plotted variables, e.g. {missing_vars[:5]}")
+        return pl.read_parquet(path, columns=[c for c in schema if c in base_columns])
+
+    def with_var_column(base_df, path, var):
+        # parquet row order is fixed, so the single-column read lines up with the base columns row by row
+        var_df = pl.read_parquet(path, columns=[var])
+        if var_df.height != base_df.height:
+            raise SuspectedPolarsCorruption(f"read {var_df.height} rows of {var} from {path}, expected {base_df.height}")
+        return base_df.with_columns(var_df.get_column(var)) if var not in base_df.columns else base_df
+
+    print("loading base columns of detvar_presel_df_train_vars.parquet...")
+    presel_detvar_base_df = read_base_columns(detvar_path, detvar_schema)
+    print(f"{presel_detvar_base_df.shape=}")
+
+    print("loading base columns of presel_df_train_vars.parquet...")
+    all_base_df = read_base_columns(presel_path, presel_schema)
+    print(f"{all_base_df.shape=}")
 
     if not args.no_systematics:
         print("loading presel_weights_df.parquet...")
         presel_weights_df = pl.read_parquet(f"{intermediate_files_location}/presel_weights_df.parquet")
         print(f"{presel_weights_df.shape=}")
 
-    pred_df = all_df.filter(
-        ~pl.col("filetype").is_in(["data", "isotropic_one_gamma_overlay", "delete_one_gamma_overlay"])
-    )
-    data_df = all_df.filter(
-        pl.col("filetype") == "data"
-    )
+    # explicit allowlist of the open-data prediction samples; fake-data samples (nuwro_fake_data,
+    # gibuu_fake_data) have null wc_net_weight_open_data, and raw iso1g/del1g are replaced by
+    # NC_coherent_1g_reweighted
+    pred_filter = pl.col("filetype").is_in([
+        "nu_overlay", "nue_overlay", "dirt_overlay", "ext",
+        "nc_pi0_overlay", "numucc_pi0_overlay", "ncdeltarad_overlay",
+        "NC_coherent_1g_reweighted", "numucc_rad_corr_sim",
+    ])
+    data_filter = pl.col("filetype") == "data"
 
     # Create directory for individual pages
-    pages_dir = PROJECT_ROOT / "plots" / "all_bdt_vars"
+    pages_dir = PROJECT_ROOT / "plots" / args.output_name
     
     # Clear previous files if requested
     if args.clear_prev:
@@ -130,6 +219,11 @@ if __name__ == "__main__":
         
         print("\nplotting", var, f"({i+1}/{len(vars)})")
 
+        all_df = with_var_column(all_base_df, presel_path, var)
+        pred_df = all_df.filter(pred_filter)
+        data_df = all_df.filter(data_filter)
+        del all_df
+
         if args.no_systematics:
             use_rw_systematics = False
             use_detvar_systematics = False
@@ -140,19 +234,28 @@ if __name__ == "__main__":
         else:
             use_rw_systematics = True
             use_detvar_systematics = True
-            detvar_df = presel_detvar_df
+            detvar_df = with_var_column(presel_detvar_base_df, detvar_path, var)
             include_decomposition = True
             weights_df = presel_weights_df
             return_p_value_info = True
 
-        p_value_info_dic = make_histogram_plot(pred_sel_df=pred_df, data_sel_df=data_df, 
-            include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
-            var=var, title="Preselection", selname="wc_generic_sel",
-            include_ratio=True, include_decomposition=include_decomposition,
-            use_rw_systematics=use_rw_systematics, use_detvar_systematics=use_detvar_systematics, detvar_df=detvar_df,
-            page_num=i+1, weights_df=weights_df,
-            show=False, return_p_value_info=return_p_value_info,
-            )
+        try:
+            p_value_info_dic = make_histogram_plot(pred_sel_df=pred_df, data_sel_df=data_df,
+                include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
+                var=var, title="Preselection", selname="wc_generic_sel",
+                include_ratio=True, include_decomposition=include_decomposition,
+                include_sys_breakdown_panels=args.sys_breakdown_panels,
+                include_detvar_variation_panels=args.detvar_variation_panels,
+                use_rw_systematics=use_rw_systematics, use_detvar_systematics=use_detvar_systematics, detvar_df=detvar_df,
+                page_num=i+1, weights_df=weights_df, require_all_rw_events=True,
+                show=False, return_p_value_info=return_p_value_info,
+                )
+        except BaseException as exc:
+            # pyo3 PanicException derives from BaseException, not Exception
+            if isinstance(exc, SuspectedPolarsCorruption) or type(exc).__name__ == "PanicException":
+                print(f"\nWARNING: suspected polars data corruption while plotting {var}: {type(exc).__name__}: {exc}", flush=True)
+                sys.exit(CORRUPTION_EXIT_CODE)
+            raise
 
         all_p_value_info.append(p_value_info_dic)
         
@@ -167,7 +270,7 @@ if __name__ == "__main__":
     
     # Concatenate all pages into one PDF
     print("\nConcatenating all pages into final PDF...")
-    final_pdf_path = PROJECT_ROOT / "plots" / "all_bdt_vars.pdf"
+    final_pdf_path = PROJECT_ROOT / "plots" / f"{args.output_name}.pdf"
     pdf_writer = PdfWriter()
     
     for page_path in individual_pdf_paths:
@@ -180,7 +283,8 @@ if __name__ == "__main__":
     print(f"Final PDF saved to {final_pdf_path}")
 
     print("saving all_p_value_info to a pickle file...")
-    with open(PROJECT_ROOT / "plots" / "all_p_value_info.pkl", "wb") as f:
+    p_value_info_name = "all_p_value_info.pkl" if args.output_name == "all_bdt_vars" else f"{args.output_name}_p_value_info.pkl"
+    with open(PROJECT_ROOT / "plots" / p_value_info_name, "wb") as f:
         pickle.dump(all_p_value_info, f)
 
     main_end_time = time.time()

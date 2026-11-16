@@ -114,71 +114,294 @@ def add_underflow_overflow(bins, display_bins, include_overflow, include_underfl
     return bins, display_bins
 
 
-def auto_binning(all_vals):
+# values that are always treated as sentinels when they sit at the edge of a variable's
+# distribution, however rare: float max (ROOT/pandora defaults), +-2^31 (int defaults), and
+# common hand-chosen defaults
+KNOWN_SENTINEL_VALUES = [
+    -3.4028234663852886e+38, 3.4028234663852886e+38, -3.402408285460702e+38, 3.402408285460702e+38,
+    -2147483648.0, 2147483648.0, 2147483647.0, -9999999.0, -999999.0, -99999.0, -9999.0, 9999.0, -999.0,
+]
+SENTINEL_MIN_FRACTION = 0.01   # a value holding at least this fraction of events can be a sentinel...
+SENTINEL_MIN_GAP_FRACTION = 0.5  # ...if it lies further than this fraction of the other values' 5%-95% width outside them
+MAX_SENTINELS = 6
+TARGET_NUM_BINS = 20
 
-    include_underflow = False
-    include_overflow = False
-    log_x = False
+
+def _is_known_sentinel(val):
+    return any(np.isclose(val, s, rtol=1e-6, atol=0) for s in KNOWN_SENTINEL_VALUES)
+
+
+def _find_sentinels(vals, unique_vals, unique_counts):
+    """Values that look like sentinels (default values for "not filled"), split into those below
+    and above the bulk of the distribution.
+
+    Candidates are known default values (any frequency) and any value holding at least
+    SENTINEL_MIN_FRACTION of events.  A candidate is a sentinel if it lies outside the 5%-95%
+    range of the non-sentinel values by more than SENTINEL_MIN_GAP_FRACTION of that range's width
+    (known defaults only need to lie outside it), or if it is negative while essentially all other
+    values (above their 0.1% percentile) are non-negative.  Natural point masses at a boundary (e.g. 0 for
+    a non-negative variable, or cos = -1) are deliberately not sentinels.  For integer-valued variables it must also be more than 1 away from all other values, so that
+    e.g. a zero count next to counts of 1-2 is not called a sentinel; at least 3 other distinct
+    values are required.  Rare
+    garbage values beyond a sentinel don't hide it; they go into underflow/overflow bins."""
+    # everything works on the distinct values and their counts, so this stays fast for millions of events
+    n_total = unique_counts.sum()
+    is_integer_valued = np.all(np.mod(unique_vals, 1) == 0)
+    frequent = unique_vals[unique_counts / n_total >= SENTINEL_MIN_FRACTION]
+    known_mask = np.zeros(len(unique_vals), dtype=bool)
+    for known_val in KNOWN_SENTINEL_VALUES:
+        known_mask |= np.abs(unique_vals - known_val) <= 1e-6 * abs(known_val)
+    known = unique_vals[known_mask].tolist()
+    candidates = sorted(set(frequent.tolist()) | set(known),
+                        key=lambda v: -unique_counts[np.searchsorted(unique_vals, v)])
+    finite_mask = np.abs(unique_vals) < 1e10
+
+    def percentiles(mask, qs):
+        # inverse-CDF percentiles of the values selected by mask, from the counts
+        sel_vals, sel_counts = unique_vals[mask], unique_counts[mask]
+        cum = np.cumsum(sel_counts)
+        idx = np.searchsorted(cum, np.asarray(qs) / 100 * cum[-1], side="left")
+        return sel_vals[np.clip(idx, 0, len(sel_vals) - 1)]
+
+    is_sentinel = np.zeros(len(unique_vals), dtype=bool)
+    # repeat, since removing one sentinel can expose another (two sentinels distort each other's percentiles)
+    for _ in range(3):
+        changed = False
+        for cand in candidates:
+            cand_idx = np.searchsorted(unique_vals, cand)
+            if is_sentinel[cand_idx] or is_sentinel.sum() >= MAX_SENTINELS:
+                continue
+            rest_mask = ~is_sentinel
+            rest_mask[cand_idx] = False
+            finite_rest_mask = rest_mask & finite_mask
+            if finite_rest_mask.sum() < 3:
+                continue
+            p_min, p5, p95 = percentiles(finite_rest_mask, [0.1, 5, 95])
+            known_cand = _is_known_sentinel(cand)
+            min_gap = 0.0 if known_cand else SENTINEL_MIN_GAP_FRACTION * (p95 - p5)
+            # integer-valued: a sentinel must be more than one unit away from the other values
+            rest_vals = unique_vals[rest_mask]
+            int_gap_ok = known_cand or not is_integer_valued or (cand < rest_vals[0] - 1 or cand > rest_vals[-1] + 1)
+            far_outside = cand < p5 - min_gap or cand > p95 + min_gap
+            # a negative value under an otherwise non-negative variable (energies, distances,
+            # masses), where a heavy tail can make the 5%-95% width too large for the gap rule
+            negative_under_nonnegative = cand < 0 and p_min >= 0
+            if int_gap_ok and (far_outside or negative_under_nonnegative):
+                is_sentinel[cand_idx] = True
+                changed = True
+        if not changed:
+            break
+
+    rest_mask = ~is_sentinel
+    if np.any(rest_mask & finite_mask):
+        rest_mask = rest_mask & finite_mask
+    rest_median = percentiles(rest_mask, [50])[0]
+    sentinels = unique_vals[is_sentinel]
+    low = sorted(v for v in sentinels if v < rest_median)
+    high = sorted(v for v in sentinels if v > rest_median)
+    return low, high
+
+
+def _format_sentinel(val):
+    if abs(val) > 1e37:
+        return "-FLT_MAX" if val < 0 else "FLT_MAX"
+    if float(val).is_integer() and abs(val) < 1e12:
+        return f"{int(val)}"
+    return f"{val:.4g}"
+
+
+def _low_side_edges(unique_vals, sentinels, reg_lo):
+    """Edges and bin kinds below the regular range, in increasing order, ending just before
+    reg_lo.  Each sentinel gets a bin holding exactly that value (edges at midpoints to its
+    neighbouring distinct values); the stretches of values between sentinels / below the first
+    one / between the last one and reg_lo get an "underflow" bin only if they contain values."""
+    edges, kinds = [], []
+    current = -np.inf  # lower edge of the next bin to open
+    prev_special = -np.inf
+    for s in sorted(sentinels) + [reg_lo]:
+        is_end = s == reg_lo and s not in sentinels
+        between = unique_vals[(unique_vals > prev_special) & (unique_vals < s)]
+        if len(between) > 0:
+            # an underflow bin for the values strictly between the previous special point and s
+            edges.append(current)
+            kinds.append("underflow")
+            current = s if is_end else (between[-1] + s) / 2
+        if is_end:
+            break
+        edges.append(current)
+        kinds.append(f"sentinel:{s}")
+        above = unique_vals[unique_vals > s]
+        current = (s + above[0]) / 2 if len(above) > 0 else np.inf
+        prev_special = s
+    # the last bin opened ends at reg_lo, the first regular edge
+    return edges, kinds
+
+
+def auto_binning(all_vals, return_sentinel_bins=False):
+    """Automatic binning for a variable's values.
+
+    Sentinel values (see _find_sentinels) get their own bins, displayed one bin width each
+    outside the main range, together with underflow/overflow bins in value order.  The main range
+    covers the 5%-95% percentiles of the non-sentinel values.  Integer-valued variables get
+    integer-aligned bins.
+
+    Returns bins, display_bins, display_bin_centers, log_x, and with return_sentinel_bins=True also
+    a list of (display_lo, display_hi, label, side) for the sentinel bins, for annotate_sentinel_bins.
+    """
+
+    all_vals = np.asarray(all_vals)
+    if all_vals.dtype == bool:
+        all_vals = all_vals.astype(int)
+    all_vals = all_vals.astype(float)
 
     # Filter out NaN and infinite values
     all_vals = all_vals[np.isfinite(all_vals)]
-    
     if len(all_vals) == 0:
         raise ValueError("all_vals contains no finite values after filtering NaN/inf")
 
-    if all_vals.dtype == bool:
-        all_vals = all_vals.astype(int)
+    log_x = False
+    unique_vals, unique_counts = np.unique(all_vals, return_counts=True)
 
-    all_vals = np.array(all_vals)
+    # two-valued variables (flags): one bin per value, no sentinel handling
+    if len(unique_vals) <= 2:
+        if len(unique_vals) == 1:
+            bins = np.array([unique_vals[0] - 0.5, unique_vals[0] + 0.5])
+        else:
+            bins = np.array([unique_vals[0] - 0.5, (unique_vals[0] + unique_vals[1]) / 2, unique_vals[1] + 0.5])
+        print("choosing two bins:", bins)
+        display_bins = bins.copy()
+        display_bin_centers = (display_bins[:-1] + display_bins[1:]) / 2
+        if return_sentinel_bins:
+            return bins, display_bins, display_bin_centers, log_x, []
+        return bins, display_bins, display_bin_centers, log_x
 
-    min_val = np.min(all_vals)
-    max_val = np.max(all_vals)
+    low_sentinels, high_sentinels = _find_sentinels(all_vals, unique_vals, unique_counts)
+    if low_sentinels or high_sentinels:
+        print(f"sentinel bins: low {low_sentinels}, high {high_sentinels}")
+    vals = all_vals[~np.isin(all_vals, low_sentinels + high_sentinels)]
 
-    # calculate the 5% and 95% edges of all_vals
-    lower_common_edge = np.percentile(all_vals[(all_vals > -1e10) & (all_vals < 1e10)], 5)
-    upper_common_edge = np.percentile(all_vals[(all_vals > -1e10) & (all_vals < 1e10)], 95)
-
-    if min_val != lower_common_edge:
-        print("including underflow")
-        include_underflow = True
-    if max_val != upper_common_edge:
-        print("including overflow")
-        include_overflow = True
+    in_range_vals = vals[(vals > -1e10) & (vals < 1e10)]
+    if len(in_range_vals) == 0:
+        in_range_vals = vals
+    min_val = np.min(vals)
+    max_val = np.max(vals)
+    lower_common_edge = np.percentile(in_range_vals, 5)
+    upper_common_edge = np.percentile(in_range_vals, 95)
+    is_integer_valued = np.all(np.mod(vals, 1) == 0)
 
     print(f"choosing bins automatically, min_val = {min_val:.4e}, max_val = {max_val:.4e}, lower_common_edge = {lower_common_edge:.4e}, upper_common_edge = {upper_common_edge:.4e}")
 
-    # if min_val, lower_common_edge, max_val, upper_common_edge are all integers, then use integers for the bins
-    if (min_val.is_integer() and lower_common_edge.is_integer() and max_val.is_integer() and upper_common_edge.is_integer()
-                and -1e6 < lower_common_edge and upper_common_edge < 1e6 and upper_common_edge - lower_common_edge <= 30):
-        bins = np.arange(lower_common_edge, upper_common_edge + 2) - 0.5
-        print("choosing integer bins:", bins)
-    elif len(np.unique(all_vals)) == 2:
-        bins = np.array([min_val - 0.5, (min_val + max_val) / 2, max_val + 0.5])
-        print("choosing two bins: ", bins)
-        include_overflow = False
-        include_underflow = False
+    if is_integer_valued and -1e6 < lower_common_edge and upper_common_edge < 1e6:
+        lo = np.floor(lower_common_edge)
+        hi = np.ceil(upper_common_edge)
+        # integer-aligned bins, each holding the same number of integer values
+        step = max(1, int(np.ceil((hi - lo + 1) / TARGET_NUM_BINS)))
+        num_bins = int(np.ceil((hi - lo + 1) / step))
+        reg_bins = lo - 0.5 + step * np.arange(num_bins + 1)
+        print(f"choosing integer bins (step {step}):", reg_bins)
     elif 0 < lower_common_edge and 10_000 < upper_common_edge and np.log10(upper_common_edge) - np.log10(lower_common_edge) > 3:
-        bins = np.logspace(np.log10(lower_common_edge) - 0.01, np.log10(upper_common_edge) + 0.01, 21)
-        print("choosing log bins:", bins)
+        reg_bins = np.logspace(np.log10(lower_common_edge) - 0.01, np.log10(upper_common_edge) + 0.01, TARGET_NUM_BINS + 1)
+        print("choosing log bins:", reg_bins)
         log_x = True
     else:
         width = upper_common_edge - lower_common_edge
-        bins = np.linspace(lower_common_edge - 0.01, upper_common_edge + 0.01, 21)
-        print("choosing linear bins:", bins)
+        pad = 1e-3 * width if width > 0 else 0.01 * max(abs(lower_common_edge), 1.0)
+        reg_bins = np.linspace(lower_common_edge - pad, upper_common_edge + pad, TARGET_NUM_BINS + 1)
+        print("choosing linear bins:", reg_bins)
 
-    # Initialize display_bins before calling add_underflow_overflow
-    display_bins = bins.copy()
-    bins, display_bins = add_underflow_overflow(bins, display_bins, include_overflow, include_underflow, log_x)
+    # a sentinel that ends up inside the (padded) regular range is just binned normally
+    low_sentinels = [v for v in low_sentinels if v < reg_bins[0]]
+    high_sentinels = [v for v in high_sentinels if v > reg_bins[-1]]
+    low_edges, low_kinds = _low_side_edges(unique_vals[unique_vals < reg_bins[0]], low_sentinels, reg_bins[0])
+    # the high side is the mirror image of the low side
+    neg_edges, neg_kinds = _low_side_edges(np.sort(-unique_vals[unique_vals > reg_bins[-1]]),
+                                           sorted(-v for v in high_sentinels), -reg_bins[-1])
+    high_edges = [-e for e in neg_edges[::-1]]
+    high_kinds = [f"sentinel:{-float(k[9:])}" if k.startswith("sentinel:") else "overflow" for k in neg_kinds[::-1]]
+    bins = np.concatenate([low_edges, reg_bins, high_edges])
+
+    # display edges: every extra bin (underflow, overflow, sentinel) gets the width of the
+    # neighbouring regular bin, in log10 space for log_x
+    to_u = np.log10 if log_x else (lambda x: x)
+    from_u = (lambda u: 10**u) if log_x else (lambda u: u)
+    reg_u = to_u(reg_bins)
+    low_width = reg_u[1] - reg_u[0]
+    high_width = reg_u[-1] - reg_u[-2]
+    display_u = np.concatenate([
+        reg_u[0] - low_width * np.arange(len(low_kinds), 0, -1),
+        reg_u,
+        reg_u[-1] + high_width * np.arange(1, len(high_kinds) + 1),
+    ])
+    display_bins = from_u(display_u)
+
+    sentinel_bins = []
+    n_reg = len(reg_bins) - 1
+    for i, kind in enumerate(low_kinds):
+        if kind.startswith("sentinel:"):
+            sentinel_bins.append((display_bins[i], display_bins[i + 1], _format_sentinel(float(kind[9:])), "low"))
+    for j, kind in enumerate(high_kinds):
+        i = len(low_kinds) + n_reg + j
+        if kind.startswith("sentinel:"):
+            sentinel_bins.append((display_bins[i], display_bins[i + 1], _format_sentinel(float(kind[9:])), "high"))
 
     if not np.all(np.diff(bins) > 0):
         raise ValueError(f"bins is not sorted: {bins}")
+    if len(bins) != len(display_bins):
+        raise ValueError(f"bins and display_bins have different lengths: {bins}, {display_bins}")
 
     if log_x:
         display_bin_centers = np.sqrt(display_bins[:-1] * display_bins[1:])
     else:
         display_bin_centers = (display_bins[:-1] + display_bins[1:]) / 2
 
+    if return_sentinel_bins:
+        return bins, display_bins, display_bin_centers, log_x, sentinel_bins
     return bins, display_bins, display_bin_centers, log_x
+
+
+def widen_spacer_for_xlabel(fig, gs, spacer_row, upper_ax, upper_row, lower_ax, min_gap_px=35, max_iter=5):
+    """Grow the height ratio of the blank spacer row in `gs` until upper_ax's x-axis label sits at
+    least min_gap_px above the top of lower_ax.  Long rotated sentinel tick labels push the x label
+    down into the next panel otherwise.  upper_ax's pixel height divided by its height ratio gives the
+    pixels-per-ratio-unit conversion used to size each step."""
+    ratios = list(gs.get_height_ratios())
+    for _ in range(max_iter):
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        gap = upper_ax.xaxis.label.get_window_extent(renderer).y0 - lower_ax.get_window_extent(renderer).y1
+        if gap >= min_gap_px:
+            return
+        unit_px = upper_ax.get_window_extent(renderer).height / ratios[upper_row]
+        ratios[spacer_row] += (min_gap_px - gap) / unit_px
+        gs.set_height_ratios(ratios)
+        # existing axes don't follow the gridspec automatically
+        for ax in fig.axes:
+            subplotspec = ax.get_subplotspec()
+            if subplotspec is not None and subplotspec.get_gridspec() is gs:
+                ax.set_position(subplotspec.get_position(fig))
+
+
+def annotate_sentinel_bins(axes, sentinel_bins, label_ax=None):
+    """Shade sentinel bins on each of `axes`, and mark each with a tick at its centre, labelled
+    with the sentinel's value (rotated) on label_ax, normally the bottom axis.  When there are
+    sentinel bins, the regular x ticks are restricted to the non-sentinel range, since tick values
+    inside the sentinel bins would be meaningless."""
+    if not sentinel_bins:
+        return
+    inner_lo = max([hi for lo, hi, _, side in sentinel_bins if side == "low"], default=-np.inf)
+    inner_hi = min([lo for lo, hi, _, side in sentinel_bins if side == "high"], default=np.inf)
+    for ax in axes:
+        x_lo, x_hi = ax.get_xlim()
+        for lo, hi, _, _ in sentinel_bins:
+            ax.axvspan(lo, hi, color="0.85", alpha=0.5, zorder=0, lw=0)
+        ticks = [t for t in ax.get_xticks() if inner_lo <= t <= inner_hi]
+        ax.set_xticks(ticks)
+        # sentinel ticks are minor ticks, so the regular (major) tick labels keep their formatting
+        centers = [np.sqrt(lo * hi) if ax.get_xscale() == "log" else (lo + hi) / 2 for lo, hi, _, _ in sentinel_bins]
+        labels = [label for _, _, label, _ in sentinel_bins] if ax is label_ax else [""] * len(sentinel_bins)
+        ax.set_xticks(centers, labels, minor=True)
+        ax.tick_params(axis="x", which="minor", labelrotation=90, labelsize=8)
+        ax.set_xlim(x_lo, x_hi)
 
 
 def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov, mc_pred_counts, pred_counts,
@@ -186,7 +409,9 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         include_total=True, include_pred_stat=True, include_data_stat=False, 
         include_rw=True, just_genie_breakdown=False,
         include_detvar=True, just_detvar_breakdown=False, detvar_df=None,
-        print_sys_breakdown=False):
+        print_sys_breakdown=False, ax=None, title="Systematic Breakdown", legend_fontsize=10):
+    """Fractional-error breakdown.  With ax=None a new figure is made (and optionally saved/shown);
+    otherwise the curves are drawn onto ax, e.g. a panel of a larger figure."""
 
     if include_detvar and detvar_df is None:
         raise ValueError("detvar_df must be provided if include_detvar is True")
@@ -199,14 +424,16 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         if just_genie_breakdown or include_total or include_pred_stat or include_data_stat:
             raise ValueError(f"trying to plot non-detvar systematic breakdown with just_genie_breakdown! just_genie_breakdown = {just_genie_breakdown}, include_total = {include_total}, include_pred_stat = {include_pred_stat}, include_data_stat = {include_data_stat}")
 
-    plt.figure(figsize=(10, 6))
+    own_figure = ax is None
+    if own_figure:
+        _, ax = plt.subplots(figsize=(10, 6))
 
     if include_total and include_data_stat:
-        custom_step(display_bins, np.sqrt(np.diag(tot_sys_frac_cov)), label="Total (incl. Data Stat)", ls="-", color="k")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_sys_frac_cov)), label="Total (incl. Data Stat)", ls="-", color="k")
         if print_sys_breakdown:
             print(f"Total (incl. Data Stat): {np.sqrt(np.diag(tot_sys_frac_cov))}")
     elif include_total:
-        custom_step(display_bins, np.sqrt(np.diag(tot_pred_sys_frac_cov)), label="Total (no Data Stat)", ls="-", color="k")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_pred_sys_frac_cov)), label="Total (no Data Stat)", ls="-", color="k")
         if print_sys_breakdown:
             print(f"Total (no Data Stat): {np.sqrt(np.diag(tot_pred_sys_frac_cov))}")
     
@@ -214,14 +441,14 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
         denom = np.outer(pred_counts, pred_counts)
         pred_stat_frac_cov = np.divide(pred_stat_cov, denom, out=np.zeros_like(pred_stat_cov), where=(denom != 0))
         pred_stat_frac_cov = np.nan_to_num(pred_stat_frac_cov, nan=0, posinf=0, neginf=0)
-        custom_step(display_bins, np.sqrt(np.diag(pred_stat_frac_cov)), label="Pred Stat", ls="-")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(pred_stat_frac_cov)), label="Pred Stat", ls="-")
         if print_sys_breakdown:
             print(f"Pred Stat: {np.sqrt(np.diag(pred_stat_frac_cov))}")
     if include_data_stat:
         denom = np.outer(pred_counts, pred_counts)
         data_stat_frac_cov = np.divide(data_stat_cov, denom, out=np.zeros_like(data_stat_cov), where=(denom != 0))
         data_stat_frac_cov = np.nan_to_num(data_stat_frac_cov, nan=0, posinf=0, neginf=0)
-        custom_step(display_bins, np.sqrt(np.diag(data_stat_frac_cov)), label="Data Stat", ls="-")
+        custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(data_stat_frac_cov)), label="Data Stat", ls="-")
         if print_sys_breakdown:
             print(f"Data Stat: {np.sqrt(np.diag(data_stat_frac_cov))}")
 
@@ -254,13 +481,13 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
                 label = "Flux"
             elif rw_sys_name == "reinteraction":
                 label = "Reinteraction"
-            custom_step(display_bins, np.sqrt(np.diag(rw_sys_frac_cov)), label=label)
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(rw_sys_frac_cov)), label=label)
             if print_sys_breakdown:
                 print(f"{rw_sys_name}: {np.sqrt(np.diag(rw_sys_frac_cov))}")
         if just_genie_breakdown:
-            custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE", color="k")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE", color="k")
         else:
-            custom_step(display_bins, np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_genie_frac_cov)), label="Total GENIE")
         if print_sys_breakdown:
             print(f"Total GENIE: {np.sqrt(np.diag(tot_genie_frac_cov))}")
     if include_detvar:
@@ -273,42 +500,52 @@ def make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_fra
             tot_detvar_frac_cov += detvar_sys_frac_cov
             if not just_detvar_breakdown:
                 continue
-            custom_step(display_bins, np.sqrt(np.diag(detvar_sys_frac_cov)), label=detvar_sys_name)
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(detvar_sys_frac_cov)), label=detvar_sys_name)
             if print_sys_breakdown:
                 print(f"{detvar_sys_name}: {np.sqrt(np.diag(detvar_sys_frac_cov))}")
         if just_detvar_breakdown:
-            custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar", color="k")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar", color="k")
         else:
-            custom_step(display_bins, np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar")
+            custom_step(display_bins, ax=ax, counts=np.sqrt(np.diag(tot_detvar_frac_cov)), label="Total Detvar")
         if print_sys_breakdown:
             print(f"Total Detvar: {np.sqrt(np.diag(tot_detvar_frac_cov))}")
 
-    plt.legend(ncol=1, loc='upper right', fontsize=10)
+    ax.legend(ncol=1, loc='upper right', fontsize=legend_fontsize)
 
     if log_x:
-        plt.xscale("log")
+        ax.set_xscale("log")
 
-    plt.xlabel(display_var)
-    plt.ylabel("Fractional Error")
-    plt.title("Systematic Breakdown")
-    plt.xlim(display_bins[0], display_bins[-1])
+    ax.set_xlabel(display_var)
+    ax.set_ylabel("Fractional Error")
+    ax.set_title(title)
+    ax.set_xlim(display_bins[0], display_bins[-1])
 
     if include_data_stat:
-        plt.ylim(0, min(1, np.max(np.sqrt(np.diag(tot_sys_frac_cov))) * 1.2))
+        ax.set_ylim(0, min(1, np.max(np.sqrt(np.diag(tot_sys_frac_cov))) * 1.2))
     else:
-        plt.ylim(0, min(1, np.max(np.sqrt(np.diag(tot_pred_sys_frac_cov))) * 1.2))
+        ax.set_ylim(0, min(1, np.max(np.sqrt(np.diag(tot_pred_sys_frac_cov))) * 1.2))
 
-    if savename is not None:
-        plt.savefig(f"../plots/{savename}_systematic_breakdown.pdf")
-    if show: plt.show()
+    if own_figure:
+        if savename is not None:
+            plt.savefig(f"../plots/{savename}_systematic_breakdown.pdf")
+        if show: plt.show()
 
 
 def make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x=False, log_y=False,
         additional_scaling_factor=1.0, normalizing_POT=2.098e19+4.038e19, 
-        page_num=None, savename=None, show=True, detvar_df=None):
+        page_num=None, savename=None, show=True, detvar_df=None,
+        axes=None, fractional_difference=False, legend_fontsize=12):
+    """Spectrum of each detector variation (top) and its ratio to the CV (bottom).  Each variation is
+    compared with its own matched CV events, and drawn as cv_counts * (var / matched cv).
+    axes=(ax_spectra, ax_ratio) draws into panels of an existing figure instead of a new one.
+    fractional_difference=True shows (Var - CV)/CV instead of Var/CV, the same difference the
+    DetVar covariance is built from."""
 
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    own_figure = axes is None
+    if own_figure:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    else:
+        ax1, ax2 = axes
 
     cv_df = detvar_df.filter(pl.col("vartype") == "CV")
 
@@ -327,6 +564,8 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
     detvar_plot_vartypes = ["LYAtt", "LYDown", "LYRayleigh", "WireModX", "WireModYZ", "WireModThetaXZ", "WireModThetaYZ", "Recomb2", "SCE"]
 
     total_cv_weight = np.sum(get_vals(cv_display_df, DETVAR_WEIGHT_COL))
+    # fixed colour per variation, matching the order (and so the colours) of the DetVar breakdown plot
+    vartype_colors = {vartype: f"C{i}" for i, vartype in enumerate(detvar_plot_vartypes)}
     for vartype in detvar_plot_vartypes:
         curr_df = detvar_df.filter(pl.col("vartype") == vartype)
 
@@ -346,11 +585,11 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         matching_cv_counts = np.histogram(get_vals(matching_cv_df, var), weights=get_vals(matching_cv_df, weight_col)*additional_scaling_factor*match_weight, bins=bins)[0]
         matching_var_counts = np.histogram(get_vals(matching_curr_df, var), weights=get_vals(matching_curr_df, weight_col)*additional_scaling_factor*match_weight, bins=bins)[0]
 
-        var_over_cv_ratio = matching_cv_counts / matching_var_counts
-        var_over_cv_ratio = np.nan_to_num(var_over_cv_ratio, nan=0, posinf=0, neginf=0)
+        # bins with no matched CV events have no defined ratio; they are drawn at Var/CV = 1
+        var_over_cv_ratio = np.divide(matching_var_counts, matching_cv_counts, out=np.ones_like(cv_counts, dtype=float), where=(matching_cv_counts > 0))
         scaled_var_over_cv_ratio = var_over_cv_ratio * cv_counts
 
-        ax1.hist(display_bin_centers, weights=scaled_var_over_cv_ratio, bins=display_bins, label=vartype, histtype="step")
+        ax1.hist(display_bin_centers, weights=scaled_var_over_cv_ratio, bins=display_bins, label=vartype, histtype="step", color=vartype_colors[vartype])
 
         ratios_by_var_dic[vartype] = var_over_cv_ratio
 
@@ -360,19 +599,22 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
     ax1.set_xticklabels([])
 
     for vartype, ratios in ratios_by_var_dic.items():
+        custom_step(display_bins, ratios - 1 if fractional_difference else ratios, ax=ax2, label=vartype, color=vartype_colors[vartype])
 
-        custom_step(display_bins, ratios, ax=ax2, label=vartype)                
-
-        # Draw horizontal line at 1
-        ax2.axhline(y=1, color='k', linestyle='--', linewidth=1)
-        
-        ax2.set_xlabel(display_var)
-        ax2.set_ylabel("Var/CV")
-        ax2.set_xlim(display_bins[0], display_bins[-1])
-        #ax2.set_ylim(0.5, 1.5)
+    reference = 0 if fractional_difference else 1
+    ax2.axhline(y=reference, color='k', linestyle='--', linewidth=1)
+    ax2.set_xlabel(display_var)
+    ax2.set_ylabel("(Var $-$ CV)/CV" if fractional_difference else "Var/CV")
+    ax2.set_xlim(display_bins[0], display_bins[-1])
+    if fractional_difference:
+        # symmetric range that fits the largest difference, between +-0.1 and +-1
+        max_abs_diff = max([np.max(np.abs(r - 1)) for r in ratios_by_var_dic.values()], default=0)
+        half_range = min(1, max(0.1, 1.2 * max_abs_diff))
+        ax2.set_ylim(-half_range, half_range)
+    else:
         ax2.set_ylim(0.75, 1.25)
-        if log_x:
-            ax2.set_xscale("log")
+    if log_x:
+        ax2.set_xscale("log")
 
     ax1.set_ylabel(f"MC Pred counts (no Dirt/EXT)")
     ax1.set_xlim(display_bins[0], display_bins[-1])
@@ -383,14 +625,14 @@ def make_det_variation_histogram(var, display_var, bins, display_bins, display_b
         ax1.set_ylim(min_nonzero_y / 10, max_y * 10)
     else:
         ax1.set_ylim(0, max_y * 1.2)
-    ax1.legend(ncol=1, loc='upper right', fontsize=12)
+    ax1.legend(ncol=1, loc='upper right', fontsize=legend_fontsize)
 
-    if page_num is not None:
-        ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
-
-    if savename is not None:
-        plt.savefig(f"../plots/{savename}_det_variation_histograms.pdf")
-    if show: plt.show()
+    if own_figure:
+        if page_num is not None:
+            ax2.text(-0.1, -0.3, f"{page_num}", transform=ax2.transAxes, fontsize=8, ha="left", va="bottom")
+        if savename is not None:
+            plt.savefig(f"../plots/{savename}_det_variation_histograms.pdf")
+        if show: plt.show()
 
 def make_histogram_plot(
 
@@ -417,8 +659,9 @@ def make_histogram_plot(
         selname=None,
         dont_load_rw_from_systematic_cache=False, dont_load_detvar_from_systematic_cache=False,
         use_rw_systematics=False, weights_df=None,
+        require_all_rw_events=False,  # raise SuspectedPolarsCorruption if any prediction event lacks weights
         use_detvar_systematics=False, detvar_df=None,
-        use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=5000, num_bootstrap_samples_detvar=5000,
+        use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=None, num_bootstrap_samples_detvar=None,  # None = exact analytic bootstrap limit
         return_p_value_info=False,
 
         # optional detector variation histogram plot
@@ -434,6 +677,13 @@ def make_histogram_plot(
         # optional detvar-only fractional uncertainty breakdown plot
         plot_detvar_breakdown=False,
 
+        # optional right-hand column on the same page: full systematic breakdown (top) and
+        # DetVar breakdown (bottom); requires use_rw_systematics and use_detvar_systematics
+        include_sys_breakdown_panels=False,
+        # optional column on the same page: each DetVar variation's spectrum (top) and its
+        # (Var - CV)/CV fractional difference (bottom); requires use_detvar_systematics
+        include_detvar_variation_panels=False,
+
         # optional saving of prediction covariance matrix
         save_pred_cov_matrix=False,
 
@@ -445,6 +695,10 @@ def make_histogram_plot(
         raise ValueError("include_decomposition requires include_data to be True")
     if include_decomposition and not use_rw_systematics:
         raise ValueError("include_decomposition requires use_rw_systematics to be True")
+    if include_sys_breakdown_panels and not (use_rw_systematics and use_detvar_systematics):
+        raise ValueError("include_sys_breakdown_panels requires use_rw_systematics and use_detvar_systematics to be True")
+    if include_detvar_variation_panels and not use_detvar_systematics:
+        raise ValueError("include_detvar_variation_panels requires use_detvar_systematics to be True")
 
     if pred_and_data_sel_df is not None:
         pred_sel_df = pred_and_data_sel_df.filter(pl.col("filetype") != "data")
@@ -474,8 +728,9 @@ def make_histogram_plot(
         else:
             all_vals = pred_vals
 
-        bins, display_bins, display_bin_centers, log_x = auto_binning(all_vals)
+        bins, display_bins, display_bin_centers, log_x, sentinel_bins = auto_binning(all_vals, return_sentinel_bins=True)
     else:
+        sentinel_bins = []
         bins, display_bins = add_underflow_overflow(bins, bins, include_overflow, include_underflow, log_x)
         if log_x:
             display_bin_centers = np.sqrt(display_bins[:-1] * display_bins[1:])
@@ -484,15 +739,43 @@ def make_histogram_plot(
 
 
     # plotting the main histogram prediction, optionally with ratio and decomposition
+    extra_columns = int(include_sys_breakdown_panels) + int(include_detvar_variation_panels)
+    if extra_columns:
+        # the usual panels in the left column, each set of extra panels in a column to its right
+        fig_height = 12 if include_decomposition else (8 if include_ratio else 6)
+        fig = plt.figure(figsize=(10 * (1 + extra_columns), fig_height))
+        outer_gs = gridspec.GridSpec(1, 1 + extra_columns, figure=fig, wspace=0.2)
+        left_spec = outer_gs[0]
+        next_column = 1
+    if include_sys_breakdown_panels:
+        breakdown_gs = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=outer_gs[next_column], height_ratios=[1, 0.01, 1])
+        next_column += 1
+        ax_sys_breakdown = fig.add_subplot(breakdown_gs[0])
+        # breakdown_gs[1] is left blank as a spacer
+        ax_detvar_breakdown = fig.add_subplot(breakdown_gs[2])
+    if include_detvar_variation_panels:
+        variation_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=outer_gs[next_column], height_ratios=[2, 1], hspace=0.05)
+        next_column += 1
+        ax_variation_spectra = fig.add_subplot(variation_gs[0])
+        ax_variation_frac_diff = fig.add_subplot(variation_gs[1])
     if include_decomposition:
-        fig = plt.figure(figsize=(10, 12))
-        gs = gridspec.GridSpec(4, 1, height_ratios=[2, 1, 0.01, 1])
+        if extra_columns:
+            gs = gridspec.GridSpecFromSubplotSpec(4, 1, subplot_spec=left_spec, height_ratios=[2, 1, 0.01, 1])
+        else:
+            fig = plt.figure(figsize=(10, 12))
+            gs = gridspec.GridSpec(4, 1, height_ratios=[2, 1, 0.01, 1])
         ax1 = fig.add_subplot(gs[0])
         ax2 = fig.add_subplot(gs[1])
         # gs[2] is left blank as a spacer
         ax3 = fig.add_subplot(gs[3])
     elif include_ratio:
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+        if extra_columns:
+            ratio_gs = gridspec.GridSpecFromSubplotSpec(2, 1, subplot_spec=left_spec, height_ratios=[2, 1], hspace=0.05)
+            ax1, ax2 = fig.add_subplot(ratio_gs[0]), fig.add_subplot(ratio_gs[1])
+        else:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.05})
+    elif extra_columns:
+        ax1 = fig.add_subplot(left_spec)
     else:
         fig, ax1 = plt.subplots(1, 1, figsize=(10, 6))
 
@@ -616,7 +899,7 @@ def make_histogram_plot(
         rw_sys_frac_cov_dic = get_rw_sys_frac_cov_matrices(
             pred_sel_df.filter(pl.col("filetype") != "ext"), selname, var, bins, 
             dont_load_rw_from_systematic_cache=dont_load_rw_from_systematic_cache, weights_df=weights_df,
-            net_weight_var=net_weight_var
+            net_weight_var=net_weight_var, require_all_events=require_all_rw_events,
         )
         combined_rw_sys_frac_cov = np.zeros((len(bins)-1, len(bins)-1))
         for rw_sys_frac_cov_name, rw_sys_frac_cov in rw_sys_frac_cov_dic.items():
@@ -901,6 +1184,40 @@ def make_histogram_plot(
             ax3.text(-0.1, -0.3, f"{page_num}", transform=ax3.transAxes, fontsize=8, ha="left", va="bottom")
         else:
             ax1.text(-0.1, -0.3, f"{page_num}", transform=ax1.transAxes, fontsize=8, ha="left", va="bottom")
+    if include_sys_breakdown_panels:
+        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov,
+            mc_pred_counts, pred_counts, display_var, display_bins, log_x,
+            include_total=True, include_pred_stat=True, include_data_stat=False,
+            include_rw=True, just_genie_breakdown=False,
+            include_detvar=True, just_detvar_breakdown=False, detvar_df=detvar_df,
+            ax=ax_sys_breakdown, title="Systematic Breakdown", legend_fontsize=8)
+        make_sys_frac_error_plot(tot_sys_frac_cov, tot_pred_sys_frac_cov, rw_sys_frac_cov_dic, detvar_sys_frac_cov_dic, pred_stat_cov, data_stat_cov,
+            mc_pred_counts, pred_counts, display_var, display_bins, log_x,
+            include_total=False, include_pred_stat=False, include_data_stat=False,
+            include_rw=False, just_genie_breakdown=False,
+            include_detvar=True, just_detvar_breakdown=True, detvar_df=detvar_df,
+            ax=ax_detvar_breakdown, title="DetVar Breakdown", legend_fontsize=8)
+
+    if include_detvar_variation_panels:
+        make_det_variation_histogram(var, display_var, bins, display_bins, display_bin_centers, log_x, log_y,
+            additional_scaling_factor, detvar_df=detvar_df,
+            axes=(ax_variation_spectra, ax_variation_frac_diff), fractional_difference=True, legend_fontsize=8)
+        ax_variation_spectra.set_title("DetVar Variations")
+        annotate_sentinel_bins([ax_variation_spectra, ax_variation_frac_diff], sentinel_bins, label_ax=ax_variation_frac_diff)
+        ax_variation_spectra.tick_params(axis="x", which="both", labelbottom=False)
+
+    annotate_sentinel_bins([ax1, ax2] if include_ratio else [ax1], sentinel_bins, label_ax=ax2 if include_ratio else ax1)
+    if include_ratio:
+        ax1.set_xticklabels([])
+    if include_decomposition and sentinel_bins:
+        widen_spacer_for_xlabel(fig, gs, spacer_row=2, upper_ax=ax2, upper_row=1, lower_ax=ax3)
+    if include_sys_breakdown_panels:
+        for breakdown_ax in (ax_sys_breakdown, ax_detvar_breakdown):
+            annotate_sentinel_bins([breakdown_ax], sentinel_bins, label_ax=breakdown_ax)
+        if sentinel_bins:
+            widen_spacer_for_xlabel(fig, breakdown_gs, spacer_row=1, upper_ax=ax_sys_breakdown, upper_row=0, lower_ax=ax_detvar_breakdown,
+                                    min_gap_px=60)  # leave room for the lower panel's title
+
     if vertical_lines is not None:
         for x_line in vertical_lines:
             ax1.axvline(x_line, color="k", ls="--", lw=1)

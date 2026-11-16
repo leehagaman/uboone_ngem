@@ -134,7 +134,54 @@ def create_universe_histograms(vals, bins, sys_weight_arrs, other_weights, descr
     return hists
 
 
-def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weight_var="wc_net_weight_open_data"):
+class SuspectedPolarsCorruption(RuntimeError):
+    """Raised when the inputs to the reweightable systematics look corrupted in memory (events
+    missing from the weights join, a join that does not reproduce, a polars panic, or ragged
+    universe lists).  Under heavy machine load polars 1.34-1.44 has corrupted data inside a
+    long-running process; once that happens nothing in the same process can be trusted, so the
+    caller should restart from a fresh process (plot_many_variables.py re-executes itself)."""
+
+
+def _is_polars_panic(exc):
+    return type(exc).__name__ == "PanicException"
+
+
+def _verified_index_join(left_df, right_keys_df, join_keys, max_attempts=4):
+    """Inner join of left_df (a DataFrame or LazyFrame) onto the rows of right_keys_df,
+    adding a "_weights_row_idx" column with each match's row index in right_keys_df.
+
+    The join is repeated until two consecutive results agree on the row count and on the sum of
+    the matched row indices, so a silently corrupted result (seen under heavy machine load with
+    polars 1.34-1.44) is caught instead of used.  A polars panic counts as a failed attempt."""
+    right_indexed = right_keys_df.with_row_index("_weights_row_idx")
+    previous = None
+    for attempt in range(max_attempts):
+        try:
+            result = left_df.lazy().join(right_indexed.lazy(), on=join_keys, how="inner").collect()
+        except BaseException as exc:
+            if not _is_polars_panic(exc):
+                raise
+            print(f"WARNING: polars panicked during the weights join (attempt {attempt + 1}): {exc}; retrying...")
+            previous = None
+            continue
+        signature = (result.height, int(result.get_column("_weights_row_idx").cast(pl.Int64).sum()))
+        if previous is not None and signature == previous[0]:
+            return previous[1]
+        if previous is not None:
+            print(f"WARNING: weights join results disagree between attempts ({previous[0]} vs {signature}), "
+                  f"possible polars corruption under load; retrying...")
+        previous = (signature, result)
+    raise SuspectedPolarsCorruption(
+        "the join between the prediction and weights_df did not give a reproducible result after "
+        f"{max_attempts} attempts; polars is likely misbehaving under machine load -- reduce concurrent load and rerun")
+
+
+def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weight_var="wc_net_weight_open_data",
+                                require_all_events=False):
+    # require_all_events=True: every mc_pred_df event is known to have weights (true for the full
+    # presel prediction against presel_weights_df), so a missing event, a polars panic, or ragged
+    # universe lists mean in-memory corruption and raise SuspectedPolarsCorruption instead of
+    # producing (and caching) an approximate covariance
 
     print("creating reweightable systematic covariance matrices...")
 
@@ -169,15 +216,25 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
             .join(pl.scan_parquet(weights_parquet_path).select(join_keys), on=join_keys, how="inner")
             .collect(engine="streaming")
         )
-    else:
+    elif isinstance(weights_df, pl.LazyFrame):
         base_merged = (
             mc_pred_df.select(pred_vars).lazy()
-            .join(weights_df.select(join_keys).lazy(), on=join_keys, how="inner")
+            .join(weights_df.select(join_keys), on=join_keys, how="inner")
             .collect()
         )
+    else:
+        # One join per call, carrying the weights_df row index, so each universe column is then
+        # pulled with a plain gather instead of another hash join against the ~30 GB weights_df.
+        # Under heavy machine load polars has returned corrupted join results here (rows silently
+        # dropped, or a "capacity overflow" panic), so the join is run twice and must agree.
+        base_merged = _verified_index_join(mc_pred_df.select(pred_vars), weights_df.select(join_keys), join_keys)
 
     mc_pred_count = mc_pred_df.select(pl.len()).collect().item() if isinstance(mc_pred_df, pl.LazyFrame) else mc_pred_df.height
     if base_merged.height != mc_pred_count:
+        if require_all_events:
+            raise SuspectedPolarsCorruption(
+                f"{mc_pred_count - base_merged.height} of {mc_pred_count} prediction events are missing from the "
+                f"weights join, but require_all_events=True says all of them have weights")
         print(f"WARNING: missing events in weights_df, approximate reweightable systematic uncertainties! {base_merged.height=}, mc_pred_df.height={mc_pred_count}")
 
     pred_vals = get_vals(base_merged, var)
@@ -217,13 +274,15 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
                 .collect(engine="streaming")
                 .get_column(col_name).to_numpy()
             )
-        else:
+        elif isinstance(weights_df, pl.LazyFrame):
             return (
                 base_merged.select(join_keys).lazy()
-                .join(weights_df.select(join_keys + [col_name]).lazy(), on=join_keys, how="inner")
+                .join(weights_df.select(join_keys + [col_name]), on=join_keys, how="inner")
                 .collect()
                 .get_column(col_name).to_numpy()
             )
+        else:
+            return weights_df.get_column(col_name).gather(base_merged.get_column("_weights_row_idx")).to_numpy()
 
     def _get_universe_weights(col_name):
         """Fetch a single List[Float32] universe column, joining only that column.
@@ -242,7 +301,12 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
         such events is therefore fine.
         """
         for attempt in range(2):
-            uni = _fetch_universe_weights(col_name)
+            try:
+                uni = _fetch_universe_weights(col_name)
+            except BaseException as exc:
+                if require_all_events and _is_polars_panic(exc):
+                    raise SuspectedPolarsCorruption(f"polars panicked fetching '{col_name}' universe weights: {exc}") from exc
+                raise
             lengths = np.array([len(a) if a is not None else 0 for a in uni])
             filled_values, filled_counts = np.unique(lengths[lengths > 0], return_counts=True)
             if len(filled_values) <= 1:
@@ -252,6 +316,8 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
                   + (", refetching..." if attempt == 0 else ""))
         # with no filled events at all there is no variation; one unit universe gives a zero covariance
         num_unis = int(filled_values[np.argmax(filled_counts)]) if len(filled_values) > 0 else 1
+        if len(filled_values) > 1 and require_all_events:
+            raise SuspectedPolarsCorruption(f"universe weights for '{col_name}' are still non-uniform after a refetch")
         if len(filled_values) > 1:
             bad_indices = np.where((lengths > 0) & (lengths != num_unis))[0]
             print(f"WARNING: universe weights for '{col_name}' still non-uniform after refetch; "
@@ -325,7 +391,27 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
     return rw_sys_frac_cov_dic
 
 
-def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrapping, num_bootstrap_rounds_detvar=5000, num_bootstrap_samples_detvar=5000):
+def _bootstrap_hist_cov(vals, weights, bins):
+    """Exact covariance of a weighted histogram over with-replacement bootstrap resamples of
+    its N events (the infinite-rounds limit of resampling + np.histogram):
+    Cov(H_b, H_c) = delta_bc * sum_{i in b} w_i^2 - S_b * S_c / N, with S_b = sum_{i in b} w_i.
+    Events outside the bins count toward N but fill no bin, as with np.histogram."""
+    bins = np.asarray(bins, dtype=float)
+    vals = np.asarray(vals, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    in_range = (vals >= bins[0]) & (vals <= bins[-1])
+    # np.histogram bins are half-open except the last, which includes its right edge
+    bin_idx = np.clip(np.searchsorted(bins, vals[in_range], side="right") - 1, 0, len(bins) - 2)
+    in_weights = weights[in_range]
+    sum_w = np.bincount(bin_idx, weights=in_weights, minlength=len(bins) - 1)
+    sum_w2 = np.bincount(bin_idx, weights=in_weights**2, minlength=len(bins) - 1)
+    return np.diag(sum_w2) - np.outer(sum_w, sum_w) / len(vals)
+
+
+def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrapping, num_bootstrap_rounds_detvar=None, num_bootstrap_samples_detvar=None):
+    # num_bootstrap_rounds_detvar / num_bootstrap_samples_detvar = None (default) uses the exact
+    # infinite-rounds/infinite-samples limit of the bootstrap procedure below, which takes
+    # milliseconds instead of minutes per variation; integers use the sampled procedure
 
     print("creating detvar systematic covariance matrices...")
 
@@ -369,12 +455,17 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             matching_var_counts = np.histogram(matching_var_vals, weights=matching_var_weights, bins=bins)[0]
             nominal_cv_var_diff = matching_var_counts - matching_cv_counts
 
-            cv_val_weight_pairs = list(zip(matching_cv_vals, matching_cv_weights))
-            var_val_weight_pairs = list(zip(matching_var_vals, matching_var_weights))
+            if num_bootstrap_rounds_detvar is None:
+                # M_R: the CV and var spectra are resampled independently, so their bootstrap
+                # covariances add
+                bootstrap_cv_var_diff_cov = (_bootstrap_hist_cov(matching_cv_vals, matching_cv_weights, bins)
+                                             + _bootstrap_hist_cov(matching_var_vals, matching_var_weights, bins))
+            else:
+                bootstrap_cv_var_diff_cov = None
 
             # sampling the CV and var spectra with replacement to get statistically plausible CV-var differences
             bootstrap_cv_var_diffs = [] # each row is a spectrum difference between CV and var for each bootstrap sample, each column is a sample
-            for bootstrap_i in tqdm(range(num_bootstrap_rounds_detvar), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices", mininterval=10):
+            for bootstrap_i in tqdm(range(num_bootstrap_rounds_detvar or 0), desc=f"Bootstrapping {vartype} detvar systematic covariance matrices", mininterval=10):
                 
                 bootstrap_cv_indices = np.random.choice(len(matching_cv_vals), size=len(matching_cv_vals), replace=True)
                 bootstrap_cv_vals = matching_cv_vals[bootstrap_cv_indices]
@@ -391,18 +482,24 @@ def create_detvar_frac_cov_matrices(detvar_df, var, bins, use_detvar_bootstrappi
             # building a covariance matrix to describe the statistical uncertainty on the CV-var difference, called M_R in the note
             # np.atleast_2d: np.cov squeezes a single-bin covariance to a 0-d scalar, which
             # multivariate_normal below rejects (one-bin total-count grids use a single bin)
-            bootstrap_cv_var_diff_cov = np.atleast_2d(np.cov(bootstrap_cv_var_diffs, rowvar=False))
+            if bootstrap_cv_var_diff_cov is None:
+                bootstrap_cv_var_diff_cov = np.atleast_2d(np.cov(bootstrap_cv_var_diffs, rowvar=False))
 
-            # drawing samples from the bootstrap_cv_var_diff_cov covariance matrix, each called V_D in the note
-            bootstrap_cv_var_diff_samples = np.random.multivariate_normal(nominal_cv_var_diff, bootstrap_cv_var_diff_cov, size=num_bootstrap_samples_detvar)
+            if num_bootstrap_samples_detvar is None:
+                # infinite-samples limit of the r * V_D construction below: with r ~ N(0, 1)
+                # independent of V_D ~ N(d, M_R), Cov(r * V_D) = E[V_D V_D^T] = M_R + d d^T
+                curr_cov = bootstrap_cv_var_diff_cov + np.outer(nominal_cv_var_diff, nominal_cv_var_diff)
+            else:
+                # drawing samples from the bootstrap_cv_var_diff_cov covariance matrix, each called V_D in the note
+                bootstrap_cv_var_diff_samples = np.random.multivariate_normal(nominal_cv_var_diff, bootstrap_cv_var_diff_cov, size=num_bootstrap_samples_detvar)
 
-            normal_distribution_samples = np.random.normal(0, 1, size=len(bootstrap_cv_var_diff_samples))
+                normal_distribution_samples = np.random.normal(0, 1, size=len(bootstrap_cv_var_diff_samples))
 
-            # each called r * V_D
-            bootstrap_scaled_cv_var_diff_samples = normal_distribution_samples[:, None] * bootstrap_cv_var_diff_samples
+                # each called r * V_D
+                bootstrap_scaled_cv_var_diff_samples = normal_distribution_samples[:, None] * bootstrap_cv_var_diff_samples
 
-            # called M_D in the note
-            curr_cov = np.atleast_2d(np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False))
+                # called M_D in the note
+                curr_cov = np.atleast_2d(np.cov(bootstrap_scaled_cv_var_diff_samples, rowvar=False))
 
             denom = np.outer(matching_cv_counts, matching_cv_counts)
             curr_frac_cov = np.divide(curr_cov, denom, out=np.zeros_like(curr_cov), where=(denom != 0))
@@ -439,7 +536,8 @@ def _key_hash_detvar(sel, var, bins, use_detvar_bootstrapping, num_bootstrap_rou
     h.update(bins_arr.tobytes())
     return h.hexdigest()
 
-def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None, net_weight_var="wc_net_weight_open_data"):
+def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_from_systematic_cache=False, weights_df=None, net_weight_var="wc_net_weight_open_data",
+                                 require_all_events=False):
 
     if not dont_load_rw_from_systematic_cache:
         key_h = _key_hash(selname, var, bins)
@@ -449,7 +547,8 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_fr
             with np.load(cache_path, allow_pickle=True) as data:
                 return data["rw_sys_frac_cov_dic"].item()
 
-    rw_sys_frac_cov_dic = create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df, net_weight_var=net_weight_var)
+    rw_sys_frac_cov_dic = create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=weights_df, net_weight_var=net_weight_var,
+                                                      require_all_events=require_all_events)
 
     key_h = _key_hash(selname, var, bins)
     cache_path = f"{covariance_cache_location}/cov_{key_h}.npz"
@@ -458,7 +557,7 @@ def get_rw_sys_frac_cov_matrices(mc_pred_df, selname, var, bins, dont_load_rw_fr
     return rw_sys_frac_cov_dic
 
 
-def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=False, use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=5000, num_bootstrap_samples_detvar=5000):
+def get_detvar_sys_frac_cov_matrices(detvar_df, selname, var, bins, dont_load_detvar_from_systematic_cache=False, use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=None, num_bootstrap_samples_detvar=None):
     # detvar_df is not optional, it must be loaded by the user and must have the selection cuts applied to match those on mc_pred_df
 
     if not dont_load_detvar_from_systematic_cache:
