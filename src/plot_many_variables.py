@@ -93,7 +93,19 @@ if __name__ == "__main__":
                         help="Add each DetVar variation's spectrum and (Var - CV)/CV fractional difference to each page")
     parser.add_argument("--clear-prev", action="store_true", help="Delete all files in plots/<output-name> before starting")
     parser.add_argument("--no-systematics", action="store_true", help="Do not use systematics")
+    parser.add_argument("--cut", type=str, default=None,
+                        help='Extra event selection applied to data, prediction and DetVar samples, as a polars expression, '
+                             'e.g. \'(pl.col("wc_cosmict_2_filled") == 1) & (pl.col("wc_cosmict_7_filled") == 0)\'')
+    parser.add_argument("--cut-name", type=str, default=None,
+                        help="Short name for --cut (required with it); used in the plot title and the systematics cache key")
     args = parser.parse_args()
+
+    if (args.cut is None) != (args.cut_name is None):
+        raise ValueError("--cut and --cut-name must be given together")
+    cut_expr = eval(args.cut, {"pl": pl, "__builtins__": {}}) if args.cut is not None else None
+    # the covariance caches are keyed by (selname, var, bins), so a cut needs its own selname
+    selname = "wc_generic_sel" if cut_expr is None else f"wc_generic_sel__{args.cut_name}"
+    plot_title = "Preselection" if cut_expr is None else f"Preselection, {args.cut_name}"
 
     if args.vars is None:
         vars = sorted(combined_training_vars)
@@ -134,6 +146,7 @@ if __name__ == "__main__":
          "normal_overlay", "del1g_overlay", "iso1g_overlay"}
         | {c for c in list(presel_schema) + list(detvar_schema) if c.startswith(("norm_goal_pot_", "normalizing_run_period_"))}
         | category_columns
+        | (set(cut_expr.meta.root_names()) if cut_expr is not None else set())
     )
 
     def read_base_columns(path, schema):
@@ -220,6 +233,8 @@ if __name__ == "__main__":
         print("\nplotting", var, f"({i+1}/{len(vars)})")
 
         all_df = with_var_column(all_base_df, presel_path, var)
+        if cut_expr is not None:
+            all_df = all_df.filter(cut_expr)
         pred_df = all_df.filter(pred_filter)
         data_df = all_df.filter(data_filter)
         del all_df
@@ -235,6 +250,8 @@ if __name__ == "__main__":
             use_rw_systematics = True
             use_detvar_systematics = True
             detvar_df = with_var_column(presel_detvar_base_df, detvar_path, var)
+            if cut_expr is not None:
+                detvar_df = detvar_df.filter(cut_expr)
             include_decomposition = True
             weights_df = presel_weights_df
             return_p_value_info = True
@@ -242,7 +259,7 @@ if __name__ == "__main__":
         try:
             p_value_info_dic = make_histogram_plot(pred_sel_df=pred_df, data_sel_df=data_df,
                 include_overflow=False, include_underflow=False, log_y=True, include_legend=False,
-                var=var, title="Preselection", selname="wc_generic_sel",
+                var=var, title=plot_title, selname=selname,
                 include_ratio=True, include_decomposition=include_decomposition,
                 include_sys_breakdown_panels=args.sys_breakdown_panels,
                 include_detvar_variation_panels=args.detvar_variation_panels,
@@ -259,8 +276,12 @@ if __name__ == "__main__":
 
         all_p_value_info.append(p_value_info_dic)
         
-        # Save individual page
-        plt.savefig(page_path)
+        # Save individual page; the wide multi-column pages are cropped to their content so they can
+        # be included directly in LaTeX
+        if args.sys_breakdown_panels or args.detvar_variation_panels:
+            plt.savefig(page_path, bbox_inches="tight")
+        else:
+            plt.savefig(page_path)
         plt.close()
         individual_pdf_paths.append(page_path)
         

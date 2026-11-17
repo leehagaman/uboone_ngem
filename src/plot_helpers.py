@@ -662,6 +662,7 @@ def make_histogram_plot(
         require_all_rw_events=False,  # raise SuspectedPolarsCorruption if any prediction event lacks weights
         use_detvar_systematics=False, detvar_df=None,
         use_detvar_bootstrapping=True, num_bootstrap_rounds_detvar=None, num_bootstrap_samples_detvar=None,  # None = exact analytic bootstrap limit
+        detvar_sys_frac_cov_dic_override=None,  # {name: fractional MC covariance} used instead of computing the DetVar covariances (e.g. a decorrelated Recomb2); detvar_df is still used for the variation panels
         return_p_value_info=False,
 
         # optional detector variation histogram plot
@@ -939,12 +940,15 @@ def make_histogram_plot(
             if detvar_df is None:
                 raise ValueError("detvar_df must be provided if use_detvar_systematics is True")
 
-            detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
-                detvar_df, selname, var, bins, 
-                dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache, 
-                use_detvar_bootstrapping=use_detvar_bootstrapping, num_bootstrap_rounds_detvar=num_bootstrap_rounds_detvar, 
-                num_bootstrap_samples_detvar=num_bootstrap_samples_detvar,
-            )
+            if detvar_sys_frac_cov_dic_override is not None:
+                detvar_sys_frac_cov_dic = detvar_sys_frac_cov_dic_override
+            else:
+                detvar_sys_frac_cov_dic = get_detvar_sys_frac_cov_matrices(
+                    detvar_df, selname, var, bins,
+                    dont_load_detvar_from_systematic_cache=dont_load_detvar_from_systematic_cache,
+                    use_detvar_bootstrapping=use_detvar_bootstrapping, num_bootstrap_rounds_detvar=num_bootstrap_rounds_detvar,
+                    num_bootstrap_samples_detvar=num_bootstrap_samples_detvar,
+                )
             combined_detvar_sys_frac_cov_mc = np.zeros((len(bins)-1, len(bins)-1))
             for detvar_sys_frac_cov_name, detvar_sys_frac_cov in detvar_sys_frac_cov_dic.items():
                 combined_detvar_sys_frac_cov_mc += detvar_sys_frac_cov

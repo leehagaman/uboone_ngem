@@ -121,88 +121,128 @@ vector_columns += [f"glee_{var}" for var in glee_vector_vars]
 combined_training_vars_with_duplicates = wc_training_vars + glee_training_vars + pandora_training_vars + lantern_training_vars + combined_postprocessing_training_vars
 # leave blip, nanosecond timing, CRT, spacepoint SSV, and PMT vars for analysis of the selection after the combined BDT for more interpretability
 
-# output from checking_bdt_variables.ipynb
-duplicate_bdt_vars = [
-    'wc_cosmict_2_filled',
-    'wc_cosmict_2_angle_beam',
-    'wc_cosmict_3_filled',
-    'wc_cosmict_3_flag_inside',
-    'wc_cosmict_3_angle_beam',
-    'wc_cosmict_3_theta',
-    'wc_cosmict_7_angle_beam',
-    'wc_cme_energy',
-    'wc_cme_length',
-    'wc_cme_angle_beam',
-    'wc_anc_angle',
-    'wc_anc_shower_main_length',
-    'wc_anc_shower_total_length',
-    'wc_gap_energy',
-    'wc_gap_num_valid_tracks',
-    'wc_gap_flag_single_shower',
-    'wc_lol_3_vtx_n_segs',
-    'wc_lol_3_shower_main_length',
-    'wc_mgo_energy',
-    'wc_mgt_flag_single_shower',
-    'wc_mip_quality_energy',
-    'wc_br1_1_vtx_n_segs',
-    'wc_br1_1_energy',
-    'wc_br1_1_n_segs',
-    'wc_br1_1_flag_sg_topology',
-    'wc_br1_1_flag_sg_trajectory',
-    'wc_br1_1_sg_length',
-    'wc_br1_2_n_shower_segs',
-    'wc_br1_2_shower_length',
-    'wc_br1_3_n_shower_main_segs',
-    'wc_br3_1_energy',
-    'wc_br3_1_n_shower_segments',
-    'wc_br3_1_sg_flag_trajectory',
-    'wc_br3_1_sg_length',
-    'wc_br3_1_total_main_length',
-    'wc_br3_1_total_length',
-    'wc_br3_4_total_length',
-    'wc_br3_8_n_main_segs',
-    'wc_br4_1_shower_main_length',
-    'wc_br4_1_shower_total_length',
-    'wc_br4_1_energy',
-    'wc_br4_1_flag_avoid_muon_check',
-    'wc_br4_1_n_vtx_segs',
-    'wc_br4_1_n_main_segs',
-    'wc_stem_dir_flag_single_shower',
-    'wc_stem_dir_energy',
-    'wc_br2_n_shower_main_segs',
-    'wc_br2_sg_length',
-    'wc_br2_flag_sg_trajectory',
-    'wc_stem_len_energy',
-    'wc_brm_shower_total_length',
-    'wc_lem_shower_main_length',
-    'wc_stw_1_energy',
-    'wc_stw_1_dQ_dx',
-    'wc_spt_angle_beam_1',
-    'wc_spt_angle_drift',
-    'wc_vis_1_tmp_length1',
-    'glee_reco_asso_showers',
-    'glee_reco_slice_num',
-    'glee_reco_vertex_size',
-    'pandora_shr_tkfit_dedx_U',
-    'pandora_shr_tkfit_dedx_V',
-    'pandora_shr_tkfit_dedx_Y',
-    'pandora_shr_tkfit_nhits_U',
-    'pandora_shr_tkfit_nhits_V',
-    'pandora_shr_tkfit_nhits_Y',
-    'lantern_prim_track_muon_num',
-    'lantern_prim_track_proton_num',
-    'lantern_prim_track_proton_num_5MeV'
+# output from checking_bdt_variables.ipynb (see plots/bdt_var_redundancy_report.csv)
+redundant_bdt_vars = [
+    'wc_cosmict_2_filled',  # identical of wc_cosmict_4_filled
+    'wc_cosmict_2_flag_inside',  # conditional copy of wc_cosmict_4_flag_inside given wc_cosmict_4_filled
+    'wc_cosmict_2_angle_beam',  # identical of wc_cosmict_2_theta
+    'wc_cosmict_3_filled',  # identical of wc_cosmict_5_filled
+    'wc_cosmict_3_flag_inside',  # identical of wc_cosmict_5_flag_inside
+    'wc_cosmict_3_angle_beam',  # identical of wc_cosmict_5_angle_beam
+    'wc_cosmict_3_theta',  # identical of wc_cosmict_5_angle_beam
+    'wc_cosmict_7_angle_beam',  # identical of wc_cosmict_7_theta
+    'wc_cosmic_flag',  # monotonic transform of wc_cosmict_flag_9
+    'wc_cme_length',  # identical of wc_spt_shower_total_length
+    'wc_cme_angle_beam',  # identical of wc_spt_angle_beam
+    'wc_anc_shower_main_length',  # identical of wc_spt_shower_main_length
+    'wc_anc_shower_total_length',  # identical of wc_spt_shower_total_length
+    'wc_gap_energy',  # identical of wc_cme_energy
+    'wc_gap_flag_single_shower',  # identical of wc_stw_1_flag_single_shower
+    'wc_shw_sp_hol_1_energy',  # identical of wc_shw_sp_hol_2_energy
+    'wc_mgo_energy',  # identical of wc_cme_energy
+    'wc_mgt_flag_single_shower',  # identical of wc_stw_1_flag_single_shower
+    'wc_mip_quality_energy',  # identical of wc_cme_energy
+    'wc_shw_sp_br_filled',  # identical of wc_shw_sp_filled
+    'wc_shw_sp_br1_flag',  # constant
+    'wc_shw_sp_br1_1_flag',  # constant
+    'wc_shw_sp_br1_1_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br1_2_flag',  # constant
+    'wc_shw_sp_br1_2_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br1_3_flag',  # constant
+    'wc_shw_sp_br1_3_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br1_3_flag_sg_topology',  # identical of wc_shw_sp_br1_1_flag_sg_topology
+    'wc_shw_sp_br1_3_flag_sg_trajectory',  # identical of wc_shw_sp_br1_1_flag_sg_trajectory
+    'wc_shw_sp_br1_1_vtx_n_segs',  # identical of wc_shw_sp_lol_3_vtx_n_segs
+    'wc_shw_sp_br1_1_n_segs',  # identical of wc_shw_sp_br1_3_n_shower_segs
+    'wc_shw_sp_br1_1_sg_length',  # identical of wc_shw_sp_br1_3_sg_length
+    'wc_shw_sp_br1_2_n_shower_segs',  # identical of wc_shw_sp_br1_3_n_shower_segs
+    'wc_shw_sp_br3_1_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br3_1_sg_flag_trajectory',  # identical of wc_shw_sp_br1_1_flag_sg_trajectory
+    'wc_shw_sp_br3_1_sg_flag_topology',  # identical of wc_shw_sp_br1_1_flag_sg_topology
+    'wc_shw_sp_br3_2_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br3_2_total_main_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_br3_2_total_length',  # identical of wc_shw_sp_br1_2_shower_length
+    'wc_shw_sp_br3_4_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br3_7_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br3_7_sg_length',  # identical of wc_shw_sp_br1_3_sg_length
+    'wc_shw_sp_br3_7_main_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_br3_8_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br3_8_shower_main_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_br3_8_shower_length',  # identical of wc_shw_sp_br1_2_shower_length
+    'wc_shw_sp_br3_1_n_shower_segments',  # identical of wc_shw_sp_br1_3_n_shower_segs
+    'wc_shw_sp_br3_1_sg_length',  # identical of wc_shw_sp_br1_3_sg_length
+    'wc_shw_sp_br3_1_total_main_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_br3_1_total_length',  # identical of wc_shw_sp_br1_2_shower_length
+    'wc_shw_sp_br3_4_total_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_br3_8_n_main_segs',  # identical of wc_shw_sp_br1_3_n_shower_main_segs
+    'wc_shw_sp_br4_2_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br4_1_shower_main_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_br4_1_shower_total_length',  # identical of wc_shw_sp_br1_2_shower_length
+    'wc_shw_sp_br4_1_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_br4_1_n_vtx_segs',  # identical of wc_shw_sp_lol_3_vtx_n_segs
+    'wc_shw_sp_br4_1_n_main_segs',  # identical of wc_shw_sp_br1_3_n_shower_main_segs
+    'wc_stem_dir_flag_single_shower',  # identical of wc_stw_1_flag_single_shower
+    'wc_stem_dir_energy',  # identical of wc_cme_energy
+    'wc_stem_len_energy',  # identical of wc_cme_energy
+    'wc_brm_shower_total_length',  # identical of wc_spt_shower_total_length
+    'wc_shw_sp_lem_shower_total_length',  # identical of wc_shw_sp_br1_2_shower_length
+    'wc_shw_sp_lem_shower_main_length',  # identical of wc_shw_sp_lol_3_shower_main_length
+    'wc_shw_sp_lem_shower_num_segs',  # identical of wc_shw_sp_br1_3_n_shower_segs
+    'wc_shw_sp_lem_shower_num_main_segs',  # identical of wc_shw_sp_br1_3_n_shower_main_segs
+    'wc_stw_1_energy',  # identical of wc_cme_energy
+    'wc_stw_1_dQ_dx',  # identical of wc_spt_max_dQ_dx
+    'wc_spt_angle_beam_1',  # identical of wc_anc_angle
+    'wc_spt_n_vtx_segs',  # conditional copy of wc_vis_2_n_vtx_segs given wc_stw_1_flag_single_shower
+    'wc_shw_sp_energy',  # identical of wc_shw_sp_lol_3_energy
+    'wc_shw_sp_stem_length',  # conditional copy of wc_shw_sp_br1_3_sg_length given wc_shw_sp_filled
+    'wc_shw_sp_length_main',  # conditional copy of wc_shw_sp_lol_3_shower_main_length given wc_shw_sp_filled
+    'wc_shw_sp_length_total',  # conditional copy of wc_shw_sp_br1_2_shower_length given wc_shw_sp_filled
+    'wc_shw_sp_flag_stem_trajectory',  # identical of wc_shw_sp_br1_1_flag_sg_trajectory
+    'wc_vis_1_tmp_length1',  # identical of wc_vis_1_tmp_length2
+    'wc_vis_2_angle_beam',  # conditional copy of wc_spt_angle_beam given wc_stw_1_flag_single_shower
+    'wc_vis_2_iso_angle1',  # conditional copy of wc_spt_angle_drift given wc_stw_1_flag_single_shower
+    'wc_shw_sp_pio_filled',  # identical of wc_shw_sp_filled
+    'glee_reco_asso_showers',  # identical of pandora_n_showers
+    'glee_reco_slice_num',  # monotonic transform of pandora_nslice
+    'glee_reco_vertex_size',  # identical of pandora_nslice
+    'pandora_shr_tkfit_dedx_U',  # identical of pandora_shr_tkfit_dedx_U_alt
+    'pandora_shr_tkfit_dedx_V',  # identical of pandora_shr_tkfit_dedx_V_alt
+    'pandora_shr_tkfit_dedx_Y',  # identical of pandora_shr_tkfit_dedx_Y_alt
+    'pandora_shr_tkfit_nhits_U',  # identical of pandora_shr_tkfit_nhits_U_alt
+    'pandora_shr_tkfit_nhits_V',  # identical of pandora_shr_tkfit_nhits_V_alt
+    'pandora_shr_tkfit_nhits_Y',  # identical of pandora_shr_tkfit_nhits_Y_alt
+    'lantern_prim_track_proton_num',  # identical of lantern_prim_track_proton_num_10MeV
+    'lantern_prim_track_proton_num_5MeV',  # identical of lantern_prim_track_proton_num_10MeV
 ]
 
-combined_training_vars = [var for var in combined_training_vars_with_duplicates if var not in duplicate_bdt_vars]
+combined_training_vars = [var for var in combined_training_vars_with_duplicates if var not in redundant_bdt_vars]
 
 # pandora MCS has some known issues
-not_using_for_training_vars = ["pandora_trk_energy_muon_mcs"] # pandora MCS has some known issues
+not_using_for_training_vars = ["pandora_trk_energy_muon_mcs", 
+                               "pandora_max_len_trk_trk_mcs_muon_mom_v",
+                               "pandora_max2_len_trk_trk_mcs_muon_mom_v",
+                               "pandora_max3_len_trk_trk_mcs_muon_mom_v",
+]
 
 # nugraph hit fractions see some data/pred disagreement, better to use pfng2semlabel for these
 not_using_for_training_vars += ["pandora_max_len_trk_pfng2shrfrac", "pandora_max_len_trk_pfng2mipfrac", "pandora_max_len_trk_pfng2hipfrac", "pandora_max_len_trk_pfng2mclfrac", "pandora_max_len_trk_pfng2dfsfrac"]
 not_using_for_training_vars += ["pandora_max2_len_trk_pfng2shrfrac", "pandora_max2_len_trk_pfng2mipfrac", "pandora_max2_len_trk_pfng2hipfrac", "pandora_max2_len_trk_pfng2mclfrac", "pandora_max2_len_trk_pfng2dfsfrac"]
 not_using_for_training_vars += ["pandora_max3_len_trk_pfng2shrfrac", "pandora_max3_len_trk_pfng2mipfrac", "pandora_max3_len_trk_pfng2hipfrac", "pandora_max3_len_trk_pfng2mclfrac", "pandora_max3_len_trk_pfng2dfsfrac"]
+
+# nugraph diffuse has some known data/prediction disagreement
+not_using_for_training_vars += [
+    "pandora_slcng2dfs",
+    "pandora_clung2dfs",
+
+    "pandora_max_len_trk_pfng2semlabel",
+    "pandora_max2_len_trk_pfng2semlabel",
+    "pandora_max3_len_trk_pfng2semlabel",
+
+    "pandora_max_len_trk_pfng2dfsavrg",
+    "pandora_max2_len_trk_pfng2dfsavrg",
+    "pandora_max3_len_trk_pfng2dfsavrg",
+]
+
 
 combined_training_vars = [var for var in combined_training_vars if var not in not_using_for_training_vars]
 
