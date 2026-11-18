@@ -84,6 +84,8 @@ FILETYPE_CODES = {
     "delete_one_gamma_overlay": 9,
     "isotropic_one_gamma_overlay": 10,
     "fullosc_overlay": 11,
+    # 12 was "numuCC_rad_corrected" in save_PROfit_rootfiles.FILETYPE_CODES; don't reuse
+    "NC_coherent_1g_reweighted": 13,   # iso1g DetVar rows become these (create_detvar_df.py)
 }
 
 # The detector-variation samples PROfit expects (CV + the 7 variations used by the

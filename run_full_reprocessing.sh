@@ -47,8 +47,9 @@ python -u src/create_df.py -m --create_file_dfs --merge_file_dfs > create_file_d
     || fail "create_df" create_file_dfs_nohup.out
 step_done "create_df"
 
-# rw needs presel_df_train_vars.parquet from create_df (for the derived coherent-1g rows);
-# detvar is independent. Their intermediate file names don't overlap.
+# rw needs presel_df_train_vars.parquet from create_df (for the derived coherent-1g rows and
+# their flux donors); detvar needs coh_1g_reweighting_bins.parquet from create_df (to turn
+# the iso1g DetVar rows into NC coherent 1g rows). Their intermediate file names don't overlap.
 if [ $DO_DETVAR -eq 1 ]; then
     step_name="create_rw_syst_df + create_detvar_df (parallel)"
 else

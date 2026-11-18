@@ -192,9 +192,10 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
         if isinstance(derived_counts, pl.LazyFrame):
             derived_counts = derived_counts.collect()
         for row in derived_counts.iter_rows(named=True):
-            print(f"WARNING: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
-                  "These events have no flux, cross-section, or re-interaction systematics available,"
-                  " so they are assigned unit weights for all reweightable systematics.")
+            print(f"NOTE: {row['count']} events with filetype='{row['filetype']}' are present in mc_pred_df. "
+                  "Their flux universes are borrowed from true-E_nu-matched numu nu_overlay events "
+                  "(flux_weight_donor_matching.py); their GENIE and re-interaction universes are unit weights, "
+                  "and their cross-section uncertainty is the separate 100% normalization 'NormNCCoh1g'.")
 
     # Filter mc_pred_df to events present in weights, fetching only key columns from weights
     # so no List[Float32] universe columns are loaded yet.
@@ -206,7 +207,8 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
             f"(postprocessing.GENIE_CV_WEIGHT_COL), not wc_weight_cv -- keep '{GENIE_CV_WEIGHT_COL}' in any "
             f"column subset you select before calling get_rw_sys_frac_cov_matrices (and recreate the dataframes "
             f"with create_df.py --create_file_dfs if all_df predates that change).")
-    pred_vars = list(dict.fromkeys(join_keys + [net_weight_var, GENIE_CV_WEIGHT_COL, var]))
+    pred_vars = list(dict.fromkeys(join_keys + [net_weight_var, GENIE_CV_WEIGHT_COL, var]
+                                   + (["filetype"] if "filetype" in col_names else [])))
     weights_parquet_path = f"{intermediate_files_location}/presel_weights_df.parquet"
 
     print("filtering mc_pred_df to events present in weights...")
@@ -385,6 +387,19 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
         unisim_cov = create_cov_matrix(unisim_hists, cv_hist, manual_uni_count=num_unis)
         denom = np.outer(cv_hist, cv_hist)
         rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(np.divide(unisim_cov, denom, out=np.zeros_like(unisim_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
+
+    # 100% Gaussian, fully correlated normalization uncertainty on the NC coherent 1g
+    # prediction (PROfit: the NormNCCoh1g spline knob, see create_rw_syst_df._build_derived_part).
+    # A +1 sigma shift doubles the coherent histogram d, so the covariance is outer(d, d).
+    if "filetype" in base_merged.columns:
+        is_coh = (base_merged.get_column("filetype") == "NC_coherent_1g_reweighted").to_numpy()
+        coh_hist = np.histogram(pred_vals[is_coh], weights=normal_weights[is_coh], bins=bins)[0]
+    else:
+        print("WARNING: no filetype column in mc_pred_df, so the NC coherent 1g normalization uncertainty is zero")
+        coh_hist = np.zeros(len(bins) - 1)
+    denom = np.outer(cv_hist, cv_hist)
+    rw_sys_frac_cov_dic["NormNCCoh1g"] = np.nan_to_num(
+        np.divide(np.outer(coh_hist, coh_hist), denom, out=np.zeros_like(denom), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
     print("done getting reweightable systematic covariance matrices")
 

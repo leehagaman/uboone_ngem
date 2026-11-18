@@ -346,6 +346,10 @@
 
 	<systematic type="spline_to_covariance" binning="var0" plotname="NormCCCOH" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true" include_only_weights="1,2">NormCCCOH_UBGenie</systematic>
 	<systematic type="spline_to_covariance" binning="var0" plotname="NormNCCOH" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true" include_only_weights="1,2">NormNCCOH_UBGenie</systematic>
+	<!-- NC coherent single photon (NC_coherent_1g_reweighted, filetype_code 13): 100% Gaussian, fully correlated
+	     normalization.  Written by create_rw_syst_df.py with weights 0, 1, 2, 3, 4 (= 1 + knob) on the coherent
+	     rows and 1 elsewhere.  Not a GENIE knob (relative to the CV), so it uses the full weight. -->
+	<systematic type="spline_to_covariance" binning="var0" plotname="NormNCCoh1g" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true">NormNCCoh1g</systematic>
 
 	<systematic type="spline" binning="var0" plotname="MaNCEL" tag="NC" force_0_cv="true" include_only_weights="1,2">MaNCEL_UBGenie</systematic>
 	<systematic type="spline_to_covariance" binning="var0" plotname="EtaNCEL" tag="NC" force_0_cv="true" include_only_weights="1,2">EtaNCEL_UBGenie</systematic>
