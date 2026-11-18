@@ -13,10 +13,17 @@ The nominal prediction uses the runs 1-5 open-data POT weighting
 Run 4b because that was the only sample with spline weights; splines now exist for
 every prediction file, so we use all runs.)
 
+The z-expansion measurement selects on afro_1mu1p_sel only and never cuts on a BDT score,
+so unlike the nominal ngem writer (save_PROfit_rootfiles.py) this one keeps every prediction
+event, including the BDT train/validation ones, at its unscaled weight.  The prob_*
+branches are still written but are biased for those events: do not cut on them in files
+made by this script (--bdt-test-only restores the test-only selection with x2 weights).
+
 Usage:
-    python src/save_PROfit_rootfiles.py                    # splines + detvar
-    python src/save_PROfit_rootfiles.py --no-detvar        # nominal only
-    python src/save_PROfit_rootfiles.py --training all_vars
+    python src/save_PROfit_rootfiles_zexp.py                    # splines + detvar
+    python src/save_PROfit_rootfiles_zexp.py --no-detvar        # nominal only
+    python src/save_PROfit_rootfiles_zexp.py --training all_vars
+    python src/save_PROfit_rootfiles_zexp.py --bdt-test-only    # nominal ngem event set
 """
 
 import argparse
@@ -589,9 +596,24 @@ def write_withspline_root(mc_df, data_df, spline_path, output_path, batch_size=1
 # Nominal MC + data (with spline weights)
 # ============================================================================
 
-def build_minimal_df(training):
-    """Return the lazy minimal nominal df (MC test events + data), scored and with a
-    reco_category, before spline merging."""
+def keep_all_bdt_roles(pred_df):
+    """The whole prediction at unscaled weights, whatever each event's bdt_role.
+
+    Valid only because nothing downstream of this writer cuts on a BDT score (the scores
+    of train/validation events are biased).  Prints the same per-role summary as
+    df_helpers.select_bdt_test_events, which the nominal ngem writer uses instead.
+    """
+    summary = (pred_df.group_by("bdt_role").agg(pl.len()).sort("bdt_role", nulls_last=True)
+               .collect(engine="streaming"))
+    print("BDT events (all kept, x1): " + ", ".join(
+        f"{row['bdt_role']}={row['len']}" for row in summary.iter_rows(named=True)))
+    return pred_df
+
+
+def build_minimal_df(training, bdt_test_only=False):
+    """Return the lazy minimal nominal df (MC events + data), scored and with a
+    reco_category, before spline merging.  All MC events by default; only the BDT test
+    (x2) and not_trained events with bdt_test_only."""
     prob_cols = _prob_cols()
 
     all_df = pl.scan_parquet(f"{intermediate_files_location}/all_df.parquet")
@@ -611,8 +633,11 @@ def build_minimal_df(training):
     # generic preselection + only events with a valid open-data weight
     pred = pred.filter((pl.col("wc_kine_reco_Enu") > 0) & pl.col(NET_WEIGHT_COL).is_not_null())
 
-    # BDT test events (scaled up to the full normalization) and not_trained events (kept whole)
-    pred = select_bdt_test_events(pred, [NET_WEIGHT_COL])
+    if bdt_test_only:
+        # BDT test events (scaled up to the full normalization) and not_trained events (kept whole)
+        pred = select_bdt_test_events(pred, [NET_WEIGHT_COL])
+    else:
+        pred = keep_all_bdt_roles(pred)
 
     data = data.filter(pl.col("wc_kine_reco_Enu") > 0)
 
@@ -677,7 +702,7 @@ def compute_spline_fractions(mc_df, spline_path):
     )
 
 
-def save_nominal(training, output_dir):
+def save_nominal(training, output_dir, bdt_test_only=False):
     """Nominal MC + data with spline weights -> minimal_withspline_df.root.
 
     The minimal df (30 scalar columns) is small enough to hold in memory; only the
@@ -690,7 +715,7 @@ def save_nominal(training, output_dir):
     spline_path = f"{intermediate_files_location}/spline_weights_df.parquet"
 
     print("Building nominal minimal df (runs 1-5 open-data weighting)...")
-    minimal_df = build_minimal_df(training)
+    minimal_df = build_minimal_df(training, bdt_test_only=bdt_test_only)
     data_role_filetypes = ["data", "ext", "nuwro_fake_data"]
     mc_df = minimal_df.filter(~pl.col("filetype").is_in(data_role_filetypes)).collect(engine="streaming")
     data_df = minimal_df.filter(pl.col("filetype").is_in(data_role_filetypes)).collect(engine="streaming")
@@ -817,11 +842,14 @@ def main():
                         help="directory to write the ROOT files into (default: intermediate_files_location)")
     parser.add_argument("--no-splines", action="store_true", help="skip the nominal MC+data spline ROOT file")
     parser.add_argument("--no-detvar", action="store_true", help="skip the per-vartype detvar ROOT files")
+    parser.add_argument("--bdt-test-only", action="store_true",
+                        help="keep only the BDT test events (weights x2) and not_trained events in the nominal "
+                             "prediction, as the nominal ngem writer does (default: all events, weights x1)")
     args = parser.parse_args()
 
     start = time.time()
     if not args.no_splines:
-        save_nominal(args.training, args.output_dir)
+        save_nominal(args.training, args.output_dir, bdt_test_only=args.bdt_test_only)
     if not args.no_detvar:
         save_detvar(args.training, args.output_dir)
     print(f"Done in {format_duration(time.time() - start)}", flush=True)

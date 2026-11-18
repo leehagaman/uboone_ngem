@@ -18,6 +18,7 @@ plots/*
 *.npz
 BuildEventGenerators/*
 !BuildEventGenerators/.gitkeep
+logs/
 
 # Track the INTRANUKE pion cross-section text tables needed by the pure-Python
 # pion-FSI reweighting (src/pion_fsi_reweighting.py) -- the rest of the GENIE
