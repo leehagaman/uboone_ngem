@@ -136,12 +136,12 @@ def _detailed_run_period_from_filename(filename):
     Checks explicit run-period filename suffixes first, then a few special open
     data filenames, then falls back to substring matches on the lowercased name.
     """
-    # special-case the runs 1-3 open data files, whose "..._N_<X>e19opendata.root"
+    # special-case the runs 1-3 open data files, whose "..._N_<X>e19opendata_v2.root"
     # names contain misleading digits ("5e19", "1e19") that would trip the
     # generic "<N>.root" suffix checks below.
-    if "_1_5e19opendata.root" in filename:
+    if "_1_5e19opendata" in filename:
         return "1"
-    if "_3_1e19opendata.root" in filename:
+    if "_3_1e19opendata" in filename:
         return "3"
     # the dedicated numuCC rad-corr simulation (numucc_radcorr_1g_*.root) is a run-5
     # sample whose filename carries no run-period suffix
@@ -273,7 +273,7 @@ def _get_file_metadata(filename, frac_events=1):
     f.close()
 
     # overwrite POT saved in the file for EXT and data, these need to instead use Zarko's tool
-    # see src/pot_and_trigger_numbers.py and ipynb_notebooks/pot_and_trigger_processing.ipynb for more details
+    # see src/pot_and_trigger_numbers.py (numbers from the MCC910_Samples wiki) for more details
     if filetype == "ext":
         if detailed_run_period not in ext_num_triggers:
             raise ValueError("EXT file num triggers not found!", filename, detailed_run_period)

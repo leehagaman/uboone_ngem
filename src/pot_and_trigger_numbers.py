@@ -1,9 +1,9 @@
 """Per-run-period POT and trigger reference numbers.
 
-These come from Zarko's getDataInfo.py run over each file's run/subrun list;
-see ipynb_notebooks/pot_and_trigger_processing.ipynb for the run/subrun list
-generation, the exact getDataInfo.py commands, and the parsed text outputs.
-    beam-on data POT          = tor875_wcut
+These are the "POT/triggers of this file" numbers (getDataInfo.py -v3 over each
+file's SubRun list) listed for our exact files on
+https://cdcvs.fnal.gov/redmine/projects/uboone-physics-analysis/wiki/MCC910_Samples
+    beam-on data POT          = tor860_wcut
     beam-on data num triggers = E1DCNT_wcut
     EXT num triggers          = EXT
 
@@ -11,21 +11,23 @@ create_df.py imports these dicts to assign each file's POT in _get_file_metadata
 and to build the weighting configs in get_weight_configs.
 """
 
-# beam-on (open data) POT and trigger counts, by detailed_run_period
+# beam-on (open data) POT and trigger counts, by detailed_run_period, for the
+# trim_checkout_*_v2.root open data files (runs 4a/4b: the retuple versions)
 open_data_POT = {
-    "1":  2.807e19,
-    "3":  9.471e18,
-    "4a": 1.8370e+19,
+    "1":  2.780e19,
+    "3":  9.377e18,
+    "4a": 1.836e19,
     "4b": 3.731e19,
 }
 open_data_num_triggers = {
-    "1":  6247112,
-    "3":  2301101,
-    "4a": 4281689,
-    "4b": 8523291,
+    "1":  6179866,
+    "3":  2283661,
+    "4a": 4281435,
+    "4b": 8523063,
 }
 
-# beam-off (EXT) trigger counts, by detailed_run_period
+# beam-off (EXT) trigger counts, by detailed_run_period, for the "wc processed"
+# checkout_*.root EXT files (runs 4a-5: the retuple versions)
 ext_num_triggers = {
     "1":  49551151,
     "2":  152116269,

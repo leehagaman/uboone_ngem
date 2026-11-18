@@ -2,7 +2,7 @@
 
 <mode name="nu" />
 
-<detector name="uBooNE" pot="9.89e19" />
+<detector name="uBooNE" pot="9.2847e19" />
 
 <channel name="1gNp" plotname="Reconstructed Neutrino Energy [MeV]">
 	<bins xaxislabel="Reconstructed Neutrino Energy" unit="MeV" edges="0 200 300 400 500 600 700 800 900 1000 1200 2000"/>
@@ -112,7 +112,7 @@
     <rule index="0" name="No Osc"/>
 </model>
 
-<MCFile treename="tree" filename="/nevis/riverside/data/leehagaman/ngem/intermediate_files/minimal_withspline_df.root" pot="9.89e19">
+<MCFile treename="tree" filename="/nevis/riverside/data/leehagaman/ngem/intermediate_files/minimal_withspline_df.root" pot="9.2847e19">
 
 	<branch associated_subchannel = "nu_uBooNE_1gNp_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==0" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 	<branch associated_subchannel = "nu_uBooNE_1g0p_overlays" model_rule = "0" weight_1 = "isdata==0 && isext==0 && isdirt==0 && reco_category==1" weight_2 = "non_genie_net_weight" weight_3 = "genie_cv_weight" ><variable>wc_kine_reco_Enu</variable></branch>
@@ -417,7 +417,7 @@
 </systematics>
 
 <data>
-  <MCFile treename="tree" filename="/nevis/riverside/data/leehagaman/ngem/intermediate_files/minimal_withspline_df.root" pot="9.89e19">
+  <MCFile treename="tree" filename="/nevis/riverside/data/leehagaman/ngem/intermediate_files/minimal_withspline_df.root" pot="9.2847e19">
 	<branch associated_subchannel = "nu_uBooNE_1gNp_data" model_rule = "0" weight_1 = "isdata == 1 && reco_category==0" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 	<branch associated_subchannel = "nu_uBooNE_1g0p_data" model_rule = "0" weight_1 = "isdata == 1 && reco_category==1" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
 	<branch associated_subchannel = "nu_uBooNE_1gNp1mu_data" model_rule = "0" weight_1 = "isdata == 1 && reco_category==2" weight_2 = "net_weight" ><variable>wc_kine_reco_Enu</variable></branch>
