@@ -194,7 +194,7 @@ def _get_file_metadata(filename, frac_events=1):
         filetype = "fullosc_overlay"
     elif "numucc_radcorr" in filename.lower():
         filetype = "numucc_rad_corr_sim"
-    elif "beam_off" in filename.lower() or "beamoff" in filename.lower() or "ext" in filename.lower():
+    elif "beam_off" in filename.lower() or "beamoff" in filename.lower():
         filetype = "ext"
     elif "nuwro" in filename.lower():
         filetype = "nuwro_fake_data"
@@ -519,7 +519,7 @@ if __name__ == "__main__":
         low = fn.lower()
         return not (
             "beam_on" in low or "beamon" in low
-            or "beam_off" in low or "beamoff" in low or "ext" in low
+            or "beam_off" in low or "beamoff" in low
             or "one_gamma" in low or "del1g" in low or "iso1g" in low or "nuwro" in low or "gibuu" in low or "detvar" in low
         )
 

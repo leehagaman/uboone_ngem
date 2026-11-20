@@ -199,7 +199,7 @@ def _filetype_from_filename(filename):
         return "fullosc_overlay"
     if "numucc_radcorr" in fn:
         return "numucc_rad_corr_sim"
-    if "beam_off" in fn or "beamoff" in fn or "ext" in fn:
+    if "beam_off" in fn or "beamoff" in fn:
         return "ext"
     if "nuwro" in fn:
         return "nuwro_fake_data"
