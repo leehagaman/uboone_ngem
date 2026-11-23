@@ -123,8 +123,8 @@ FILES_TO_COPY=(
     "/exp/uboone/data/users/uboonepro/SURPRISE/run4c_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_4c.root"
     "/exp/uboone/data/users/uboonepro/SURPRISE/run5_full_samples/BNB/checkout_MCC9.10_Run45_v10_04_07_23_BNB_nuwro_overlay_surprise_reco2_hist_5.root"
 
-    # GiBUU fake data files (temporary first test, in-TPC only!), run 4c
-    "/pnfs/uboone/scratch/users/bbogart/v10_04_07_26/checkout_extgen_gibuu_bnb_run4c_reco2_24000_final.root"
+    # GiBUU fake data file, run 4c
+    "/exp/uboone/data/users/bbogart/v08_00_00_98/checkout_extgen_gibuu_bnb_run4c_reco2_24000_final_redo.root"
 
     # DetVar files
 
