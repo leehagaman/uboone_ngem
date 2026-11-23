@@ -652,6 +652,7 @@ def make_histogram_plot(
         legend_ncol=2,
         legend_loc='upper right',
         vertical_lines=None,  # x positions of dashed black guide lines (e.g. a BDT cut), drawn on the main and ratio panels
+        xtick_labels=None,  # one label per bin, drawn (rotated) at the bin centers on the bottom panel, for categorical x axes
         ylim=None,
         yticks=None,
 
@@ -1222,6 +1223,14 @@ def make_histogram_plot(
             widen_spacer_for_xlabel(fig, breakdown_gs, spacer_row=1, upper_ax=ax_sys_breakdown, upper_row=0, lower_ax=ax_detvar_breakdown,
                                     min_gap_px=60)  # leave room for the lower panel's title
 
+    if xtick_labels is not None:
+        tick_centers = display_bin_centers[:len(xtick_labels)]
+        label_ax = ax2 if include_ratio else ax1
+        for ax in ([ax1, ax2] if include_ratio else [ax1]):
+            ax.set_xticks(tick_centers, xtick_labels if ax is label_ax else [""] * len(xtick_labels))
+            ax.tick_params(axis="x", which="minor", bottom=False)
+        label_ax.tick_params(axis="x", labelrotation=90, labelsize=8)
+
     if vertical_lines is not None:
         for x_line in vertical_lines:
             ax1.axvline(x_line, color="k", ls="--", lw=1)
@@ -1229,8 +1238,10 @@ def make_histogram_plot(
                 ax2.axvline(x_line, color="k", ls="--", lw=1)
 
     if savename is not None:
-        plt.savefig(f"../plots/{savename}.pdf")
-        plt.savefig(f"../plots/{savename}.png")
+        # rotated categorical tick labels can extend below the figure, so those plots are saved with a tight bbox
+        bbox = "tight" if xtick_labels is not None else None
+        plt.savefig(f"../plots/{savename}.pdf", bbox_inches=bbox)
+        plt.savefig(f"../plots/{savename}.png", bbox_inches=bbox)
 
     if show: plt.show()
 

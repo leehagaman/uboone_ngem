@@ -35,7 +35,7 @@ parallel, then BDT training; stops at the first failure, each step logging to it
 `*_nohup.out` file):
 
 ```
-nohup bash run_full_reprocessing.sh all_vars_2026_11_18 > reprocess_nohup.out 2>&1 &
+nohup bash run_full_reprocessing.sh all_vars_2026_11_21 > reprocess_nohup.out 2>&1 &
 ```
 
 The argument is the training name (default `all_vars_<YYYY_MM_DD>`). Add `--no_train` to
@@ -93,7 +93,8 @@ nohup python -u src/train.py --name all_vars_2026_11_04 > train_nohup.out 2>&1 &
 # hyperparameter tuning at a fixed learning rate (outputs in hyperparameter_tuning_outputs/; analyze a study with
 # ipynb_notebooks/hyperparameter_tuning_analysis.ipynb). A new study first tries the XGBoost defaults, then the
 # best hyperparameters of the studies given with --start_from.
-nohup python -u src/hyperparameter_tuning.py --study_name hp_2026_10_26 --start_from hyperparameter_tuning_outputs/hp_2026_10_25_best_params.json --nthread 64 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 50 > hp_nohup.out 2>&1 &
+
+nohup python -u src/hyperparameter_tuning.py --study_name hp_2026_11_23 --start_from hyperparameter_tuning_outputs/hp_2026_10_25_best_params.json --nthread 64 --learning_rate 0.3 --max_boost_rounds 1500 --n_trials 100 > hp_nohup.out 2>&1 &
 
 # learning rate scan with the tuned hyperparameters (it prints the src/compare_bdt_trainings.py command to compare them)
 nohup bash run_learning_rate_scan.sh hyperparameter_tuning_outputs/hp_2026_10_26_best_params.json > lr_scan_nohup.out 2>&1 &
