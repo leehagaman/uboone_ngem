@@ -603,7 +603,8 @@ def apply_rootino_correction(df, pot_dic, weight_configs):
         df = df.with_columns(pl.col(weight_col).alias(pre_col))
 
         new_weight = (
-            pl.when(is_rootino & in_runs_1_3).then(pl.lit(0.0))
+            pl.when(pl.col(weight_col).is_null()).then(pl.col(weight_col)) # excluded from this config: stays null, not 0
+            .when(is_rootino & in_runs_1_3).then(pl.lit(0.0))
             .when(is_rootino & in_runs_4_5).then(pl.col(weight_col) * scale)
             .otherwise(pl.col(weight_col))
         )
@@ -674,6 +675,7 @@ def do_wc_postprocessing(df):
             proton_nums_35_MeV.append(np.nan)
             proton_nums_40_MeV.append(np.nan)
             proton_nums_45_MeV.append(np.nan)
+            proton_nums_50_MeV.append(np.nan)
             other_track_nums_5_MeV.append(np.nan)
             other_track_nums_10_MeV.append(np.nan)
             other_track_nums_15_MeV.append(np.nan)
@@ -904,6 +906,7 @@ def do_wc_postprocessing(df):
                         max_z_momentum = truth_startMomentum_list[j][2]
                         max_pi0_costheta = max_z_momentum / max_tot_momentum
                         max_pi0_phi = np.arctan2(truth_startMomentum_list[j][1], truth_startMomentum_list[j][0]) * 180. / np.pi
+                        max_pi0_opening_angle = -1. # reset, so a new leading pi0 without exactly two saved daughters doesn't keep the previous pi0's angle
 
                         pi0_daughter_indices = []
                         for k in range(num_particles):
@@ -1124,14 +1127,17 @@ def do_wc_postprocessing(df):
     reco_nu_vtx_z = df["wc_reco_nuvtxZ"].to_numpy()
     for i in tqdm(range(df.shape[0]), desc="Adding WC shower position and angle variables", mininterval=10):
 
-        nu_distances_to_boundary.append(np.min([
-            abs(reco_nu_vtx_x[i] - (-1.)),
-            abs(reco_nu_vtx_x[i] - (254.3)),
-            abs(reco_nu_vtx_y[i] - (-115.)),
-            abs(reco_nu_vtx_y[i] - (117.)),
-            abs(reco_nu_vtx_z[i] - (0.6)),
-            abs(reco_nu_vtx_z[i] - (1036.4))
-        ]))
+        if reco_nu_vtx_x[i] == -1 and reco_nu_vtx_y[i] == -1 and reco_nu_vtx_z[i] == -1: # WC's no-vertex default, which would sit 0 cm from the x=-1 wall
+            nu_distances_to_boundary.append(np.nan)
+        else:
+            nu_distances_to_boundary.append(np.min([
+                abs(reco_nu_vtx_x[i] - (-1.)),
+                abs(reco_nu_vtx_x[i] - (254.3)),
+                abs(reco_nu_vtx_y[i] - (-115.)),
+                abs(reco_nu_vtx_y[i] - (117.)),
+                abs(reco_nu_vtx_z[i] - (0.6)),
+                abs(reco_nu_vtx_z[i] - (1036.4))
+            ]))
 
         if isinstance(reco_shower_momentum[i], float) and np.isnan(reco_shower_momentum[i]):
             shower_thetas.append(np.nan)
@@ -1144,7 +1150,7 @@ def do_wc_postprocessing(df):
         reco_shower_momentum_1 = reco_shower_momentum[i][1]
         reco_shower_momentum_2 = reco_shower_momentum[i][2]
         reco_shower_momentum_3 = reco_shower_momentum[i][3]
-        if reco_shower_momentum_3 > 0:
+        if reco_shower_momentum_3 > 0 and np.all(np.isfinite(reco_shower_momentum[i][:3])): # WC's no-shower default is [-1, -1, -1, -1]
             reco_shower_momentum_perp = np.sqrt(reco_shower_momentum_0 * reco_shower_momentum_0 + reco_shower_momentum_1 * reco_shower_momentum_1)
             shower_thetas.append(np.arctan2(reco_shower_momentum_perp, reco_shower_momentum_2) * 180. / np.pi)
             shower_phis.append(np.arctan2(reco_shower_momentum_1, reco_shower_momentum_0) * 180. / np.pi)
@@ -1195,20 +1201,21 @@ def do_wc_postprocessing(df):
                 min_backwards_projected_dist = min(min_backwards_projected_dist, (reco_shw_vtx_z[i] - (1036.4)) / shower_unit_vector_3d[2])
 
             backwards_projected_dists.append(min_backwards_projected_dist)
-            
-        else:
+
+            distances_to_boundary.append(np.min([
+                abs(reco_shw_vtx_x[i] - (-1.)),
+                abs(reco_shw_vtx_x[i] - (254.3)),
+                abs(reco_shw_vtx_y[i] - (-115.)),
+                abs(reco_shw_vtx_y[i] - (117.)),
+                abs(reco_shw_vtx_z[i] - (0.6)),
+                abs(reco_shw_vtx_z[i] - (1036.4))
+            ]))
+
+        else: # no reco shower: its vertex is the (-1, -1, -1) default, which would give a distance of 0
             shower_thetas.append(np.nan)
             shower_phis.append(np.nan)
             backwards_projected_dists.append(np.nan)
-            
-        distances_to_boundary.append(np.min([
-            abs(reco_shw_vtx_x[i] - (-1.)),
-            abs(reco_shw_vtx_x[i] - (254.3)),
-            abs(reco_shw_vtx_y[i] - (-115.)),
-            abs(reco_shw_vtx_y[i] - (117.)),
-            abs(reco_shw_vtx_z[i] - (0.6)),
-            abs(reco_shw_vtx_z[i] - (1036.4))
-        ]))
+            distances_to_boundary.append(np.nan)
     df["wc_reco_shower_theta"] = shower_thetas
     df["wc_reco_shower_phi"] = shower_phis
     df["wc_reco_distance_to_boundary"] = distances_to_boundary
@@ -1440,6 +1447,25 @@ def do_wc_postprocessing(df):
         "pandoravtx":  (df["pandora_reco_nu_vtx_sce_x"].to_numpy(), df["pandora_reco_nu_vtx_sce_y"].to_numpy(), df["pandora_reco_nu_vtx_sce_z"].to_numpy()),
     }
     num_protons_35_MeV_75cm_lists = {k: [] for k in proton_vtx_defs}
+    reco_shower_E_for_vtx = df["wc_reco_showerMomentum"].to_numpy()
+
+    def proton_vtx_is_valid(k, i):
+        """False for NaN vertices and each vertex's no-vertex default: WC nu vtx (-1, -1, -1),
+        WC shower vtx when there is no reco shower (showerMomentum[3] <= 0; vtx (-1, -1, -1)),
+        lantern -999, gLEE -99999, Pandora -3.4e38 (no neutrino slice)."""
+        vx, vy, vz = proton_vtx_defs[k]
+        x, y, z = float(vx[i]), float(vy[i]), float(vz[i])
+        if not (np.isfinite(x) and np.isfinite(y) and np.isfinite(z)):
+            return False
+        if x <= -900 or y <= -900 or z <= -900:
+            return False
+        if k == "wcvtx" and x == -1 and y == -1 and z == -1:
+            return False
+        if k == "wcshwrvtx":
+            shower_mom = reco_shower_E_for_vtx[i]
+            if (isinstance(shower_mom, float) and np.isnan(shower_mom)) or not (shower_mom[3] > 0):
+                return False
+        return True
 
     for i in tqdm(range(df.shape[0]), desc="Adding WC reco prim proton and other track variables", mininterval=10):
         if isinstance(reco_pdg[i], float) and np.isnan(reco_pdg[i]):
@@ -1463,8 +1489,7 @@ def do_wc_postprocessing(df):
         max_prim_other_track_costheta = -2.
         max_prim_other_track_phi = -999.
         num_protons_35_MeV_75cm = {k: 0 for k in proton_vtx_defs}
-        vtx_valid = {k: not (isinstance(vx[i], float) and np.isnan(vx[i]))
-                     for k, (vx, vy, vz) in proton_vtx_defs.items()}
+        vtx_valid = {k: proton_vtx_is_valid(k, i) for k in proton_vtx_defs}
         for j in range(num_particles):
             if reco_pdg[i][j] == 2212 and reco_startMomentum[i][j][3] * 1000. - 938.272088 > 35.: # proton (any, not just primary); [3] is the total energy in GeV, so cut on KE in MeV like the truth version above
                 for k, (vx, vy, vz) in proton_vtx_defs.items():
@@ -1484,7 +1509,7 @@ def do_wc_postprocessing(df):
                         max_prim_proton_energy = ke
                         max_prim_proton_costheta = reco_startMomentum[i][j][2] / tot_momentum if tot_momentum > 0 else -2. # p_z / |p| (dividing by [3] would squash costheta)
                         max_prim_proton_phi = np.arctan2(reco_startMomentum[i][j][1], reco_startMomentum[i][j][0]) * 180. / np.pi
-                elif reco_pdg[i][j] == 13: # other track (I think 13 is the only one)
+                elif abs(reco_pdg[i][j]) in (13, 211): # other track: WC reco labels non-proton tracks 13 or 211 (same as the multiplicity counters above)
                     ke = reco_startMomentum[i][j][3] * 1000. - 105.6583755 # [3] is the total energy in GeV, store KE in MeV under the muon hypothesis
                     if ke > max_prim_other_track_energy:
                         tot_momentum = np.sqrt(reco_startMomentum[i][j][0]**2 + reco_startMomentum[i][j][1]**2 + reco_startMomentum[i][j][2]**2)
@@ -1500,7 +1525,7 @@ def do_wc_postprocessing(df):
         max_prim_other_track_costhetas.append(max_prim_other_track_costheta)
         max_prim_other_track_phis.append(max_prim_other_track_phi)
         for k in proton_vtx_defs:
-            num_protons_35_MeV_75cm_lists[k].append(num_protons_35_MeV_75cm[k])
+            num_protons_35_MeV_75cm_lists[k].append(num_protons_35_MeV_75cm[k] if vtx_valid[k] else np.nan) # NaN, not 0, when that vertex doesn't exist
 
     # add all new columns in one concat to avoid DataFrame fragmentation
     # (many individual df[col] = ... inserts trigger pandas PerformanceWarnings)
@@ -2094,29 +2119,19 @@ def do_pandora_postprocessing(df):
 
         curr_event_processed_var_dic = {}
 
-        for var in pandora_vector_vars:
-            curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = np.nan
-            curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = np.nan
-            curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = np.nan
-        
-        max_pfp_len = 0
-        max2_pfp_len = -1
-        max3_pfp_len = -2
-        for pfp_i in range(len(curr_event_vector_var_dic[pandora_vector_vars_with_prefix[0]])):
-            curr_pfp_len = curr_event_vector_var_dic["pandora_trk_len_v"][pfp_i]
-            if curr_pfp_len > max_pfp_len:
-                for var in pandora_vector_vars:
-                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"]
-                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"]
-                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[f"pandora_{var}"][pfp_i]
-            elif curr_pfp_len > max2_pfp_len:
-                for var in pandora_vector_vars:
-                    curr_event_processed_var_dic[f"pandora_max3_len_trk_{var}"] = curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"]
-                    curr_event_processed_var_dic[f"pandora_max2_len_trk_{var}"] = curr_event_vector_var_dic[f"pandora_{var}"][pfp_i]
-            elif curr_pfp_len > max3_pfp_len:
-                for var in pandora_vector_vars:
-                    curr_event_processed_var_dic[f"pandora_max_len_trk_{var}"] = curr_event_vector_var_dic[f"pandora_{var}"][pfp_i]
-        
+        # the PFPs with the three largest trk_len, longest first; NaN when there are fewer.  PFPs without a track
+        # fit (trk_len = -3.4e38 sentinel) or with non-positive length are skipped
+        # (before 2026-11-23 a bug never updated the running maxima, so these slots held the *last* three PFPs
+        # with trk_len > 0 in vector order instead, "max" being the last one)
+        trk_lens = np.asarray(curr_event_vector_var_dic["pandora_trk_len_v"], dtype=float)
+        finite_idx = np.flatnonzero(np.isfinite(trk_lens) & (trk_lens > 0))
+        longest = finite_idx[np.argsort(-trk_lens[finite_idx], kind="stable")][:3]
+        for slot_i, slot in enumerate(["max", "max2", "max3"]):
+            for var in pandora_vector_vars:
+                curr_event_processed_var_dic[f"pandora_{slot}_len_trk_{var}"] = (
+                    curr_event_vector_var_dic[f"pandora_{var}"][longest[slot_i]] if slot_i < len(longest) else np.nan
+                )
+
         for processed_var in curr_event_processed_var_dic.keys():
             processed_var_dic[processed_var].append(curr_event_processed_var_dic[processed_var])
 
@@ -2225,8 +2240,9 @@ def do_glee_postprocessing(df):
         if not (isinstance(temp_list, (float, np.floating)) or not hasattr(temp_list, '__len__') or len(temp_list) == 0): 
             # looping over all unassoc hits
             for unassoc_hit_j in range(len(temp_list)):
-                # saving values for the closest unassoc hit to the track
-                if isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j] < min_dist:
+                # saving values for the closest unassoc hit to the track; planes without unassociated
+                # hits carry the -999 default, which would otherwise always win the minimum
+                if 0 <= isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j] < min_dist:
                     min_dist = isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j]
                     curr_min_isolation_min_dist_trk_unassoc = isolation_min_dist_trk_unassoc[event_i][unassoc_hit_j]
                     curr_min_isolation_min_dist_trk_shr = isolation_min_dist_trk_shr[event_i][unassoc_hit_j]
@@ -3092,7 +3108,7 @@ def do_lantern_postprocessing(df):
                     second_max_nonprimary_shower_CosTheta = curr_showerCosTheta[shower_i]
                     second_max_nonprimary_shower_CosThetaY = curr_showerCosThetaY[shower_i]
                     second_max_nonprimary_shower_DistToVtx = curr_showerDistToVtx[shower_i]
-
+                continue # secondary showers only fill the nonprimary variables above, not the primary-shower ones below
 
             if curr_showerPID[shower_i] == 22:
                 curr_num_photons += 1
@@ -3236,7 +3252,8 @@ def do_lantern_postprocessing(df):
             dot_product = np.dot(photon_1_dir, photon_2_dir)
             dot_product = np.clip(dot_product, -1.0, 1.0) # accounting for floating point errors near 1 or -1
             diphoton_opening_angle = np.arccos(dot_product) * 180 / np.pi
-            diphoton_costheta = diphoton_momentum[2] / diphoton_energy
+            diphoton_momentum_mag = np.linalg.norm(diphoton_momentum)
+            diphoton_costheta = diphoton_momentum[2] / diphoton_momentum_mag if diphoton_momentum_mag > 0 else np.nan
             diphoton_mass_squared = diphoton_energy**2 - diphoton_momentum[0]**2 - diphoton_momentum[1]**2 - diphoton_momentum[2]**2
             diphoton_mass_squared = np.clip(diphoton_mass_squared, 0.0, None) # accounting for floating point errors near 0
             diphoton_mass = np.sqrt(diphoton_mass_squared)
@@ -3925,7 +3942,7 @@ def do_lantern_postprocessing(df):
         "lantern_prim_charged_pion_track_max_piscore": prim_charged_pion_track_max_piscores,
     })
 
-    df = pd.concat([df, pd.DataFrame(new_lantern_cols_dic)], axis=1)
+    df = pd.concat([df, pd.DataFrame(new_lantern_cols_dic, index=df.index)], axis=1)
 
     return df
 
@@ -3986,13 +4003,24 @@ def do_combined_postprocessing(df):
         ),
     ])
 
-    # changing to nan when lantern vtx is the default (-999, -999, -999)
-    # the WC vtx will always be valid after generic neutrino selection
-    # the Pandora vtx will always be valid since a slice is always chosen
+    # changing to nan when a vertex is its no-vertex default:
+    # lantern (-999, -999, -999); WC (-1, -1, -1), which never survives the generic neutrino selection;
+    # Pandora -3.4e38 when no neutrino slice was found (the float32 distance overflows to inf);
+    # gLEE -99999
+    lantern_invalid = (pl.col("lantern_vtxX") - (-999)).abs() < 1e-2
+    wc_invalid = (pl.col("wc_reco_nuvtxX") == -1) & (pl.col("wc_reco_nuvtxY") == -1) & (pl.col("wc_reco_nuvtxZ") == -1)
+    pandora_invalid = pl.col("pandora_reco_nu_vtx_x").abs() > 1e30
+    glee_invalid = pl.col("glee_reco_vertex_x") < -9999
+    def _nan_if(cond, col):
+        return pl.when(cond).then(np.nan).otherwise(pl.col(col)).alias(col)
     df = df.with_columns([
-        pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("wc_lantern_dist")).alias("wc_lantern_dist"),
-        pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("lantern_pandora_dist")).alias("lantern_pandora_dist"),
-        pl.when((pl.col("lantern_vtxX") - (-999)).abs() < 1e-2).then(np.nan).otherwise(pl.col("lantern_truth_dist")).alias("lantern_truth_dist"),
+        _nan_if(wc_invalid | pandora_invalid, "wc_pandora_dist"),
+        _nan_if(wc_invalid | lantern_invalid, "wc_lantern_dist"),
+        _nan_if(lantern_invalid | pandora_invalid, "lantern_pandora_dist"),
+        _nan_if(wc_invalid, "wc_truth_dist"),
+        _nan_if(pandora_invalid, "pandora_truth_dist"),
+        _nan_if(lantern_invalid, "lantern_truth_dist"),
+        _nan_if(glee_invalid, "glee_truth_dist"),
     ])
 
     return df

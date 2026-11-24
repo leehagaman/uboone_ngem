@@ -12,6 +12,29 @@ SPHERE_RADIUS_CM = 75.0           # sphere radius around WC shower vertex [cm]
 FORWARD_CONE_HALF_ANGLE_DEG = 45.0  # half-angle of forward shower cone to exclude [deg]
 
 
+def is_valid_vertex(vx, vy, vz):
+    """False for NaN/inf vertices and for the reconstruction's no-vertex defaults, which are
+    finite numbers and would otherwise be used as real positions: WC (-1, -1, -1), LANTERN
+    -999, gLEE -99999, Pandora -3.4e38 (no neutrino slice)."""
+    vx, vy, vz = float(vx), float(vy), float(vz)
+    if not (np.isfinite(vx) and np.isfinite(vy) and np.isfinite(vz)):
+        return False
+    if min(vx, vy, vz) <= -900. or max(abs(vx), abs(vy), abs(vz)) > 1e30:
+        return False
+    if vx == -1. and vy == -1. and vz == -1.:
+        return False
+    return True
+
+
+def has_wc_reco_shower(shower_momentum):
+    """True if the WC reco shower 4-momentum describes a real shower. With no shower, WC
+    fills [-1, -1, -1, -1] (and the shower vertex with -1); NaN when the tree is missing."""
+    if isinstance(shower_momentum, float) or not hasattr(shower_momentum, '__getitem__'):
+        return False
+    mom = np.asarray(shower_momentum[:4], dtype=float)
+    return bool(np.all(np.isfinite(mom)) and mom[3] > 0 and np.linalg.norm(mom[:3]) > 1e-10)
+
+
 def is_blip_in_tpc(x, y, z):
     """Check whether a blip position is within the MicroBooNE TPC active volume."""
     return (TPC_X_MIN < x < TPC_X_MAX and
@@ -129,8 +152,8 @@ def do_blip_postprocessing(df):
         blip_dxs = all_blip_dx[event_index]
         blip_dws = all_blip_dw[event_index]
 
-        # Check if wc_reco_shower_momentum is a float/NaN (not subscriptable)
-        if isinstance(all_wc_reco_shower_momentum[event_index], float) or not hasattr(all_wc_reco_shower_momentum[event_index], '__getitem__'):
+        # no WC reco shower (NaN, or the [-1, -1, -1, -1] default): keep the defaults
+        if not has_wc_reco_shower(all_wc_reco_shower_momentum[event_index]):
             closest_upstream_blip_distance.append(curr_closest_upstream_blip_distance)
             closest_upstream_blip_angle.append(curr_closest_upstream_blip_angle)
             closest_upstream_blip_impact_parameter.append(curr_closest_upstream_blip_impact_parameter)
@@ -231,8 +254,8 @@ def do_blip_postprocessing(df):
             vx_arr, vy_arr, vz_arr = vtx_arrays[key]
             vx, vy, vz = vx_arr[event_index], vy_arr[event_index], vz_arr[event_index]
 
-            # bad vertex
-            if not (np.isfinite(vx) and np.isfinite(vy) and np.isfinite(vz)):
+            # bad vertex (NaN or a no-vertex default)
+            if not is_valid_vertex(vx, vy, vz):
                 out_minDist[key].append(np.inf)
                 out_minE[key].append(np.nan)
                 for R in radii_cm:
@@ -349,9 +372,8 @@ def do_blip_postprocessing(df):
             no_shower_cone_no_backtrack_cones_nonproton_n.append(ev_no_shower_cone_no_backtrack_cones_nonproton_n); no_shower_cone_no_backtrack_cones_nonproton_sumE.append(ev_no_shower_cone_no_backtrack_cones_nonproton_sumE)
             backtrack_cones_nonproton_n.append(ev_backtrack_cones_nonproton_n); backtrack_cones_nonproton_sumE.append(ev_backtrack_cones_nonproton_sumE)
 
-        # Need valid shower momentum and shower vertex
-        if (isinstance(all_wc_reco_shower_momentum[event_index], float) or
-                not hasattr(all_wc_reco_shower_momentum[event_index], '__getitem__') or
+        # Need valid shower momentum and shower vertex (no shower = NaN or the [-1, -1, -1, -1] default)
+        if (not has_wc_reco_shower(all_wc_reco_shower_momentum[event_index]) or
                 blip_xs is None or len(blip_xs) == 0):
             _append_defaults()
             continue
@@ -625,7 +647,7 @@ def do_blip_postprocessing(df):
             vx = vx_arr[event_index]
             vy = vy_arr[event_index]
             vz = vz_arr[event_index]
-            if not (np.isfinite(vx) and np.isfinite(vy) and np.isfinite(vz)):
+            if not is_valid_vertex(vx, vy, vz): # NaN or a no-vertex default
                 _append_2shwr_defaults_for_vtx(k)
                 continue
 
