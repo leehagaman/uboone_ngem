@@ -11,6 +11,7 @@ PROTON_MOMENTUM_THRESHOLD = 0.3
 PROTON_MOMENTUM_MAX = 1.0
 CHARGED_PION_MOMENTUM_THRESHOLD = 0.07
 
+BINDING_ENERGY_GEV = 0.04
 PROTON_REMOVAL_ENERGY_GEV = 0.0309
 
 MUON_MASS = 0.106        # GeV/c^2, as in STV_Tools.cxx
@@ -221,9 +222,7 @@ def compute_stv_arrays(muon_vector, proton_vector, muon_energy, proton_energy):
 
     Mm, Mp, Mn = MUON_MASS, PROTON_MASS, NEUTRON_MASS
     DeltaM2 = Mn**2 - Mp**2
-    # STV_Tools.cxx declares a local `double BE = 0.0309;` in its constructor that shadows
-    # Constants.h's BE = 0.04, so ECal / EQE / EMiss / PMiss use 0.0309 (ECal == ECalMB there)
-    BE = PROTON_REMOVAL_ENERGY_GEV
+    BE = BINDING_ENERGY_GEV
 
     with np.errstate(divide="ignore", invalid="ignore"):
         mu_x, mu_y, mu_z = mu[:, 0], mu[:, 1], mu[:, 2]
@@ -321,19 +320,20 @@ def stv_columns_from_vectors(muon_vector, proton_vector, is_valid, column_names)
                                            posinf=INVALID_STV_VALUE, neginf=INVALID_STV_VALUE)
     return out
 
-def evaluate_reco_event(data):
-    """Reference reco selection (neutrino_selection.cxx + reco_selection.cxx) plus the
-    Wire-Cell cuts.  Returns (passes, muon_vector, proton_vector) with the Pandora
+
+def passes_wc_cuts(data):
+    """The Wire-Cell requirements added on top of the Pandora-based reference selection: generic neutrino
+    selection, full containment and the numu BDT score, mainly for cosmic rejection.  Works on scalars or arrays."""
+    return (data["wc_kine_reco_Enu"] > 0) & (data["wc_match_isFC"] == 1) & (data["wc_numu_score"] > 0.9)
+
+
+def evaluate_reco_event(data, apply_wc_cuts=True):
+    """Reference reco selection (neutrino_selection.cxx + reco_selection.cxx) plus (unless
+    apply_wc_cuts=False, which gives the Pandora-only selection) the Wire-Cell cuts in passes_wc_cuts.  Returns (passes, muon_vector, proton_vector) with the Pandora
     candidate 3-momenta in GeV/c, or FAILED_RECO_EVENT; the STVs are computed for all
     events at once afterwards with stv_columns_from_vectors."""
     try:
-        # Wire-Cell requirements on top of the Pandora-based reference selection: generic neutrino
-        # selection, full containment and the numu BDT score, mainly for cosmic rejection.  
-        if not (
-            (data["wc_kine_reco_Enu"] > 0)
-            and (data["wc_match_isFC"] == 1)
-            and (data["wc_numu_score"] > 0.9)
-        ):
+        if apply_wc_cuts and not passes_wc_cuts(data):
             return FAILED_RECO_EVENT
 
         candidate_index = []

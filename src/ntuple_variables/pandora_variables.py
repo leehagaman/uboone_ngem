@@ -358,7 +358,33 @@ pandora_vector_vars = [
 
 pandora_vector_vars_with_prefix = [f"pandora_{var}" for var in pandora_vector_vars]
 
+# Branches for the PeLEE nue selections (src/pelee_nue_selection.py), computed in create_df.py and
+# create_detvar_df.py; loaded but never used as BDT features (the vector ones are dropped after use)
+pandora_pelee_scalar_vars = [
+    "slice_orig_pass_id", "selected", "reco_e",
+    "trk_id", "shr_id", "trk2_id", "shr2_id",
+    "shr_score", "trk_score", "trk_distance", "trk_len", "trk_theta", "trk_phi", "trk_energy",
+    "trk_energy_tot", "trk_hits_tot", "shr_hits_tot", "shr_energy_tot", "shr_energy_tot_cali",
+    "shr_px", "shr_py", "shr_pz", "shrclusdir0", "shrclusdir1", "shrclusdir2",
+    "n_tracks_contained", "n_showers_contained",
+    "CosmicIPAll3D", "CosmicDirAll3D", "hits_ratio", "shrmoliereavg", "shr1shr2moliereavg",
+    "shr1trk2moliereavg", "tksh_distance", "tksh_angle", "trkshrhitdist2", "trk2shrhitdist2",
+    "trk1trk2hitdist2", "shr_tkfit_npointsvalid", "shr_tkfit_npoints",
+    *[f"shr_tkfit_{kind}{q}_{p}" for kind in ["", "2cm_", "gap10_"] for q in ["dedx", "nhits"] for p in "UVY"],
+    "secondshower_Y_nhit", "secondshower_Y_dot", "secondshower_Y_vtxdist", "secondshower_Y_dir",
+    "bdt_pi0_np", "bdt_nonpi0_np", "bdt_bkg_0p",
+]
+pandora_pelee_vector_vars = [
+    "trk_score_v", "trk_llr_pid_score_v", "trk_len_v", "trk_distance_v", "trk_energy_proton_v",
+    "trk_theta_v", "trk_phi_v", "pfnhits", "shr_energy_y_v",
+    "pfpplanesubclusters_U", "pfpplanesubclusters_V", "pfpplanesubclusters_Y",
+    *[f"{obj}_{c}_v" for obj in ["shr_start", "trk_start", "trk_dir", "trk_sce_start", "trk_sce_end"] for c in "xyz"],
+    "shr_tkfit_dedx_u_v", "shr_tkfit_dedx_v_v", "shr_tkfit_dedx_y_v",
+    "shr_tkfit_dedx_nhits_u_v", "shr_tkfit_dedx_nhits_v_v", "shr_tkfit_dedx_nhits_y_v",
+]
+
 pandora_vars = pandora_non_BDT_vars + pandora_scalar_vars + pandora_vector_vars
+pandora_vars += [v for v in pandora_pelee_scalar_vars + pandora_pelee_vector_vars if v not in pandora_vars]
 
 pandora_postprocessing_vars = []
 for var in pandora_vector_vars:

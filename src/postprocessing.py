@@ -20,6 +20,7 @@ from pi0_dalitz_reweighting import get_dalitz_rest_frame_observables
 from afro_1mu1p_selection import REQUIRED_RECO_SELECTION_COLUMNS, REQUIRED_TRUE_1MU1P_COLUMNS
 from afro_1mu1p_selection import STV_COLUMN_NAMES, TRUE_STV_COLUMN_NAMES
 from afro_1mu1p_selection import evaluate_reco_event as evaluate_afro_1mu1p_reco_event
+from afro_1mu1p_selection import passes_wc_cuts as passes_afro_1mu1p_wc_cuts
 from afro_1mu1p_selection import evaluate_true_1mu1p_kinematics as evaluate_afro_true_1mu1p_kinematics
 from afro_1mu1p_selection import stv_columns_from_vectors
 
@@ -2139,7 +2140,9 @@ def do_pandora_postprocessing(df):
 
 
 def add_afro_1mu1p_sel(df):
-    """Append the Afro 1mu1p columns"""
+    """Append the Afro 1mu1p columns: afro_1mu1p_sel (Pandora reference selection + the WC generic, FC and
+    numu-score cuts; the z-expansion selection, which the STVs are filled for), afro_1mu1p_pandora_sel (the
+    Pandora reference selection alone), and the truth columns."""
     missing_columns = [col for col in REQUIRED_RECO_SELECTION_COLUMNS if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing columns needed for add_afro_1mu1p_sel: {missing_columns}")
@@ -2152,7 +2155,8 @@ def add_afro_1mu1p_sel(df):
     )
 
     n_events = len(df)
-    selected = np.zeros(n_events, dtype=bool)
+    pandora_selected = np.zeros(n_events, dtype=bool)
+    passes_wc = np.asarray(passes_afro_1mu1p_wc_cuts(column_arrays), dtype=bool)
     true_1mu1p = np.zeros(n_events, dtype=np.int64)
     reco_muon_vectors = np.full((n_events, 3), np.nan)
     reco_proton_vectors = np.full((n_events, 3), np.nan)
@@ -2160,9 +2164,9 @@ def add_afro_1mu1p_sel(df):
     true_proton_vectors = np.full((n_events, 3), np.nan)
     for event_idx in tqdm(range(n_events), desc="Adding one muon one proton selection", mininterval=10):
         event_data = {col: values[event_idx] for col, values in column_arrays.items()}
-        passes_selection, muon_vector, proton_vector = evaluate_afro_1mu1p_reco_event(event_data)
-        if passes_selection:
-            selected[event_idx] = True
+        passes_selection, muon_vector, proton_vector = evaluate_afro_1mu1p_reco_event(event_data, apply_wc_cuts=False)
+        pandora_selected[event_idx] = passes_selection
+        if passes_selection and passes_wc[event_idx]:
             reco_muon_vectors[event_idx] = muon_vector
             reco_proton_vectors[event_idx] = proton_vector
         if has_truth_columns:
@@ -2173,16 +2177,19 @@ def add_afro_1mu1p_sel(df):
                 true_muon_vectors[event_idx] = muon_vector
                 true_proton_vectors[event_idx] = proton_vector
 
+    selected = pandora_selected & passes_wc
     stv_columns = stv_columns_from_vectors(reco_muon_vectors, reco_proton_vectors, selected, STV_COLUMN_NAMES)
     stv_columns.update(stv_columns_from_vectors(true_muon_vectors, true_proton_vectors, true_1mu1p == 1, TRUE_STV_COLUMN_NAMES))
 
     if isinstance(df, pl.DataFrame):
         return df.with_columns(
-            [pl.Series("afro_1mu1p_sel", selected), pl.Series("afro_1mu1p_true", true_1mu1p)]
+            [pl.Series("afro_1mu1p_sel", selected), pl.Series("afro_1mu1p_pandora_sel", pandora_selected),
+             pl.Series("afro_1mu1p_true", true_1mu1p)]
             + [pl.Series(column_name, values) for column_name, values in stv_columns.items()]
         )
 
     df["afro_1mu1p_sel"] = selected
+    df["afro_1mu1p_pandora_sel"] = pandora_selected
     df["afro_1mu1p_true"] = true_1mu1p
     for column_name, values in stv_columns.items():
         df[column_name] = values

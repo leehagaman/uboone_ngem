@@ -116,6 +116,7 @@ vector_columns = [
 
 ]
 vector_columns += [f"pandora_{var}" for var in pandora_vector_vars]
+vector_columns += [f"pandora_{var}" for var in pandora_pelee_vector_vars if var not in pandora_vector_vars]
 vector_columns += [f"glee_{var}" for var in glee_vector_vars]
 
 combined_training_vars_with_duplicates = wc_training_vars + glee_training_vars + pandora_training_vars + lantern_training_vars + combined_postprocessing_training_vars
