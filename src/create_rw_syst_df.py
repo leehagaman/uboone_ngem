@@ -75,6 +75,10 @@ def _merge_parquet_parts(paths, out_path, batch_size=32_768):
 # with unit weights.  Not suffixed _UBGenie on purpose: the coherent rows have an invalid
 # GENIE tune, and save_PROfit_rootfiles resets every _UBGenie vector to one for those.
 # The Python covariance (systematics.py) computes the same uncertainty directly.
+# NormNumuCCRadCorr is the same 100% normalization knob for the dedicated numuCC
+# radiative-correction simulation (numucc_rad_corr_sim), added in _load_chunk.  Those rows
+# do have GENIE weight trees, so they keep their real GENIE universes as well.
+NORM_KNOB_WEIGHTS = [0.0, 1.0, 2.0, 3.0, 4.0]
 PRESEL_DF_PATH = f"{intermediate_files_location}/presel_df_train_vars.parquet"
 
 
@@ -175,7 +179,7 @@ def _build_derived_part(derived_events, template_parts, out_path, add_coh_norm_k
     if add_coh_norm_knob:
         part = part.with_columns(
             pl.when(pl.col("filetype") == "NC_coherent_1g_reweighted")
-            .then(pl.lit([0.0, 1.0, 2.0, 3.0, 4.0], dtype=pl.List(pl.Float32)))
+            .then(pl.lit(NORM_KNOB_WEIGHTS, dtype=pl.List(pl.Float32)))
             .otherwise(None).alias("NormNCCoh1g"))
 
     part.write_parquet(out_path)
@@ -442,6 +446,12 @@ def _load_chunk(filename, filetype, detailed_run_period, entry_start, entry_stop
     ]
     curr_weights_df = curr_weights_df.with_columns(meta_cols)
     spline_df = spline_df.with_columns(meta_cols)
+
+    if filetype == "numucc_rad_corr_sim":
+        # 100% normalization knob on the rad-corr simulation (see NORM_KNOB_WEIGHTS); the
+        # column is absent (null after the merge -> unit weights in PROfit) for every other file
+        spline_df = spline_df.with_columns(
+            pl.lit(NORM_KNOB_WEIGHTS, dtype=pl.List(pl.Float32)).alias("NormNumuCCRadCorr"))
 
     return curr_weights_df, spline_df
 

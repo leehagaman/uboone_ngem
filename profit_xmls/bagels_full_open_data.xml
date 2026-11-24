@@ -350,6 +350,10 @@
 	     normalization.  Written by create_rw_syst_df.py with weights 0, 1, 2, 3, 4 (= 1 + knob) on the coherent
 	     rows and 1 elsewhere.  Not a GENIE knob (relative to the CV), so it uses the full weight. -->
 	<systematic type="spline_to_covariance" binning="var0" plotname="NormNCCoh1g" knobvals="-1, 0, 1, 2, 3" tag="COH" force_0_cv="true">NormNCCoh1g</systematic>
+	<!-- numuCC radiative-correction simulation (numucc_rad_corr_sim, filetype_code 14): 100% Gaussian, fully
+	     correlated normalization, on top of its GENIE knobs.  Written by create_rw_syst_df.py with weights
+	     0, 1, 2, 3, 4 (= 1 + knob) on the rad-corr rows and 1 elsewhere; uses the full weight like NormNCCoh1g. -->
+	<systematic type="spline_to_covariance" binning="var0" plotname="NormNumuCCRadCorr" knobvals="-1, 0, 1, 2, 3" tag="RadCorr" force_0_cv="true">NormNumuCCRadCorr</systematic>
 
 	<systematic type="spline" binning="var0" plotname="MaNCEL" tag="NC" force_0_cv="true" include_only_weights="1,2">MaNCEL_UBGenie</systematic>
 	<systematic type="spline_to_covariance" binning="var0" plotname="EtaNCEL" tag="NC" force_0_cv="true" include_only_weights="1,2">EtaNCEL_UBGenie</systematic>

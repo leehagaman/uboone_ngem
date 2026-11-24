@@ -388,18 +388,21 @@ def create_rw_frac_cov_matrices(mc_pred_df, var, bins, weights_df=None, net_weig
         denom = np.outer(cv_hist, cv_hist)
         rw_sys_frac_cov_dic[unisim_type] = np.nan_to_num(np.divide(unisim_cov, denom, out=np.zeros_like(unisim_cov), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
-    # 100% Gaussian, fully correlated normalization uncertainty on the NC coherent 1g
-    # prediction (PROfit: the NormNCCoh1g spline knob, see create_rw_syst_df._build_derived_part).
-    # A +1 sigma shift doubles the coherent histogram d, so the covariance is outer(d, d).
-    if "filetype" in base_merged.columns:
-        is_coh = (base_merged.get_column("filetype") == "NC_coherent_1g_reweighted").to_numpy()
-        coh_hist = np.histogram(pred_vals[is_coh], weights=normal_weights[is_coh], bins=bins)[0]
-    else:
-        print("WARNING: no filetype column in mc_pred_df, so the NC coherent 1g normalization uncertainty is zero")
-        coh_hist = np.zeros(len(bins) - 1)
+    # 100% Gaussian, fully correlated normalization uncertainties on the NC coherent 1g
+    # prediction and on the numuCC radiative-correction simulation (PROfit: the NormNCCoh1g
+    # and NormNumuCCRadCorr spline knobs, see create_rw_syst_df.py).  A +1 sigma shift
+    # doubles that sample's histogram d, so the covariance is outer(d, d).
     denom = np.outer(cv_hist, cv_hist)
-    rw_sys_frac_cov_dic["NormNCCoh1g"] = np.nan_to_num(
-        np.divide(np.outer(coh_hist, coh_hist), denom, out=np.zeros_like(denom), where=(denom != 0)), nan=0, posinf=0, neginf=0)
+    for norm_knob_name, norm_filetype in [("NormNCCoh1g", "NC_coherent_1g_reweighted"),
+                                          ("NormNumuCCRadCorr", "numucc_rad_corr_sim")]:
+        if "filetype" in base_merged.columns:
+            is_sample = (base_merged.get_column("filetype") == norm_filetype).to_numpy()
+            sample_hist = np.histogram(pred_vals[is_sample], weights=normal_weights[is_sample], bins=bins)[0]
+        else:
+            print(f"WARNING: no filetype column in mc_pred_df, so the {norm_knob_name} normalization uncertainty is zero")
+            sample_hist = np.zeros(len(bins) - 1)
+        rw_sys_frac_cov_dic[norm_knob_name] = np.nan_to_num(
+            np.divide(np.outer(sample_hist, sample_hist), denom, out=np.zeros_like(denom), where=(denom != 0)), nan=0, posinf=0, neginf=0)
 
     print("done getting reweightable systematic covariance matrices")
 
