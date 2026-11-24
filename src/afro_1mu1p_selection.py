@@ -11,7 +11,6 @@ PROTON_MOMENTUM_THRESHOLD = 0.3
 PROTON_MOMENTUM_MAX = 1.0
 CHARGED_PION_MOMENTUM_THRESHOLD = 0.07
 
-BINDING_ENERGY_GEV = 0.04
 PROTON_REMOVAL_ENERGY_GEV = 0.0309
 
 MUON_MASS = 0.106        # GeV/c^2, as in STV_Tools.cxx
@@ -222,7 +221,9 @@ def compute_stv_arrays(muon_vector, proton_vector, muon_energy, proton_energy):
 
     Mm, Mp, Mn = MUON_MASS, PROTON_MASS, NEUTRON_MASS
     DeltaM2 = Mn**2 - Mp**2
-    BE = BINDING_ENERGY_GEV
+    # STV_Tools.cxx declares a local `double BE = 0.0309;` in its constructor that shadows
+    # Constants.h's BE = 0.04, so ECal / EQE / EMiss / PMiss use 0.0309 (ECal == ECalMB there)
+    BE = PROTON_REMOVAL_ENERGY_GEV
 
     with np.errstate(divide="ignore", invalid="ignore"):
         mu_x, mu_y, mu_z = mu[:, 0], mu[:, 1], mu[:, 2]
