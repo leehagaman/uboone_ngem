@@ -483,9 +483,9 @@ def add_nue_flux_sampling_weight(df, file_POT, filename=None, detailed_run_perio
 
     Histograms the file's events in true neutrino energy on the target table's own
     binning (contiguous uniform 50 MeV bins starting at 0), weighted by
-    weight_cv*weight_spline (invalid null/nan/inf/<1e-3/>30 products forced to 1:
-    the validity clamp postprocessing applies, plus a lower bound used only here
-    because cv*spline enters a denominator), converts to a rate per 1e17
+    weight_cv*weight_spline (invalid null/nan/inf/<=0/>30 products forced to 1, the
+    validity clamp postprocessing applies; tiny positive products < 1e-3 are counted
+    as 0, since postprocessing keeps their real ~0 value), converts to a rate per 1e17
     POT, and takes per bin
         target_xs_cv_weight_per_1e17pot / (file cv*spline-weighted events per 1e17 POT)
     as the per-event nue_flux_sampling_weight.  Downstream (postprocessing's
@@ -529,15 +529,19 @@ def add_nue_flux_sampling_weight(df, file_POT, filename=None, detailed_run_perio
     if not np.all(np.isfinite(enu)):
         raise ValueError(f"nue_overlay file has {np.sum(~np.isfinite(enu))} non-finite wc_truth_nuEnergy values!")
 
-    # per-event cv*spline with the same validity clamp postprocessing applies to it,
-    # plus a lower bound used only in this step: pathological tiny positive GENIE
-    # weights (e.g. ~1e-40..1e-8 in the Run4a4c4d5 nue files) pass the standard
-    # clamp, but here cv*spline enters the denominator histogram, where a single
-    # such event alone in a sparse bin would blow up that bin's ratio
-    # same CV-weight source as postprocessing's base weight (Pandora weightTune*weightSpline)
+    # per-event cv*spline with the same validity clamp postprocessing applies to it
+    # (same CV-weight source: Pandora weightTune*weightSpline).  Tiny positive tune
+    # weights (~1e-40..1e-3; ~2.5% of CC events in both nue_overlay and nu_overlay)
+    # pass that clamp, so postprocessing keeps them and those events contribute ~0
+    # to the final histograms.  In this denominator they are counted as 0 for the
+    # same reason: counting them as 1 made the reweighted spectrum ~2% low, and
+    # keeping their real value lets a single such event alone in a sparse bin blow
+    # up that bin's ratio (a ~1e17 weight was seen in a --frac_events 0.01 run).
+    # With 0 they leave the ratio untouched, get the normal bin ratio themselves,
+    # and still contribute ~0 after postprocessing multiplies by their cv*spline.
     cv_spline = (df[GENIE_CV_WEIGHT_COL] * df[GENIE_SPLINE_WEIGHT_COL]).to_numpy().astype(np.float64)
-    invalid = ~np.isfinite(cv_spline) | (cv_spline < 1e-3) | (cv_spline > 30.0)
-    cv_spline = np.where(invalid, 1.0, cv_spline)
+    invalid = ~np.isfinite(cv_spline) | (cv_spline <= 0.0) | (cv_spline > 30.0)
+    cv_spline = np.where(invalid, 1.0, np.where(cv_spline < 1e-3, 0.0, cv_spline))
 
     bin_idx = np.floor(enu / widths[0]).astype(np.int64)
     in_range = (bin_idx >= 0) & (bin_idx < n_bins)
