@@ -1,8 +1,7 @@
 """Compute per-event NC-coherent-1g reweighting weights for isotropic-1g events.
 
-This module replicates the weight-producing logic of
-``ipynb_notebooks/coherent_1g_reweighting.ipynb`` so that
-``coh_1g_reweighting.parquet`` can be regenerated as part of the
+This module (originally a port of the since-deleted coherent_1g_reweighting.ipynb)
+writes ``coh_1g_reweighting.parquet`` as part of the
 main dataframe-creation pipeline instead of by hand.
 
 The produced parquet has columns:
@@ -17,6 +16,17 @@ event: the photon-gun events carry no neutrino, so one is drawn at random from t
 reference NC coherent simulation events in the same (costheta, E_gamma) reweighting
 bin.  Downstream (create_rw_syst_df.py) this is used to borrow flux multisim weights
 from nu_overlay events of matching true neutrino energy.
+
+Normalization (see ipynb_notebooks/nc_coherent_1g_file_comparison.ipynb): the
+reference is the unbiased BatchB NC coherent simulation, generated uniformly in the
+TPC active volume.  Its POT-equivalent comes from Mark's 2.22242e24 POT, which
+belongs to the 34,011 events generated behind the (preTopo-selected) TestSplit file
+from the same generation; that rate reproduces the paper's (arXiv:2502.06091)
+predicted selected events to ~5%.  The iso1g->coherent bin ratio is built from the
+unweighted iso1g events inside the TPC, so the in-TPC iso1g events sum to the
+coherent rate in the TPC.  iso1g events outside the TPC (the gun fills the cryostat
+at the same density per volume) get the same per-event weight, representing NC
+coherent scattering on the argon outside the TPC.
 
 A second parquet, coh_1g_reweighting_bins.parquet, holds the same reweighting per
 (costheta, E_gamma) bin: coherent_1g_bin (see coherent_1g_bin_index) and
@@ -44,24 +54,36 @@ from file_locations import intermediate_files_location, other_files_location
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _PLOT_DIR = os.path.join(_REPO_ROOT, "plots", "coherent_1g_reweighting")
 
-# NC coherent single-photon simulation file (see notebook cell 2)
-_NC_COHERENT_ROOT = (
-    "preTopo_vertex_NCSingleCoherent_Run123_TestSplit_v50.0_OrderedSample_NCDelta.uniq.root"
-)
+# NC coherent single-photon reference simulation: the complete, unfiltered BatchB
+# sample (67,771 events, uniform in the TPC), from
+# /pnfs/uboone/persistent/users/markross/Jan2022_gLEE_files/UniqDir/.
+# (The previously used preTopo_..._TestSplit_... file is a reco-preselected subset
+# whose photon kinematics are biased; see nc_coherent_1g_file_comparison.ipynb.)
+_NC_COHERENT_ROOT = "vertex_NCSingleCoherent_Run123_BatchB_v50.0.uniq.root"
 
-# ── POT-scaling constants (notebook cell 8) ──────────────────────────────────
+# ── Reference-simulation POT ─────────────────────────────────────────────────
 # The target (normalizing) POT is intentionally NOT set here: it is applied later
 # by apply_nc_coh_1g_reweighting, so the weights saved by this module are
-# POT-independent (units of events per POT).  This lets a single computed
-# reweighting be applied at multiple POT normalizations (e.g. different run-fractions).
-# The constants below are intrinsic to the NC coherent reference simulation and do
-# not depend on the analyzed run-fractions.
-reference_nc_coherent_pot = 2.22242e+24        # discussion with Mark on slack 2026_02_24
-reference_nc_coherent_num_events = 16139
-train_test_fudge_factor = 0.5                  # to make the numbers match better
+# POT-independent (units of events per POT).
+# Mark's POT (slack 2026-02-24) belongs to the events GENERATED behind the TestSplit
+# file (sum of its run_subrun_tree subrun_counts), from the same generation as BatchB.
+# Their ratio is the NC coherent 1g rate in the TPC active volume (1.53e-20 / POT,
+# 10.5 events per 6.87e20 POT), and BatchB's POT-equivalent is
+# n_BatchB_events / that rate (~4.43e24).
+reference_nc_coherent_pot = 2.22242e+24
+reference_nc_coherent_num_generated = 34011
+nc_coherent_rate_per_pot_in_tpc = reference_nc_coherent_num_generated / reference_nc_coherent_pot
 
-# Paper reference for the expected NC coherent 1g count in FV (arxiv 2502.06091),
-# used as a sanity-check target for the number implied by our df.
+# TPC active volume [cm] (the reference generation volume; matches the BatchB true
+# vertex ranges)
+tpc_active_x = (-1.55, 254.8)
+tpc_active_y = (-115.53, 117.47)
+tpc_active_z = (0.1, 1036.9)
+
+# Paper reference (arXiv:2502.06091), used as a sanity check: 1.1 predicted events in
+# the coherent-rich selection, with a 28.1% topological efficiency relative to ALL
+# simulated signal events in the TPC and 39.09% relative efficiency after that, so
+# 1.1 / (0.281 * 0.3909) = 10.0 is an in-TPC count per 6.87e20 POT.
 coherent_eff_topological = 0.281
 coherent_eff_rel_to_topological = 0.3909
 coherent_num_sel = 1.1
@@ -116,64 +138,77 @@ def _load_nc_coherent_simulation():
             np.array(nc_coherent_nu_energy))
 
 
-def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_weight_open_data"):
+def compute_nc_coh_1g_reweighting(df, make_plots=True):
     """Compute and save the binned NC-coherent-1g reweighting from the dataframe.
 
-    Replicates ``coherent_1g_reweighting.ipynb``. Accepts an eager polars
-    DataFrame or a LazyFrame. Writes ``coh_1g_reweighting.parquet``
-    to ``intermediate_files_location`` and (if ``make_plots``) all diagnostic
-    plots to ``plots/coherent_1g_reweighting/``.
+    Accepts an eager polars DataFrame or a LazyFrame. Writes
+    ``coh_1g_reweighting.parquet`` and ``coh_1g_reweighting_bins.parquet`` to
+    ``intermediate_files_location`` and (if ``make_plots``) all diagnostic plots to
+    ``plots/coherent_1g_reweighting/``.
 
-    ``net_weight_var`` is the per-config net-weight column used to weight the iso1g
-    events when building the iso1g->coherent shape ratio (defaults to the open-data
-    weighting).  The saved weight is per-POT (the absolute normalization is divided
-    out and re-applied per config in apply_nc_coh_1g_reweighting), so this choice
-    only sets the iso1g shape used to derive the bin-by-bin reweighting.
+    The per-bin weight is H_coherent / H_iso1g_inTPC / reference_pot, with
+    H_iso1g_inTPC the UNWEIGHTED (cos theta, E_gamma) histogram of the iso1g events
+    whose true vertex is in the TPC active volume and reference_pot the BatchB
+    POT-equivalent (see the module docstring).  No event net weights enter, so the
+    result is independent of the POT/run-period weighting of the iso1g sample.
     """
-    print(f"computing NC coherent 1g reweighting weights from the dataframe (net_weight_var={net_weight_var})")
+    print("computing NC coherent 1g reweighting weights from the dataframe")
 
     lf = df if isinstance(df, pl.LazyFrame) else df.lazy()
 
     os.makedirs(_PLOT_DIR, exist_ok=True)
 
-    # ── NC coherent simulation target shape (cell 2) ──────────────────────────
+    # ── NC coherent simulation target shape ───────────────────────────────────
     nc_coherent_gamma_costheta, nc_coherent_gamma_energy, nc_coherent_nu_energy = _load_nc_coherent_simulation()
     num_coherent_simulated_events = len(nc_coherent_gamma_energy)
-    print(f"  NC coherent simulated events: {num_coherent_simulated_events:,}")
+    reference_pot = num_coherent_simulated_events / nc_coherent_rate_per_pot_in_tpc
+    print(f"  NC coherent simulated events: {num_coherent_simulated_events:,} "
+          f"(POT-equivalent {reference_pot:.4e}, rate in TPC {nc_coherent_rate_per_pot_in_tpc:.4e} / POT)")
     print(f"  NC coherent true nu energy: mean {nc_coherent_nu_energy.mean():.0f} MeV, "
           f"range [{nc_coherent_nu_energy.min():.0f}, {nc_coherent_nu_energy.max():.0f}] MeV")
 
-    # ── Iso1g events from the dataframe (cell 5) ──────────────────────────────
+    # ── Iso1g events from the dataframe ───────────────────────────────────────
     iso1g_df = (
         lf.filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
         .select(
             "run", "subrun", "event",
             "wc_true_leading_shower_energy", "wc_true_leading_shower_costheta",
-            net_weight_var, "wc_truth_inFV",
             "wc_truth_vtxX", "wc_truth_vtxY", "wc_truth_vtxZ",
         )
         .collect()
+        .with_columns(
+            (pl.col("wc_truth_vtxX").is_between(*tpc_active_x, closed="none")
+             & pl.col("wc_truth_vtxY").is_between(*tpc_active_y, closed="none")
+             & pl.col("wc_truth_vtxZ").is_between(*tpc_active_z, closed="none")).alias("in_tpc"),
+            (pl.col("wc_truth_vtxX").is_between(10.0, 246.4, closed="none")
+             & pl.col("wc_truth_vtxY").is_between(-101.5, 101.5, closed="none")
+             & pl.col("wc_truth_vtxZ").is_between(10.0, 986.8, closed="none")).alias("in_fv"),
+        )
     )
-    print(f"  isotropic 1g events: {iso1g_df.height:,}")
+    in_tpc = iso1g_df["in_tpc"].to_numpy()
+    print(f"  isotropic 1g events: {iso1g_df.height:,} ({in_tpc.sum():,} with true vertex in the TPC)")
 
     iso1g_costheta = iso1g_df["wc_true_leading_shower_costheta"].to_numpy()
     iso1g_energy   = iso1g_df["wc_true_leading_shower_energy"].to_numpy()
-    iso1g_w        = iso1g_df[net_weight_var].to_numpy()
 
     if make_plots:
         _plot_input_distributions(
             nc_coherent_gamma_costheta, nc_coherent_gamma_energy,
-            iso1g_costheta, iso1g_energy, iso1g_w)
+            iso1g_costheta[in_tpc], iso1g_energy[in_tpc])
 
-    # ── 2D reweighting iso1g -> coherent shape (cell 6) ───────────────────────
+    # ── 2D reweighting in-TPC iso1g -> coherent shape ─────────────────────────
     H_coherent, _, _ = np.histogram2d(
         nc_coherent_gamma_costheta, nc_coherent_gamma_energy,
         bins=[bins_costheta, bins_energy])
     H_iso1g, _, _ = np.histogram2d(
-        iso1g_costheta, iso1g_energy,
-        bins=[bins_costheta, bins_energy], weights=iso1g_w)
+        iso1g_costheta[in_tpc], iso1g_energy[in_tpc],
+        bins=[bins_costheta, bins_energy])
 
-    weight_ratios = np.where(H_iso1g > 0, H_coherent / H_iso1g, 0.0)
+    lost_fraction = H_coherent[H_iso1g == 0].sum() / H_coherent.sum()
+    print(f"  fraction of reference coherent events in bins without in-TPC iso1g events (lost): {lost_fraction:.2e}")
+
+    # unitless coherent/iso1g ratio per bin; the per-POT weight divides by reference_pot below
+    weight_ratios = np.where(H_iso1g > 0, H_coherent / np.where(H_iso1g > 0, H_iso1g, 1.0), 0.0)
     i_cos = np.clip(np.digitize(iso1g_costheta, bins_costheta) - 1, 0, len(bins_costheta) - 2)
     i_E   = np.clip(np.digitize(iso1g_energy,   bins_energy)   - 1, 0, len(bins_energy)   - 2)
     event_weights = weight_ratios[i_cos, i_E]
@@ -184,10 +219,10 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
 
     H_iso1g_after, _, _ = np.histogram2d(
         iso1g_costheta, iso1g_energy,
-        bins=[bins_costheta, bins_energy], weights=iso1g_w * event_weights)
+        bins=[bins_costheta, bins_energy], weights=event_weights)
     H_iso1g_after_unweighted, _, _ = np.histogram2d(
         iso1g_costheta, iso1g_energy,
-        bins=[bins_costheta, bins_energy], weights=np.array(iso1g_w * event_weights > 0))
+        bins=[bins_costheta, bins_energy], weights=(event_weights > 0).astype(float))
 
     print(f"  num Iso1g events with positive weight: {np.sum(event_weights > 0):,}")
     print(f"  num Iso1g events with zero weight: {np.sum(event_weights == 0):,}")
@@ -261,29 +296,22 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
         _plot_sampling(iso1g_costheta, iso1g_energy, keep_mask,
                        H_iso1g_after_unweighted, H_iso1g_after, target_fraction)
 
-    # ── Per-POT weight (cell 8) ───────────────────────────────────────────────
+    # ── Per-POT weight ────────────────────────────────────────────────────────
     # The target POT is factored out: the saved weight is per unit POT, and
     # apply_nc_coh_1g_reweighting multiplies by the desired normalizing POT
     # (coherent_1g_weight = coherent_1g_weight_per_pot * normalizing_POT).
     iso1g_df = iso1g_df.with_columns(
-        pl.Series(
-            "coherent_1g_weight_per_pot",
-            iso1g_df["coherent_1g_weight_nopot"]
-            * reference_nc_coherent_num_events / num_coherent_simulated_events
-            / reference_nc_coherent_pot
-            * train_test_fudge_factor)
+        (pl.col("coherent_1g_weight_nopot") / reference_pot).alias("coherent_1g_weight_per_pot")
     )
 
-    iso1g_fv_df = iso1g_df.filter(
-        (10.0 < pl.col("wc_truth_vtxX")) & (pl.col("wc_truth_vtxX") < 246.4)
-        & (-101.5 < pl.col("wc_truth_vtxY")) & (pl.col("wc_truth_vtxY") < 101.5)
-        & (10.0 < pl.col("wc_truth_vtxZ")) & (pl.col("wc_truth_vtxZ") < 986.8)
-    )
-    paper_coherent_num_fv_687e20 = coherent_num_sel / (coherent_eff_topological * coherent_eff_rel_to_topological)
-    print(f"  Num NC coherent 1g events simulated in FV in 6.87e20 POT from paper: {paper_coherent_num_fv_687e20}")
-
-    df_coherent_num_fv_687e20 = iso1g_fv_df["coherent_1g_weight_per_pot"].sum() * 6.87e20
-    print(f"  Num NC coherent 1g events in FV in 6.87e20 POT from our df: {df_coherent_num_fv_687e20}")
+    paper_coherent_num_tpc_687e20 = coherent_num_sel / (coherent_eff_topological * coherent_eff_rel_to_topological)
+    reference_num_tpc_687e20 = nc_coherent_rate_per_pot_in_tpc * 6.87e20
+    df_coherent_num_tpc_687e20 = iso1g_df.filter("in_tpc")["coherent_1g_weight_per_pot"].sum() * 6.87e20
+    df_coherent_num_fv_687e20 = iso1g_df.filter("in_fv")["coherent_1g_weight_per_pot"].sum() * 6.87e20
+    df_coherent_num_all_687e20 = iso1g_df["coherent_1g_weight_per_pot"].sum() * 6.87e20
+    print(f"  NC coherent 1g events in the TPC per 6.87e20 POT: paper {paper_coherent_num_tpc_687e20:.3f}, "
+          f"reference simulation {reference_num_tpc_687e20:.3f}, our iso1g in TPC {df_coherent_num_tpc_687e20:.3f}")
+    print(f"  our iso1g in FV {df_coherent_num_fv_687e20:.3f}, all iso1g (incl. outside the TPC) {df_coherent_num_all_687e20:.3f}")
 
     # ── Save weights (cell 9) ─────────────────────────────────────────────────
     weights_to_save = iso1g_df.filter(
@@ -316,7 +344,7 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
         "NC coherent 1g reweighting log",
         "==============================",
         f"created: {now.strftime('%Y-%m-%d %H:%M:%S')} ({now.astimezone().tzname()})",
-        "replicates: ipynb_notebooks/coherent_1g_reweighting.ipynb",
+        "see: ipynb_notebooks/nc_coherent_1g_file_comparison.ipynb",
         "",
         "inputs:",
         f"  NC coherent simulation file: {_NC_COHERENT_ROOT}",
@@ -335,13 +363,18 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
         f"  events kept = {int(keep_mask.sum()):,} / {n_positive:,} "
         f"({keep_mask.sum() / n_positive:.3f})",
         "",
-        "POT scaling constants:",
-        f"  reference_nc_coherent_pot = {reference_nc_coherent_pot:.6g}",
-        f"  reference_nc_coherent_num_events = {reference_nc_coherent_num_events}",
-        f"  train_test_fudge_factor = {train_test_fudge_factor}",
+        "normalization:",
+        f"  reference_nc_coherent_pot = {reference_nc_coherent_pot:.6g} (Mark, slack 2026-02-24)",
+        f"  reference_nc_coherent_num_generated = {reference_nc_coherent_num_generated}",
+        f"  NC coherent 1g rate in the TPC = {nc_coherent_rate_per_pot_in_tpc:.6g} / POT",
+        f"  reference file POT-equivalent = {reference_pot:.6g}",
+        f"  H_iso1g: unweighted, iso1g with true vertex in the TPC ({int(in_tpc.sum()):,} events)",
+        f"  reference fraction in bins without in-TPC iso1g events: {lost_fraction:.3e}",
         f"  normalizing (target) POT: not applied here -- applied later by apply_nc_coh_1g_reweighting",
-        f"  NC coherent 1g events in FV in 6.87e20 POT from paper (arxiv 2502.06091): {paper_coherent_num_fv_687e20:.4f}",
-        f"  implied NC coherent 1g events in FV in 6.87e20 POT from our df: {df_coherent_num_fv_687e20:.4f}",
+        f"  NC coherent 1g events in the TPC per 6.87e20 POT, paper (arxiv 2502.06091): {paper_coherent_num_tpc_687e20:.4f}",
+        f"  NC coherent 1g events in the TPC per 6.87e20 POT, reference simulation: {reference_num_tpc_687e20:.4f}",
+        f"  NC coherent 1g events per 6.87e20 POT from our iso1g: TPC {df_coherent_num_tpc_687e20:.4f}, "
+        f"FV {df_coherent_num_fv_687e20:.4f}, all (incl. outside the TPC) {df_coherent_num_all_687e20:.4f}",
         "",
         "outputs:",
         f"  weights parquet: {out_path}",
@@ -359,7 +392,7 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True, net_weight_var="wc_net_we
 
 
 def _plot_input_distributions(nc_coherent_gamma_costheta, nc_coherent_gamma_energy,
-                              iso1g_costheta, iso1g_energy, iso1g_w):
+                              iso1g_costheta, iso1g_energy):
     """NC coherent generation 2D (cell 2) and iso1g 2D (cell 5)."""
     bins = [np.linspace(-1, 1, 100), np.linspace(0, 1000, 100)]
 
@@ -377,11 +410,11 @@ def _plot_input_distributions(nc_coherent_gamma_costheta, nc_coherent_gamma_ener
 
     fig = plt.figure(figsize=(10, 5))
     plt.hist2d(iso1g_costheta, iso1g_energy, bins=bins, cmap="viridis",
-               norm=mpl.colors.LogNorm(), weights=iso1g_w)
+               norm=mpl.colors.LogNorm())
     plt.colorbar()
     plt.xlabel("cos(theta)")
     plt.ylabel("Energy (MeV)")
-    plt.title("Isotropic 1g Gamma Energy and Costheta")
+    plt.title("Isotropic 1g Gamma Energy and Costheta (true vertex in TPC, unweighted)")
     plt.savefig(os.path.join(_PLOT_DIR, "isotropic_1g_energy_angle.pdf"))
     plt.savefig(os.path.join(_PLOT_DIR, "isotropic_1g_energy_angle.jpeg"), dpi=400)
     plt.close(fig)
@@ -397,9 +430,9 @@ def _plot_reweighting(H_iso1g, H_coherent, H_iso1g_after,
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     for ax, H, title in [
-        (axes[0], H_iso1g,       "Iso 1g (wc_net_weight weighted)\n[before coherent_1g_weight]"),
+        (axes[0], H_iso1g,       "Iso 1g in TPC (unweighted)\n[before coherent_1g_weight]"),
         (axes[1], H_coherent,    "NC Coherent 1g simulation (target)"),
-        (axes[2], H_iso1g_after, "Iso 1g after coherent_1g_weight"),
+        (axes[2], H_iso1g_after, "Iso 1g (all) after coherent_1g_weight_nopot"),
     ]:
         H_plot = np.where(H > 0, H, np.nan)
         im = ax.pcolormesh(bins_costheta, bins_energy, H_plot.T,
