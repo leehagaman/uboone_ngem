@@ -308,22 +308,38 @@ def process_root_file(filename, frac_events=1):
     return meta["filetype"], meta["detailed_run_period"], meta["vartype"], all_df, meta["file_POT"]
 
 
-def convert_iso1g_to_nc_coh_1g(all_df, pot_dic, weight_configs):
+def convert_iso1g_to_nc_coh_1g(all_df, pot_dic, weight_configs, iso1g_cv_generated):
     """Turn the isotropic_one_gamma_overlay DetVar rows into NC_coherent_1g_reweighted rows.
 
     In the nominal prediction the NC coherent 1g contribution is made of iso1g photon-gun
     events reweighted bin by bin in true (costheta, E_gamma) (coh_1g_reweighting.py), and
     the raw iso1g rows are never part of a prediction.  The DetVar iso1g samples are
     different photon-gun events, so instead of the run/subrun/event-keyed nominal weights
-    this uses the per-bin table coh_1g_reweighting_bins.parquet: for bin b with nominal
-    coherent rate R_b (events per POT) and N_b DetVar iso1g CV events, every DetVar CV
-    event in b gets weight R_b * G / N_b, with G the config's total goal POT (the
-    same normalization as apply_nc_coh_1g_reweighting).  The DetVar coherent total
-    therefore equals the nominal one, apart from the share of R in bins with no DetVar CV
-    event (printed).  Each variation event gets the weight of its RSE-matched CV event,
-    so CV and variation differ only in reconstruction (like the other DetVar samples,
-    whose CV and variation weights are identical).  Rows keep their own
-    detailed_run_period, so the run mix follows the DetVar iso1g sample sizes.
+    this uses the per-bin table coh_1g_reweighting_bins.parquet.
+
+    Like the nominal weights, the DetVar weights are defined per GENERATED event: bin b has
+    nominal coherent rate R_b (events per POT) spread over its n_b nominal iso1g events (of
+    N_nom generated in total).  The DetVar CV iso1g sample comes from the same photon gun,
+    so of its N_gen generated (= loaded, before the wc_kine_reco_Enu > 0 preselection)
+    events, N_gen * n_b / N_nom are expected in bin b, and each DetVar CV event in b gets
+
+        weight = R_b * G / (N_gen * n_b / N_nom) = (R_b / n_b) * (N_nom / N_gen) * G,
+
+    with G the config's total goal POT (the same normalization as
+    apply_nc_coh_1g_reweighting).  The DetVar CV coherent total after preselection then
+    matches the nominal preselected coherent total, up to the statistics of the two
+    samples.  (Dividing R_b by the number of DetVar CV events left after the preselection
+    instead, as was done before 2026-11-25, put the full generated rate onto the
+    preselected events: ~2.7x too much coherent in DetVar.)  N_gen is counted per config
+    over the run periods of the iso1g CV rows that config weights.
+
+    Each variation event gets the weight of its RSE-matched CV event, so CV and variation
+    differ only in reconstruction (like the other DetVar samples, whose CV and variation
+    weights are identical).  Rows keep their own detailed_run_period, so the run mix
+    follows the DetVar iso1g sample sizes.
+
+    iso1g_cv_generated: {detailed_run_period: number of events loaded from that period's
+    iso1g CV DetVar file before the preselection}.
 
     Weights are set only where the row already has a weight in that config, so the
     CV-group nulling (SCE/Recomb2 vs the rest) is kept.  Iso1g rows left with no weight
@@ -340,12 +356,20 @@ def convert_iso1g_to_nc_coh_1g(all_df, pot_dic, weight_configs):
                                 "(create_df.py), which must run before create_detvar_df.py")
     print(f"converting {n_iso:,} iso1g DetVar rows into NC_coherent_1g_reweighted rows...")
     bin_table = pl.read_parquet(bins_path)
+    if "n_iso1g_total" not in bin_table.columns:
+        raise ValueError(f"{bins_path} has no n_iso1g_total column: it predates the generated-event "
+                         "DetVar normalization, rerun create_df.py first")
+    n_nom_total = int(bin_table["n_iso1g_total"][0])
     total_goal = _config_total_goal_pots(pot_dic, weight_configs)
     print(f"  per-config total goal POT: {total_goal}")
+    print(f"  iso1g CV DetVar events loaded before preselection, per run period: {iso1g_cv_generated}")
+    print(f"  nominal iso1g events: {n_nom_total:,}")
 
     rse = ["run", "subrun", "event"]
-    light = (all_df.select([pl.int_range(pl.len(), dtype=pl.UInt32).alias("_row"), "filetype", "vartype"] + rse
-                           + ["wc_true_leading_shower_costheta", "wc_true_leading_shower_energy"])
+    light = (all_df.select([pl.int_range(pl.len(), dtype=pl.UInt32).alias("_row"), "filetype", "vartype",
+                            "detailed_run_period"] + rse
+                           + ["wc_true_leading_shower_costheta", "wc_true_leading_shower_energy"]
+                           + [c["weight_col"] for c in weight_configs])
              .filter(pl.col("filetype") == "isotropic_one_gamma_overlay"))
     cos = light["wc_true_leading_shower_costheta"].to_numpy().astype(np.float64)
     energy = light["wc_true_leading_shower_energy"].to_numpy().astype(np.float64)
@@ -359,49 +383,67 @@ def convert_iso1g_to_nc_coh_1g(all_df, pot_dic, weight_configs):
     cv = light.filter((pl.col("vartype") == "CV") & (pl.col("coherent_1g_bin") >= 0))
     if cv.select(rse).is_duplicated().any():
         raise ValueError("duplicate run/subrun/event among the iso1g DetVar CV rows; cannot match variations to them")
-    per_bin = (bin_table.join(cv.group_by("coherent_1g_bin").agg(pl.len().alias("n_detvar_cv")),
-                              on="coherent_1g_bin", how="left")
-               .with_columns(pl.col("n_detvar_cv").fill_null(0)))
-    total_rate = per_bin["coherent_1g_rate_per_pot"].sum()
-    covered_rate = per_bin.filter(pl.col("n_detvar_cv") > 0)["coherent_1g_rate_per_pot"].sum()
-    print(f"  {cv.height:,} iso1g DetVar CV rows; {per_bin.filter(pl.col('n_detvar_cv') > 0).height:,} / "
-          f"{per_bin.height:,} non-empty coherent bins have DetVar CV events, covering "
-          f"{covered_rate / total_rate:.2%} of the nominal coherent rate")
-    per_bin = per_bin.filter(pl.col("n_detvar_cv") > 0).select(
+    cv_periods = set(cv["detailed_run_period"].unique().to_list())
+    if cv_periods - set(iso1g_cv_generated):
+        raise ValueError(f"iso1g DetVar CV rows in run periods {sorted(cv_periods - set(iso1g_cv_generated))} "
+                         "with no recorded generated-event count")
+
+    # nominal per-event per-POT weight in each bin, R_b / n_b
+    per_bin = bin_table.select(
         "coherent_1g_bin",
-        (pl.col("coherent_1g_rate_per_pot") / pl.col("n_detvar_cv")).alias("_coh_weight_per_pot"))
-    cv_w = (cv.join(per_bin, on="coherent_1g_bin", how="inner")
-            .select(rse + ["_coh_weight_per_pot", pl.col("coherent_1g_bin").alias("_cv_bin")]))
+        (pl.col("coherent_1g_rate_per_pot") / pl.col("n_iso1g_events")).alias("_nominal_weight_per_pot"))
+
+    # per config: N_gen over the run periods whose iso1g CV rows this config weights, and the
+    # resulting per-event weight (None where the CV row has no weight in this config)
+    cv = cv.join(per_bin, on="coherent_1g_bin", how="left")
+    cv_w_cols = []
+    for c in weight_configs:
+        wc = c["weight_col"]
+        periods = sorted(cv.filter(pl.col(wc).is_not_null())["detailed_run_period"].unique().to_list())
+        n_gen = sum(iso1g_cv_generated[p] for p in periods)
+        if n_gen == 0:
+            cv_w_cols.append(pl.lit(None, dtype=pl.Float64).alias(f"_coh_w_{wc}"))
+            continue
+        scale = n_nom_total / n_gen * total_goal[c["name"]]
+        print(f"  {wc}: iso1g CV periods {periods}, N_gen = {n_gen:,}, N_nom / N_gen = {n_nom_total / n_gen:.4f}")
+        cv_w_cols.append(
+            pl.when(pl.col(wc).is_not_null())
+            .then(pl.col("_nominal_weight_per_pot").fill_null(0.0) * scale)
+            .otherwise(None).alias(f"_coh_w_{wc}"))
+    cv_w = cv.select(rse + cv_w_cols + [pl.col("coherent_1g_bin").alias("_cv_bin")])
 
     light = light.join(cv_w, on=rse, how="left")
     for vartype, grp in light.group_by("vartype", maintain_order=True):
-        n_w = grp["_coh_weight_per_pot"].is_not_null().sum()
+        n_w = grp["_cv_bin"].is_not_null().sum()
         n_bin_diff = grp.filter(pl.col("_cv_bin").is_not_null() & (pl.col("_cv_bin") != pl.col("coherent_1g_bin"))).height
-        print(f"    {vartype[0]:<15} {grp.height:>9,} rows, {n_w:>9,} weighted via their CV event"
+        print(f"    {vartype[0]:<15} {grp.height:>9,} rows, {n_w:>9,} matched to their CV event"
               f" ({n_bin_diff:,} in a different true-kinematics bin than their CV event)")
 
-    w_per_pot = np.full(all_df.height, np.nan)
-    w_per_pot[light["_row"].to_numpy()] = light["_coh_weight_per_pot"].fill_null(np.nan).to_numpy()
-    w_per_pot = pl.Series("_coh_weight_per_pot", w_per_pot).fill_nan(None)
-
-    all_df = all_df.with_columns(w_per_pot)
-    coh_w = pl.col("_coh_weight_per_pot")
+    # weight per config: the CV event's coherent weight (zero in an empty coherent bin, null
+    # with no CV match or outside this config's CV group); null/zero rows are dropped later
     new_cols = []
     for c in weight_configs:
         wc = c["weight_col"]
+        w = np.full(all_df.height, np.nan)
+        w[light["_row"].to_numpy()] = light[f"_coh_w_{wc}"].fill_null(np.nan).to_numpy()
+        w = pl.Series(f"_coh_w_{wc}", w).fill_nan(None)
         new_cols.append(
             pl.when(is_iso)
-            .then(pl.when(pl.col(wc).is_not_null()).then(coh_w * total_goal[c["name"]]).otherwise(None))
+            .then(pl.when(pl.col(wc).is_not_null() & (w > 0)).then(w).otherwise(None))
             .otherwise(pl.col(wc)).cast(all_df.schema[wc]).alias(wc))
-    all_df = all_df.with_columns(new_cols).drop("_coh_weight_per_pot")
+    all_df = all_df.with_columns(new_cols)
     all_df = all_df.with_columns([
         pl.when(is_iso).then(pl.lit(False)).otherwise(pl.col(c)).alias(c)
         for c in ("normal_overlay", "del1g_overlay", "iso1g_overlay") if c in all_df.columns
     ] + [pl.when(is_iso).then(pl.lit("NC_coherent_1g_reweighted")).otherwise(pl.col("filetype")).alias("filetype")])
+    total_rate = bin_table["coherent_1g_rate_per_pot"].sum()
     for c in weight_configs:
-        tot = all_df.filter(pl.col("filetype") == "NC_coherent_1g_reweighted").filter(pl.col("vartype") == "CV")[c["weight_col"]].sum()
-        print(f"  NC coherent 1g DetVar CV total ({c['weight_col']}): {tot:.4f} events "
-              f"(nominal per-bin rates x {total_goal[c['name']]:.4g} POT: {total_rate * total_goal[c['name']]:.4f})")
+        cv_coh = all_df.filter((pl.col("filetype") == "NC_coherent_1g_reweighted") & (pl.col("vartype") == "CV"))
+        tot_all = cv_coh[c["weight_col"]].sum()
+        tot_presel = cv_coh.filter(pl.col("wc_kine_reco_Enu") > 0)[c["weight_col"]].sum()
+        print(f"  NC coherent 1g DetVar CV total ({c['weight_col']}): {tot_presel:.4f} events after "
+              f"wc_kine_reco_Enu > 0 ({tot_all:.4f} loaded); nominal generated total "
+              f"{total_rate * total_goal[c['name']]:.4f}")
     return all_df
 
 
@@ -447,6 +489,7 @@ if __name__ == "__main__":
     # so it can be used to add columns to future dataframes with missing values
 
     pot_dic = {}
+    iso1g_cv_generated = {}
 
     for file_num, filename in enumerate(filenames):
 
@@ -482,6 +525,11 @@ if __name__ == "__main__":
             if key in pot_dic:
                 raise ValueError(f"Duplicate CV POT key {key} -- two CV files share a detailed_run_period, give them distinct ones (like 3b_1mil/3b_500k)")
             pot_dic[key] = file_POT
+            if filetype == "isotropic_one_gamma_overlay":
+                # generated-sample size for the coherent DetVar normalization
+                # (convert_iso1g_to_nc_coh_1g): every loaded event, before the
+                # wc_kine_reco_Enu > 0 preselection in _load_chunk
+                iso1g_cv_generated[detailed_run_period] = n_events
 
         n_chunks = (n_events + args.chunk_size - 1) // args.chunk_size
         chunk_parquet_paths = []
@@ -654,6 +702,16 @@ if __name__ == "__main__":
         dict(name="detvar_sce_recomb2", weight_col=DETVAR_SCE_RECOMB2_WEIGHT_COL,
              run_period_map={**shared_run_period_map, "3b_500k": "3"}, **shared_config),
     ]
+    # DELIBERATE APPROXIMATION: the DetVar weights do NOT include the physics corrections
+    # the nominal prediction applies on top of cv*spline -- the hA2025 pion-FSI reweight
+    # (hA2025_pion_fsi_rw_weight), the pi0 Dalitz Geant4->EvtGen reweight
+    # (apply_pi0_dalitz_reweighting) and the runs 1-3 rootino correction
+    # (apply_rootino_correction).  The DetVar covariance is a fractional CV-vs-variation
+    # difference on RSE-matched events with identical weights, so these modest, mostly
+    # truth-level reweightings would only slightly change the sample composition the
+    # fractional detector effect is averaged over.
+    print("NOTE: DetVar weights ignore the hA2025 pion-FSI, pi0 Dalitz and rootino corrections "
+          "applied in the nominal prediction (deliberate approximation)")
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, detvar_weight_configs)
 
     # each variation only gets the weight of its own CV group (the configs above weight
@@ -674,7 +732,7 @@ if __name__ == "__main__":
 
     # iso1g DetVar rows -> NC_coherent_1g_reweighted rows (the raw iso1g sample is not part
     # of any prediction, so none of its rows are kept with their POT weights)
-    all_df = convert_iso1g_to_nc_coh_1g(all_df, pot_dic, detvar_weight_configs)
+    all_df = convert_iso1g_to_nc_coh_1g(all_df, pot_dic, detvar_weight_configs, iso1g_cv_generated)
     gc.collect()
 
     all_df = add_signal_categories(all_df)

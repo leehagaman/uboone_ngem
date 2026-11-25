@@ -29,11 +29,13 @@ at the same density per volume) get the same per-event weight, representing NC
 coherent scattering on the argon outside the TPC.
 
 A second parquet, coh_1g_reweighting_bins.parquet, holds the same reweighting per
-(costheta, E_gamma) bin: coherent_1g_bin (see coherent_1g_bin_index) and
-coherent_1g_rate_per_pot, the summed per-POT weight of the nominal iso1g events in that
-bin (= the expected NC coherent 1g events per POT there).  create_detvar_df.py uses it
-to reweight the iso1g DetVar samples, whose events are different photon-gun events
-than the nominal sample's, so the run/subrun/event-keyed parquet cannot be used.
+(costheta, E_gamma) bin: coherent_1g_bin (see coherent_1g_bin_index),
+coherent_1g_rate_per_pot (the summed per-POT weight of the nominal iso1g events in that
+bin = the expected NC coherent 1g events per POT there), n_iso1g_events (nominal iso1g
+events in that bin) and n_iso1g_total (all nominal iso1g events, every bin; the same
+value on every row).  create_detvar_df.py uses it to reweight the iso1g DetVar samples,
+whose events are different photon-gun events than the nominal sample's, so the
+run/subrun/event-keyed parquet cannot be used.
 """
 
 import os
@@ -332,6 +334,10 @@ def compute_nc_coh_1g_reweighting(df, make_plots=True):
         .agg(pl.col("coherent_1g_weight_per_pot").sum().alias("coherent_1g_rate_per_pot"),
              pl.len().alias("n_iso1g_events"))
         .sort("coherent_1g_bin")
+        # the generated-sample size the per-bin counts are drawn from (all bins, incl.
+        # zero-weight ones); create_detvar_df.py scales the per-event weight by the ratio
+        # of this to the DetVar iso1g CV generated-sample size
+        .with_columns(pl.lit(iso1g_df.height, dtype=pl.Int64).alias("n_iso1g_total"))
     )
     bins_out_path = f"{intermediate_files_location}/coh_1g_reweighting_bins.parquet"
     bin_table.write_parquet(bins_out_path)
