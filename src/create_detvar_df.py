@@ -25,6 +25,8 @@ from check_ntuple_alignment import assert_ntuple_trees_aligned
 from pot_and_trigger_numbers import expected_full_dataset_data_POT
 
 from create_df import _arrays_filling_missing
+from pi0_dalitz_reweighting import apply_pi0_dalitz_reweighting
+from pion_fsi_reweighting import compute_pion_fsi_weights_from_arrays
 
 from df_helpers import align_columns_for_concat, format_duration
 from df_helpers import DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL, DETVAR_SCE_RECOMB2_VARTYPES, DETVAR_MATCH_KEYS
@@ -232,6 +234,22 @@ def _load_chunk(filename, filetype, vartype, detailed_run_period, file_POT,
     del dic
     all_df = pd.concat([all_df, pandora_df], axis=1)
     del pandora_df
+
+    # hA2025 pion-FSI reweight, computed exactly as in create_df._load_chunk from the
+    # nuselection generator truth (folded into the weights by apply_detvar_truth_reweights).
+    # Skipped for the isotropic one-gamma gun, which has no GENIE interaction.
+    if filetype != "isotropic_one_gamma_overlay":
+        mcg = f["nuselection"]["NeutrinoSelectionFilter"].arrays(
+            ["mc_generator_pdg", "mc_generator_mother", "mc_generator_rescatter",
+             "mc_generator_statuscode", "mc_generator_E", "mc_generator_px",
+             "mc_generator_py", "mc_generator_pz"], library="np", **slice_kwargs)
+        hA2025_w, _ = compute_pion_fsi_weights_from_arrays(
+            mcg["mc_generator_pdg"], mcg["mc_generator_mother"],
+            mcg["mc_generator_rescatter"], mcg["mc_generator_statuscode"],
+            mcg["mc_generator_E"], mcg["mc_generator_px"],
+            mcg["mc_generator_py"], mcg["mc_generator_pz"])
+        all_df["hA2025_pion_fsi_rw_weight"] = np.asarray(hA2025_w, dtype=np.float32)
+        del mcg
 
     # loading gLEE variables
     dic = _arrays_filling_missing(f["singlephotonana"]["vertex_tree"], glee_vars,
@@ -541,6 +559,37 @@ def apply_detvar_run_period_coverage_scaling(all_df, pot_dic, weight_configs):
     return all_df.drop("_detvar_class")
 
 
+def apply_detvar_truth_reweights(all_df, weight_cols):
+    """Fold the hA2025 pion-FSI and pi0 Dalitz reweights into the DetVar weight columns,
+    as create_df does for the nominal per-config weights.
+
+    Both factors depend only on generator truth, so RSE-matched CV and variation events
+    get the same factor and no detector effect is faked; they change the class mix the
+    fractional DetVar effect is averaged over to match the nominal prediction.
+    hA2025_pion_fsi_rw_weight is computed in _load_chunk for every GENIE DetVar file; the
+    isotropic one-gamma gun has none (as in create_df), so its rows and the
+    NC_coherent_1g_reweighted rows built from them get 1.0.  Any other row without it is
+    an error."""
+    no_genie = pl.col("filetype").is_in(["isotropic_one_gamma_overlay", "NC_coherent_1g_reweighted"])
+    if "hA2025_pion_fsi_rw_weight" not in all_df.columns:
+        all_df = all_df.with_columns(pl.lit(None, dtype=pl.Float32).alias("hA2025_pion_fsi_rw_weight"))
+    missing = all_df.filter(pl.col("hA2025_pion_fsi_rw_weight").is_null() & ~no_genie)
+    if missing.height:
+        raise ValueError(f"{missing.height} GENIE DetVar rows have no hA2025_pion_fsi_rw_weight: "
+                         f"{missing.group_by('filetype', 'detailed_run_period').len().to_dicts()}")
+    all_df = all_df.with_columns(
+        pl.when(no_genie).then(pl.lit(1.0)).otherwise(pl.col("hA2025_pion_fsi_rw_weight"))
+        .cast(pl.Float32).alias("hA2025_pion_fsi_rw_weight"))
+    all_df = apply_pi0_dalitz_reweighting(all_df, make_plots=False)
+    for wc in weight_cols:
+        before = all_df[wc].sum()
+        all_df = all_df.with_columns(
+            (pl.col(wc) * pl.col("pi0_dalitz_reweight_weight") * pl.col("hA2025_pion_fsi_rw_weight"))
+            .cast(all_df.schema[wc]).alias(wc))
+        print(f"  {wc}: total {before:.1f} -> {all_df[wc].sum():.1f} after the hA2025 and pi0 Dalitz reweights")
+    return all_df
+
+
 def _drop_unweighted_coherent_expr():
     """Keep-expression dropping NC_coherent_1g_reweighted DetVar rows with no weight in
     either CV group (see convert_iso1g_to_nc_coh_1g)."""
@@ -792,16 +841,15 @@ if __name__ == "__main__":
         dict(name="detvar_sce_recomb2", weight_col=DETVAR_SCE_RECOMB2_WEIGHT_COL,
              run_period_map={**shared_run_period_map, "3b_500k": "3"}, **shared_config),
     ]
-    # DELIBERATE APPROXIMATION: the DetVar weights do NOT include the physics corrections
-    # the nominal prediction applies on top of cv*spline -- the hA2025 pion-FSI reweight
-    # (hA2025_pion_fsi_rw_weight), the pi0 Dalitz Geant4->EvtGen reweight
-    # (apply_pi0_dalitz_reweighting) and the runs 1-3 rootino correction
-    # (apply_rootino_correction).  The DetVar covariance is a fractional CV-vs-variation
-    # difference on RSE-matched events with identical weights, so these modest, mostly
-    # truth-level reweightings would only slightly change the sample composition the
-    # fractional detector effect is averaged over.
-    print("NOTE: DetVar weights ignore the hA2025 pion-FSI, pi0 Dalitz and rootino corrections "
-          "applied in the nominal prediction (deliberate approximation)")
+    # DELIBERATE APPROXIMATION: the DetVar weights do NOT include the runs 1-3 rootino
+    # correction (apply_rootino_correction) that the nominal prediction applies.  It is a
+    # ~1-2% composition change; the DetVar covariance is a fractional CV-vs-variation
+    # difference on RSE-matched events, so it would only slightly change the sample mix the
+    # fractional detector effect is averaged over.  The hA2025 pion-FSI and pi0 Dalitz
+    # reweights ARE applied (apply_detvar_truth_reweights below): hA2025 alone moves the
+    # numuCC 1pi0 rate by ~22% and NC 1pi0 by ~5%, too large to ignore.
+    print("NOTE: DetVar weights ignore the runs 1-3 rootino correction applied in the nominal "
+          "prediction (deliberate approximation)")
     all_df = do_orthogonalization_and_POT_weighting(all_df, pot_dic, detvar_weight_configs)
 
     # each variation only gets the weight of its own CV group (the configs above weight
@@ -828,6 +876,10 @@ if __name__ == "__main__":
     # give every truth class the full goal exposure despite run periods without DetVar
     # files for its samples (per-era approximation, see DETVAR_ERA_LEVELS)
     all_df = apply_detvar_run_period_coverage_scaling(all_df, pot_dic, detvar_weight_configs)
+    gc.collect()
+
+    # same hA2025 pion-FSI and pi0 Dalitz factors as the nominal prediction
+    all_df = apply_detvar_truth_reweights(all_df, (DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL))
     gc.collect()
 
     all_df = add_signal_categories(all_df)
