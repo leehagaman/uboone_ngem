@@ -28,7 +28,10 @@ How one event is processed:
    outside the TPC active volume are dropped.
 3. The donor blips (with their reco energy, dx, dw, nplanes, touchtrk,
    dead-wire flags, and track-proximity values) are appended to copies of the
-   event's blip lists.
+   event's blip lists. Their track isolation is updated for this event's own
+   neutrino tracks: proxtrkdist = min(donor value, distance to the nearest
+   target Pandora neutrino-slice track), and touchtrk is also set when that
+   distance is below TOUCH_TRACK_DIST_CM (see _target_track_segments).
 
 Which events are injected: filetypes with GENIE truth (not data / ext /
 NuWro fake data / single-photon overlays), with scattering type QE, RES, DIS,
@@ -46,8 +49,16 @@ Documented approximations (all second-order vs the no-deex/MARLEY bracket):
   vertices are uniform in the TPC, so detector-average attrition is modeled,
   but position-correlated dead regions at the target are not. Drift-dependent
   (x) reconstruction differences are likewise frozen at the donor value.
-- proxtrkdist / touchtrk measure isolation from the donor event's cosmics,
-  a statistically equivalent but not event-correct environment.
+- Track isolation: the donor's proxtrkdist / touchtrk measure isolation from
+  the donor event's cosmics, which stand in (statistically, not event by
+  event) for the target's cosmics. The target's own neutrino tracks are
+  added explicitly (without this, ~94% of injected blips passed the
+  isolation cuts vs ~60% with it, a ~1.6x overcount): tracks are the
+  Pandora neutrino-slice PFPs with trk_score > TRACK_SCORE_MIN (BlipReco
+  measures distance to tracks, not showers), approximated as straight
+  SCE-corrected start->end segments. Validated on real blips: 92% of blips
+  within 5 cm of such a segment have a recorded proxtrkdist <= 15 cm.
+  Events without reconstructed neutrino tracks keep the donor values.
 - Detector-boundary effects are split between the two sides: on the donor
   side, even with the DONOR_MIN_DWALL_CM cut some donor photons exit the
   detector before depositing, so the donor blip sets carry a residual
@@ -99,6 +110,8 @@ MATCH_KNEAREST = 16        # sample uniformly among this many nearest-q0 donors
 ISO1G_EBIN_MEV = 0.25      # photon-energy bin width for iso1g donor lookup
 ISO1G_MIN_DONORS = 5       # widen the energy window until at least this many
 DONOR_MIN_DWALL_CM = 50.0  # iso1g donors must start this far from every TPC wall
+TRACK_SCORE_MIN = 0.5      # target Pandora PFPs counted as tracks for blip isolation
+TOUCH_TRACK_DIST_CM = 1.0  # injected blip closer than this to a target track -> touchtrk
 
 # GENIE scattering-type codes (wc_truth_nuScatType) that get de-excitation
 SCATTYPE_QE, SCATTYPE_DIS, SCATTYPE_RES, SCATTYPE_MEC = 1, 3, 4, 10
@@ -383,6 +396,36 @@ REQUIRED_EVENT_COLUMNS = [
     "wc_true_num_prim_protons_35", "wc_true_num_prim_neutrons_35",
     "wc_truth_vtxX", "wc_truth_vtxY", "wc_truth_vtxZ",
 ]
+# target neutrino-slice track geometry for the injected blips' isolation; always
+# loaded by create_df (NaN-filled when a file lacks the branches)
+TRACK_COLUMNS = [
+    "pandora_trk_score_v",
+    *[f"pandora_trk_sce_{end}_{c}_v" for end in ("start", "end") for c in "xyz"],
+]
+
+
+def _target_track_segments(track_arrays, i):
+    """-> (starts, ends), each (n_tracks, 3): the event's Pandora neutrino-slice
+    tracks (trk_score > TRACK_SCORE_MIN) as straight SCE-corrected segments,
+    skipping unfilled (+-9999 / NaN) entries."""
+    def vec(col):
+        v = track_arrays[col][i]
+        return np.asarray(v, dtype=float) if (v is not None and hasattr(v, "__len__")) else np.empty(0)
+    score = vec("pandora_trk_score_v")
+    starts = np.stack([vec(f"pandora_trk_sce_start_{c}_v") for c in "xyz"], axis=1) if len(score) else np.empty((0, 3))
+    ends = np.stack([vec(f"pandora_trk_sce_end_{c}_v") for c in "xyz"], axis=1) if len(score) else np.empty((0, 3))
+    ok = ((score > TRACK_SCORE_MIN)
+          & np.all(np.abs(starts) < 2000.0, axis=1) & np.all(np.abs(ends) < 2000.0, axis=1))
+    return starts[ok], ends[ok]
+
+
+def _distance_to_segments(point, starts, ends):
+    """3D distance from point to the nearest segment (inf when there are none)."""
+    if len(starts) == 0:
+        return np.inf
+    d = ends - starts
+    t = np.clip(((point - starts) * d).sum(axis=1) / np.maximum((d * d).sum(axis=1), 1e-9), 0.0, 1.0)
+    return float(np.sqrt(((starts + t[:, None] * d - point) ** 2).sum(axis=1)).min())
 
 
 def _empty_bookkeeping(df):
@@ -416,6 +459,10 @@ def build_deexadded_blip_lists(df):
     injectable_ft = ~np.isin(filetypes_arr, NO_INJECTION_FILETYPES)
     if not injectable_ft.any():
         return None, _empty_bookkeeping(df)
+    missing_tracks = [c for c in TRACK_COLUMNS if c not in df.columns]
+    if missing_tracks:
+        raise ValueError(f"deex injection needs the target track columns {missing_tracks} "
+                         "for the injected blips' isolation")
     missing = [c for c in REQUIRED_EVENT_COLUMNS if c not in df.columns]
     if missing:
         print(f"    WARNING: deex injection skipped for this chunk "
@@ -440,10 +487,12 @@ def build_deexadded_blip_lists(df):
     vtx_z = df["wc_truth_vtxZ"].to_numpy()
 
     orig = {c: df[c].to_numpy() for c in BLIP_AUG_COLUMNS}
+    track_arrays = {c: df[c].to_numpy() for c in TRACK_COLUMNS}
 
     aug_lists = {c: [] for c in BLIP_AUG_COLUMNS}
     bk_marley_idx, bk_match_level = [], []
     bk_n_photons, bk_n_injected, bk_n_blips = [], [], []
+    n_blips_near_target_trk = 0
     bk_iso_idxs = []
 
     from tqdm import tqdm
@@ -478,6 +527,8 @@ def build_deexadded_blip_lists(df):
             if marley_idx < 0:
                 match_level = -2
             n_photons = len(photon_Es)
+            trk_starts, trk_ends = (_target_track_segments(track_arrays, i)
+                                    if len(photon_Es) else (None, None))
             for E_gamma in photon_Es:
                 if E_gamma > MAX_PHOTON_E_MEV:
                     continue
@@ -497,9 +548,13 @@ def build_deexadded_blip_lists(df):
                     base["blip_x"].append(x)
                     base["blip_y"].append(y)
                     base["blip_z"].append(z)
-                    for name in ("energy", "dx", "dw", "nplanes", "touchtrk",
-                                 "pl2_bydeadwire", "proxtrkdist"):
+                    for name in ("energy", "dx", "dw", "nplanes", "pl2_bydeadwire"):
                         base[f"blip_{name}"].append(blips[name][j])
+                    # isolation: donor cosmics + this event's own neutrino tracks
+                    d_tgt = _distance_to_segments(np.array([x, y, z]), trk_starts, trk_ends)
+                    base["blip_proxtrkdist"].append(min(float(blips["proxtrkdist"][j]), d_tgt))
+                    base["blip_touchtrk"].append(bool(blips["touchtrk"][j]) or d_tgt < TOUCH_TRACK_DIST_CM)
+                    n_blips_near_target_trk += d_tgt <= 15.0
 
         for c in BLIP_AUG_COLUMNS:
             aug_lists[c].append(np.asarray(base[c]))
@@ -519,7 +574,8 @@ def build_deexadded_blip_lists(df):
           f"({n_inelig} skipped by design: COH / nu-e / no GENIE truth), "
           f"{n_with_gamma} with >= 1 photon "
           f"({100.0 * n_with_gamma / max(n_matched, 1):.1f}% of matched), "
-          f"{sum(bk_n_injected)} photons and {sum(bk_n_blips)} blips injected")
+          f"{sum(bk_n_injected)} photons and {sum(bk_n_blips)} blips injected "
+          f"({n_blips_near_target_trk} within 15 cm of a target neutrino track)")
     if n_failed:
         print(f"    WARNING: {n_failed} eligible events found no MARLEY library "
               f"match (match_level == -2) — this should not happen")
