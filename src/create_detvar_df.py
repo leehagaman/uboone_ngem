@@ -15,7 +15,7 @@ from ntuple_variables.variables import blip_vars, pandora_vars, glee_vars, lante
 from postprocessing import do_orthogonalization_and_POT_weighting, add_extra_true_photon_variables, do_spacepoint_postprocessing, add_signal_categories
 from postprocessing import do_wc_postprocessing, do_pandora_postprocessing, do_lantern_postprocessing, do_combined_postprocessing, do_glee_postprocessing
 from pelee_nue_selection import add_pelee_nue_selections
-from postprocessing import add_afro_1mu1p_sel, _config_total_goal_pots
+from postprocessing import add_afro_1mu1p_sel, _config_total_goal_pots, _compute_config_pot_dics, _orthogonalization_masks
 from coh_1g_reweighting import coherent_1g_bin_index
 from blip_postprocessing import do_blip_postprocessing
 from postprocessing import remove_vector_variables
@@ -128,15 +128,6 @@ def _detailed_run_period_from_filename(filename):
         return "5"
     else:
         raise ValueError("Invalid detailed run period!", filename)
-
-
-def _is_temporarily_skipped(filename):
-    """TEMPORARY: the v10_04_07_19 run 4d nu_overlay DetVar files have a misaligned
-    singlephotonana/vertex_tree (re-confirmed 2026-09-03: only 97.5% of entries match T_eval,
-    first mismatch at entry 19273), and assert_ntuple_trees_aligned would refuse them anyway.
-    Remove this skip once fixed run 4d files replace them in download_input_files.sh."""
-    return (_filetype_from_filename(filename) == "nu_overlay"
-            and ("4d.root" in filename or "run4d" in filename.lower()))
 
 
 def _get_file_metadata(filename, frac_events=1):
@@ -447,6 +438,109 @@ def convert_iso1g_to_nc_coh_1g(all_df, pot_dic, weight_configs, iso1g_cv_generat
     return all_df
 
 
+# ── Run-period coverage of the DetVar samples ───────────────────────────────────
+# Not every DetVar sample exists in every run period (e.g. nu_overlay DetVar only for
+# runs 1, 3, 4d and 5).  The POT weighting only weights a sample in the periods where it
+# has a CV file, so truth classes covered only by a sparse sample would be
+# under-represented relative to classes with a complete dedicated sample, skewing the
+# composition the fractional DetVar covariance is averaged over.
+# apply_detvar_run_period_coverage_scaling gives each uncovered normalizing run period's
+# goal POT to the covered periods of the same detector era, using the finest era
+# grouping that has a covered period (then coarser ones).
+DETVAR_ERA_LEVELS = [
+    {"1": "1", "2": "2", "3": "3", "4a": "4", "4nota": "4", "5": "5"},
+    {"1": "1", "2": "2-3", "3": "2-3", "4a": "4", "4nota": "4", "5": "5"},
+    {"1": "1-3", "2": "1-3", "3": "1-3", "4a": "4-5", "4nota": "4-5", "5": "4-5"},
+    {"1": "all", "2": "all", "3": "all", "4a": "all", "4nota": "all", "5": "all"},
+]
+# truth class -> the samples (pot_dic filetypes) that can provide it (see
+# postprocessing._orthogonalization_masks)
+DETVAR_CLASS_SAMPLES = {
+    "nc_delta_rad": ["nu_overlay", "ncdeltarad_overlay"],
+    "nc_1pi0": ["nu_overlay", "nc_pi0_overlay"],
+    "nue_cc": ["nu_overlay", "nue_overlay"],
+    "numucc_pi0": ["nu_overlay", "numucc_pi0_overlay"],
+    "nu_overlay_other": ["nu_overlay"],
+    "nc_coherent_1g": ["isotropic_one_gamma_overlay"],
+}
+
+
+def _detvar_truth_class_expr():
+    masks = _orthogonalization_masks()
+    return (
+        pl.when(pl.col("filetype") == "NC_coherent_1g_reweighted").then(pl.lit("nc_coherent_1g"))
+        .when(masks["ncdeltarad_overlay_true_nc_delta_rad"] | masks["nu_overlay_true_nc_delta_rad"]).then(pl.lit("nc_delta_rad"))
+        .when(masks["nc_pi0_overlay_true_nc_1pi0"] | masks["nu_overlay_true_nc_1pi0"]).then(pl.lit("nc_1pi0"))
+        .when(masks["nue_overlay_true_nue_cc"] | masks["nu_overlay_true_nue_cc"]).then(pl.lit("nue_cc"))
+        .when(masks["numucc_pi0_overlay_true_numucc_pi0"] | masks["nu_overlay_true_numucc_pi0"]).then(pl.lit("numucc_pi0"))
+        .when(masks["nu_overlay_other"]).then(pl.lit("nu_overlay_other"))
+        .otherwise(pl.lit(None, dtype=pl.String))
+    )
+
+
+def detvar_run_period_coverage_factors(pot_dic, config):
+    """{(truth class, normalizing_run_period): weight factor} for one DetVar weight config.
+
+    A normalizing run period is covered for a class if any of the class's samples has a
+    CV file (a pot_dic entry) mapped to it by this config.  Each uncovered period's goal
+    POT is shared among the covered periods of its era (finest DETVAR_ERA_LEVELS level
+    with a covered period) in proportion to their goal POT, so a covered period q gets
+    factor 1 + sum_u goal(u) / goal(covered periods in u's era).  This assumes a missing
+    period looks like the covered periods of the same era, in both event rate per POT
+    and detector-variation effect."""
+    _, goal, _ = _compute_config_pot_dics(pot_dic, config)
+    rpm = config["run_period_map"]
+    factors = {}
+    for cls, samples in DETVAR_CLASS_SAMPLES.items():
+        covered = {rpm[drp] for (ft, drp) in pot_dic if ft in samples and drp in rpm}
+        f = {p: 1.0 for p in covered}
+        for u in goal:
+            if u in covered or goal[u] <= 0:
+                continue
+            for level in DETVAR_ERA_LEVELS:
+                group = [q for q in covered if level[q] == level[u]]
+                if group:
+                    group_goal = sum(goal[q] for q in group)
+                    for q in group:
+                        f[q] += goal[u] / group_goal
+                    break
+        for p, v in f.items():
+            factors[(cls, p)] = v
+    return factors
+
+
+def apply_detvar_run_period_coverage_scaling(all_df, pot_dic, weight_configs):
+    """Scale each DetVar weight column by detvar_run_period_coverage_factors, per truth
+    class and normalizing run period, so every class represents the full goal exposure
+    (see the comment above DETVAR_ERA_LEVELS).  Must run after the POT weighting and
+    convert_iso1g_to_nc_coh_1g (it uses the normalizing_run_period_<config> columns and
+    the NC_coherent_1g_reweighted filetype)."""
+    print("scaling DetVar weights for run-period coverage (per truth class and detector era)...")
+    all_df = all_df.with_columns(_detvar_truth_class_expr().alias("_detvar_class"))
+    for c in weight_configs:
+        wc, nrp_col = c["weight_col"], f"normalizing_run_period_{c['name']}"
+        factors = detvar_run_period_coverage_factors(pot_dic, c)
+        for cls in DETVAR_CLASS_SAMPLES:
+            row = {p: round(v, 4) for (k, p), v in sorted(factors.items()) if k == cls}
+            print(f"  {wc} {cls:<17} {row}")
+        n_unclassified = all_df.filter(pl.col(wc).is_not_null() & pl.col("_detvar_class").is_null()).height
+        if n_unclassified:
+            raise ValueError(f"{n_unclassified} weighted DetVar rows have no truth class for the run-period "
+                             "coverage scaling (a filetype missing from DETVAR_CLASS_SAMPLES?)")
+        fac_df = pl.DataFrame({"_detvar_class": [k for (k, _) in factors],
+                               nrp_col: [p for (_, p) in factors],
+                               "_cov_factor": list(factors.values())},
+                              schema={"_detvar_class": pl.String, nrp_col: all_df.schema[nrp_col],
+                                      "_cov_factor": pl.Float64})
+        all_df = all_df.join(fac_df, on=["_detvar_class", nrp_col], how="left", maintain_order="left")
+        missing = all_df.filter(pl.col(wc).is_not_null() & pl.col("_cov_factor").is_null())
+        if missing.height:
+            raise ValueError(f"{missing.height} weighted DetVar rows in {wc} have no coverage factor: "
+                             f"{missing.group_by('_detvar_class', nrp_col).len().to_dicts()}")
+        all_df = all_df.with_columns((pl.col(wc) * pl.col("_cov_factor")).cast(all_df.schema[wc]).alias(wc)).drop("_cov_factor")
+    return all_df.drop("_detvar_class")
+
+
 def _drop_unweighted_coherent_expr():
     """Keep-expression dropping NC_coherent_1g_reweighted DetVar rows with no weight in
     either CV group (see convert_iso1g_to_nc_coh_1g)."""
@@ -503,11 +597,6 @@ if __name__ == "__main__":
             continue
 
         if not "detvar" in filename.lower():
-            continue
-
-        if _is_temporarily_skipped(filename):
-            print(f"TEMPORARY, SKIPPING RUN 4D NU_OVERLAY DETVAR, "
-                  f"MISALIGNED singlephotonana/vertex_tree RSE! ({filename})")
             continue
 
         print(f"loading {filename}...")
@@ -680,9 +769,10 @@ if __name__ == "__main__":
     # and keeps the relative nu_overlay / nue_overlay weighting right within a period
     # (both are scaled to the same goal; the summed-POT denominators for the shared
     # true-nueCC class are handled by the orthogonalization).  An explicit goal also
-    # means a period that has nue_overlay but no nu_overlay DetVar (currently 4nota,
-    # while run 4d nu_overlay is skipped) still gets a non-zero weight; postprocessing
-    # raises if any weighted period ends up with a zero goal POT.
+    # means a period that has nue_overlay but no nu_overlay DetVar (e.g. run 2) still
+    # gets a non-zero weight; postprocessing raises if any weighted period ends up with
+    # a zero goal POT.  The truth classes those periods miss are made up afterwards by
+    # apply_detvar_run_period_coverage_scaling.
     #
     # There is one weight config per DetVar CV group (see df_helpers.detvar_weight_col):
     # each event's weight is goal POT / the POT of the CV files in its own group, so a
@@ -733,6 +823,11 @@ if __name__ == "__main__":
     # iso1g DetVar rows -> NC_coherent_1g_reweighted rows (the raw iso1g sample is not part
     # of any prediction, so none of its rows are kept with their POT weights)
     all_df = convert_iso1g_to_nc_coh_1g(all_df, pot_dic, detvar_weight_configs, iso1g_cv_generated)
+    gc.collect()
+
+    # give every truth class the full goal exposure despite run periods without DetVar
+    # files for its samples (per-era approximation, see DETVAR_ERA_LEVELS)
+    all_df = apply_detvar_run_period_coverage_scaling(all_df, pot_dic, detvar_weight_configs)
     gc.collect()
 
     all_df = add_signal_categories(all_df)

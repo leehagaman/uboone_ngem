@@ -128,7 +128,7 @@ FILES_TO_COPY=(
 
     # DetVar files
 
-    # nu_overlay DetVar, runs 1-5 (no run 2) (one run 3 file missing)
+    # nu_overlay DetVar, runs 1-5 (no run 2)
     # CV
     "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run1/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_cv_13a_surprise_reco2_hist_1.root"
     "/pnfs/uboone/persistent/users/uboonepro/surprise/detvar/BNB/run3/checkout_DetVar_Run123_v10_04_07_23_BNB_nu_overlay_cv_13a_surprise_reco2_hist_3.root"
