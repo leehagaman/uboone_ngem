@@ -146,11 +146,13 @@ def make_objective(args, dtrain, dval, num_categories, y_val, w_phys_val, prior_
             "learning_rate": learning_rate,
             # ranges widened 2026-10-26: the best hp_2026_10_25 trials were at the edges of the old ranges
             # (max_depth 2-10, colsample_bytree 0.5-1, min_child_weight 0.1-1e3, reg_lambda 1e-3-100, reg_alpha 1e-4-10)
-            "max_depth": trial.suggest_int("max_depth", 2, 14),
+            # widened again 2026-11-26: the best hp_2026_11_23 trial had max_depth 14 (old max) and reg_lambda 874
+            # (old max 1e3); now max_depth 2-20, reg_lambda 1e-3-1e4
+            "max_depth": trial.suggest_int("max_depth", 2, 20),
             "subsample": trial.suggest_float("subsample", 0.5, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.2, 1.0),
             "min_child_weight": trial.suggest_float("min_child_weight", 0.1, 1e4, log=True),
-            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 1e3, log=True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 1e4, log=True),
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 1e3, log=True),
         }
 
