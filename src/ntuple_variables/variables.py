@@ -99,6 +99,7 @@ vector_columns = [
     "wc_Trecchargeblob_spacepoints_x",
     "wc_Trecchargeblob_spacepoints_y",
     "wc_Trecchargeblob_spacepoints_z",
+    "wc_Trecchargeblob_spacepoints_real_cluster_id",
 
     "wc_WCPMTInfoPePred",
     "wc_WCPMTInfoPeMeas",

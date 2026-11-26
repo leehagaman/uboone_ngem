@@ -144,6 +144,7 @@ wc_T_spacepoints_vars = [
     "Trecchargeblob_spacepoints_y",
     "Trecchargeblob_spacepoints_z",
     #"Trecchargeblob_spacepoints_q",
+    "Trecchargeblob_spacepoints_real_cluster_id",  # == wc_reco_id; for the wc_2shw_pca_* shower PCA
 ]
 
 # These are only available if the run_wcanatree.fcl ntuple making was ran with these options:
