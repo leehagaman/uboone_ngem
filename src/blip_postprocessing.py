@@ -104,11 +104,32 @@ def is_backtracked_blip(dist2vtx, cos_angle_sh):
             (dist2vtx < 25.0 and bwd_cos > cos_11))
 
 
-def reco_proton_blip(blip_energy, blip_dx, blip_dw, filetype):
-    if filetype == "data" or filetype == "ext":
-        a1, a2 = 1.72, 2.08
-    else:
-        a1, a2 = 1.69, 2.64
+# Minimum reco blip energy for the proton tag.  NOTE: this goes beyond the standard
+# blip proton ID used in past blip analyses (which had no energy cut).  Without it the
+# curve below tags essentially every low-energy blip: its right-hand side is negative
+# (always passing) for E < 1/a2 (0.38 MeV MC, 0.48 MeV data) and still ~0 just above,
+# so MC tagged ~100% of blips up to ~0.5 MeV.  From MC truth (run 5 nu_overlay,
+# quality-passing blips, 2026-11-25) a 1 MeV cut keeps 82% of the proton efficiency
+# (0.371 vs 0.455) while the mistag rate of truth-matched non-proton blips drops from
+# 22% to 1.1% and the purity rises from 6% to 52%.
+PROTON_BLIP_MIN_ENERGY_MEV = 1.0
+
+
+def reco_proton_blip(blip_energy, blip_dx, blip_dw, filetype, blip_true_g4id):
+    """Blip proton tag: E >= PROTON_BLIP_MIN_ENERGY_MEV and E/ds > a1 * ln(a2 * E).
+
+    The (a1, a2) parameters differ between real and simulated deposits, from
+    low-energy blip calibrations that found data/MC differences.  They are chosen
+    by the deposit's origin, not the file type: real data and EXT use the data
+    parameters, and so do the overlaid real-data blips in MC overlay files (no truth
+    match, blip_true_g4id < 0; ~92% of quality-passing blips in a nu_overlay event).
+    Only truth-matched simulated blips (blip_true_g4id >= 0, including the injected
+    de-excitation donor blips) use the MC parameters.
+    """
+    simulated = (filetype not in ("data", "ext")) and blip_true_g4id >= 0
+    a1, a2 = (1.69, 2.64) if simulated else (1.72, 2.08)
+    if blip_energy < PROTON_BLIP_MIN_ENERGY_MEV:
+        return False
     blip_ds = np.sqrt(blip_dx**2 + blip_dw**2)
     return blip_energy / blip_ds > a1 * np.log(a2 * blip_energy)
 
@@ -301,6 +322,7 @@ def do_blip_postprocessing(df):
     all_blip_touchtrk      = df["blip_touchtrk"].to_numpy()
     all_blip_pl2_bydeadwire = df["blip_pl2_bydeadwire"].to_numpy()
     all_blip_proxtrkdist   = df["blip_proxtrkdist"].to_numpy()
+    all_blip_true_g4id     = df["blip_true_g4id"].to_numpy()
 
     sphere_n                            = []
     sphere_sumE                         = []
@@ -341,6 +363,7 @@ def do_blip_postprocessing(df):
         blip_touchtrk_ev      = all_blip_touchtrk[event_index]
         blip_pl2_bydeadwire_ev = all_blip_pl2_bydeadwire[event_index]
         blip_proxtrkdist_ev   = all_blip_proxtrkdist[event_index]
+        blip_true_g4id_ev     = all_blip_true_g4id[event_index]
         ev_filetype = filetype[event_index]
 
         ev_sphere_n                            = 0;  ev_sphere_sumE                         = 0.0
@@ -415,7 +438,8 @@ def do_blip_postprocessing(df):
                 continue
 
             # Passed sphere selection
-            is_proton = reco_proton_blip(energy, blip_dxs_ev[blip_index], blip_dws_ev[blip_index], ev_filetype)
+            is_proton = reco_proton_blip(energy, blip_dxs_ev[blip_index], blip_dws_ev[blip_index], ev_filetype,
+                                         blip_true_g4id_ev[blip_index])
             ev_sphere_n    += 1
             ev_sphere_sumE += energy
             if is_proton:
@@ -620,6 +644,7 @@ def do_blip_postprocessing(df):
         blip_touchtrk_ev       = all_blip_touchtrk[event_index]
         blip_pl2_bydeadwire_ev = all_blip_pl2_bydeadwire[event_index]
         blip_proxtrkdist_ev    = all_blip_proxtrkdist[event_index]
+        blip_true_g4id_ev      = all_blip_true_g4id[event_index]
         ev_filetype = filetype[event_index]
 
         passing_blips = []  # list of (blip_xyz, energy, is_proton)
@@ -639,7 +664,8 @@ def do_blip_postprocessing(df):
                 if not is_blip_in_tpc(bx, by, bz):
                     continue
                 energy = blip_energies[blip_index]
-                is_proton = reco_proton_blip(energy, blip_dxs_ev[blip_index], blip_dws_ev[blip_index], ev_filetype)
+                is_proton = reco_proton_blip(energy, blip_dxs_ev[blip_index], blip_dws_ev[blip_index], ev_filetype,
+                                             blip_true_g4id_ev[blip_index])
                 passing_blips.append((np.array([bx, by, bz], dtype=np.float64), energy, is_proton))
 
         # Process each vertex hypothesis
@@ -803,7 +829,7 @@ def do_blip_postprocessing(df):
 # it here (a missing column fails loudly with a KeyError).
 POSTPROCESSING_INPUT_COLUMNS = [
     "blip_x", "blip_y", "blip_z", "blip_energy", "blip_dx", "blip_dw",
-    "blip_nplanes", "blip_touchtrk", "blip_pl2_bydeadwire", "blip_proxtrkdist",
+    "blip_nplanes", "blip_touchtrk", "blip_pl2_bydeadwire", "blip_proxtrkdist", "blip_true_g4id",
     "filetype",
     "wc_reco_showerMomentum", "wc_reco_showervtxX", "wc_reco_showervtxY", "wc_reco_showervtxZ",
     "wc_reco_nuvtxX", "wc_reco_nuvtxY", "wc_reco_nuvtxZ",

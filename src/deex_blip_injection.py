@@ -131,7 +131,11 @@ NEUTRON_MASS_GEV = 0.939565422
 BLIP_AUG_COLUMNS = [
     "blip_x", "blip_y", "blip_z", "blip_energy", "blip_dx", "blip_dw",
     "blip_nplanes", "blip_touchtrk", "blip_pl2_bydeadwire", "blip_proxtrkdist",
+    "blip_true_g4id",
 ]
+# blip_true_g4id given to injected blips: the donor library keeps only truth-matched
+# (simulated) blips, and reco_proton_blip only checks g4id >= 0 to use the MC parameters
+INJECTED_BLIP_TRUE_G4ID = 0
 # offsets are stored relative to the donor photon origin; positions are
 # rebuilt at injection time
 _ISO1G_BLIP_FIELDS = ["off_x", "off_y", "off_z", "energy", "dx", "dw",
@@ -554,6 +558,7 @@ def build_deexadded_blip_lists(df):
                     d_tgt = _distance_to_segments(np.array([x, y, z]), trk_starts, trk_ends)
                     base["blip_proxtrkdist"].append(min(float(blips["proxtrkdist"][j]), d_tgt))
                     base["blip_touchtrk"].append(bool(blips["touchtrk"][j]) or d_tgt < TOUCH_TRACK_DIST_CM)
+                    base["blip_true_g4id"].append(INJECTED_BLIP_TRUE_G4ID)
                     n_blips_near_target_trk += d_tgt <= 15.0
 
         for c in BLIP_AUG_COLUMNS:
