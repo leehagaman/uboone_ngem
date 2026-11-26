@@ -61,14 +61,23 @@ ext_pot_normalizing_period = {
 # (runs 4b/4c/4d/4bcd combined), "5".
 # from DocDB 41725
 # will change when we have full data files
-expected_full_dataset_data_POT = {
+expected_full_dataset_data_POT_by_detailed_period = {
     "1":  1.67e20+5.89e19+8.93e19, # run 1, run 1A open trigger, run 1B open trigger
     "2":  2.61e20,
     "3":  2.57e20,
     "4a": 4.50e19,
-    "4nota": 1.36e20+8.95e19+4.93e19, # run 4b, run 4c, run 4d
+    "4b": 1.36e20,
+    "4c": 8.95e19,
+    "4d": 4.93e19,
     "5":  1.48e20,
 }
+_full = expected_full_dataset_data_POT_by_detailed_period
+expected_full_dataset_data_POT = {
+    "1": _full["1"], "2": _full["2"], "3": _full["3"], "4a": _full["4a"],
+    "4nota": _full["4b"] + _full["4c"] + _full["4d"],
+    "5": _full["5"],
+}
+del _full
 
 # Fullosc (numu->nue full-oscillation) sample POT, by detailed_run_period.  This
 # sample was created by matching numu and nue events from different files, so its

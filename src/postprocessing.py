@@ -14,6 +14,7 @@ from signal_categories import filetype_category_queries, filetype_category_label
 from signal_categories import erin_category_queries, erin_category_labels
 
 from file_locations import intermediate_files_location
+from pot_and_trigger_numbers import expected_full_dataset_data_POT_by_detailed_period
 
 from pi0_dalitz_reweighting import get_dalitz_rest_frame_observables
 
@@ -4072,44 +4073,56 @@ def _config_total_goal_pots(pot_dic, weight_configs):
     return totals
 
 
-def _data_pot_per_detailed_period(pot_dic):
-    """Return {detailed_run_period: summed beam-on data POT} from pot_dic."""
-    out = defaultdict(float)
-    for (ft, drp), v in pot_dic.items():
-        if ft == "data":
-            out[drp] += v
-    return dict(out)
-
-
 def _spread_run_period_series(n_rows, pot_dic, weight_configs, seed):
-    """Randomly assign each of n_rows events ONE detailed_run_period ∝ beam-on data POT.
+    """Spread n_rows events of a sample normalized to the full exposure over run periods.
 
-    Used for the samples that are normalized to each config's FULL goal POT with a
-    period-independent weight (the derived coherent-1g rows and the dedicated
-    rad-corr simulation): a single copy of each event is kept (duplicating
-    into every run period would undercount the per-bin MC variance), so the runs-1-5
-    total is exact and only the per-run split carries Monte-Carlo noise.
+    Used for the derived coherent-1g rows and the dedicated rad-corr simulation, whose
+    events come from one run period's files but should cover runs 1-5.  A single copy
+    of each event is kept (duplicating into every run period would undercount the
+    per-bin MC variance): each event is randomly assigned ONE detailed_run_period in
+    proportion to the expected full-dataset POT of that period
+    (expected_full_dataset_data_POT_by_detailed_period), i.e. the physical exposure,
+    independent of which open-data / fake-data files exist.
 
-    Returns the list of Series to set: detailed_run_period plus, per config,
-    normalizing_run_period_<name> (via its run_period_map) and norm_goal_pot_<name>
-    (that period's goal POT, or null where the period is unmapped in the config).
+    Each config then normalizes these rows like any other overlay: the n_g rows that
+    land in normalizing group g of the config are treated as carrying the fraction
+    n_g / n_rows of the sample, so their scale is goal_c(g) * n_rows / n_g and every
+    group's total matches its own goal POT (in expectation over the per-event base
+    weights).  Rows in a detailed period the config does not map get a null
+    normalizing period, goal and scale (-> null weight), as for every other sample.
+
+    Returns (series, scales): series is the list of Series to set (detailed_run_period
+    plus, per config, normalizing_run_period_<name> and norm_goal_pot_<name>); scales
+    maps config name -> numpy array of goal_c(g) * n_rows / n_g (NaN where unmapped).
+    The caller turns a scale into a weight: (per-POT weight) * scale.
     """
-    data_pot_per_period = _data_pot_per_detailed_period(pot_dic)
-    det_periods = list(data_pot_per_period.keys())
-    det_pots = np.array([data_pot_per_period[d] for d in det_periods], dtype=float)
+    periods = list(expected_full_dataset_data_POT_by_detailed_period.keys())
+    pots = np.array([expected_full_dataset_data_POT_by_detailed_period[d] for d in periods], dtype=float)
     rng = np.random.default_rng(seed)
-    idx = rng.choice(len(det_periods), size=n_rows, p=det_pots / det_pots.sum())
-    det_arr = [det_periods[i] for i in idx]
+    det_arr = np.array(periods, dtype=object)[rng.choice(len(periods), size=n_rows, p=pots / pots.sum())]
 
-    out = [pl.Series("detailed_run_period", det_arr, dtype=pl.String)]
+    series = [pl.Series("detailed_run_period", det_arr.tolist(), dtype=pl.String)]
+    scales = {}
     for config in weight_configs:
         name = config["name"]
         goal_dic = _compute_config_pot_dics(pot_dic, config)[1]
-        nrp_arr = [config["run_period_map"].get(d) for d in det_arr]
-        goal_arr = [goal_dic.get(nrp) if nrp is not None else None for nrp in nrp_arr]
-        out.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr, dtype=pl.String))
-        out.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64))
-    return out
+        nrp_arr = np.array([config["run_period_map"].get(d) for d in det_arr], dtype=object)
+        scale = np.full(n_rows, np.nan)
+        goal_arr = np.full(n_rows, np.nan)
+        for nrp, goal in goal_dic.items():
+            in_g = nrp_arr == nrp
+            n_g = int(in_g.sum())
+            if n_g == 0:
+                if goal > 0:
+                    raise ValueError(f"config '{name}': no spread rows landed in normalizing run period {nrp} "
+                                     f"(goal POT {goal:.3e}) out of {n_rows}; cannot normalize that group")
+                continue
+            scale[in_g] = goal * n_rows / n_g
+            goal_arr[in_g] = goal
+        series.append(pl.Series(f"normalizing_run_period_{name}", nrp_arr.tolist(), dtype=pl.String))
+        series.append(pl.Series(f"norm_goal_pot_{name}", goal_arr, dtype=pl.Float64, nan_to_null=True))
+        scales[name] = scale
+    return series, scales
 
 
 def apply_rad_corr_sim_normalization(df, pot_dic, weight_configs, seed=34567):
@@ -4124,12 +4137,13 @@ def apply_rad_corr_sim_normalization(df, pot_dic, weight_configs, seed=34567):
 
     The sample exists only in run 5, so do_orthogonalization_and_POT_weighting can only
     scale it to the run-5 normalizing group's goal POT.  It should instead cover runs 1-5,
-    so every row's net weight is replaced by
+    so each event is randomly assigned ONE detailed_run_period ∝ expected full-dataset
+    POT and every row's net weight is replaced by
 
-        weight_cv_weight_spline * (config total goal POT) / (sample POT)
+        weight_cv_weight_spline * goal_c(g) / (sample POT * n_g / n)
 
-    and each event is randomly assigned ONE detailed_run_period ∝ beam-on data POT
-    (_spread_run_period_series).  Call after apply_rootino_correction: the sample's
+    for the normalizing group g its period falls in (null where the config does not map
+    the period); see _spread_run_period_series.  Call after apply_rootino_correction: the sample's
     ROOTino events are valid run-5 events, so they get no runs-1-3 zeroing and no
     runs-4-5 rescale (pre_rootino_<weight_col> is set to the same new weight).  The
     per-event pi0-Dalitz and hA2025 factors are folded in later, as for every sample.
@@ -4144,16 +4158,15 @@ def apply_rad_corr_sim_normalization(df, pot_dic, weight_configs, seed=34567):
     sim_pot = sum(v for (ft, _drp), v in pot_dic.items() if ft == "numucc_rad_corr_sim")
     if sim_pot <= 0:
         raise ValueError("numucc_rad_corr_sim events present but no POT for it in pot_dic!")
-    total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
     print(f"normalizing {n_sim} numucc_rad_corr_sim events: sample POT = {sim_pot:.4e}, "
-          f"per-config total goal POT = {total_goal_pots}")
+          f"per-config total goal POT = {_config_total_goal_pots(pot_dic, weight_configs)}")
 
     sim_df = df.filter(is_sim)
-    new_series = _spread_run_period_series(sim_df.height, pot_dic, weight_configs, seed)
+    new_series, scales = _spread_run_period_series(sim_df.height, pot_dic, weight_configs, seed)
     for config in weight_configs:
         wcol = config["weight_col"]
-        weight = (sim_df["weight_cv_weight_spline"].cast(pl.Float64)
-                  * (total_goal_pots[config["name"]] / sim_pot)).cast(pl.Float32)
+        weight = pl.Series(wcol, sim_df["weight_cv_weight_spline"].cast(pl.Float64).to_numpy()
+                           * scales[config["name"]] / sim_pot, nan_to_null=True).cast(pl.Float32)
         new_series.append(weight.alias(wcol))
         if f"pre_rootino_{wcol}" in sim_df.columns:
             new_series.append(weight.alias(f"pre_rootino_{wcol}"))
@@ -4173,16 +4186,16 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     compute_nc_coh_1g_reweighting first to (re)generate that parquet from the
     central sample.
 
-    The saved weight is POT-independent (events per POT).  For each weighting
-    config the final per-event net weight is coherent_1g_weight_per_pot times that
-    config's total goal POT, so each config's coherent contribution is normalized
-    to its own full exposure.  Like the rad-corr simulation, each appended event is then
-    randomly assigned ONE detailed_run_period in proportion to the per-period beam-on
-    data POT -- rather than inheriting the parent iso1g run-4-5 period -- so the
-    coherent contribution is spread across runs 1-5 consistently with it.  The
-    weight is period-independent (it uses the full goal POT), so the runs-1-5 total is
-    exact and only the per-run split carries Monte-Carlo noise; norm_goal_pot_<config>
-    and normalizing_run_period_<config> are reset to match the reassigned period.
+    The saved weight is POT-independent (events per POT).  Like the rad-corr
+    simulation, each appended event is randomly assigned ONE detailed_run_period in
+    proportion to the expected full-dataset POT -- rather than inheriting the parent
+    iso1g run period -- and for each weighting config its net weight is
+    coherent_1g_weight_per_pot * goal_c(g) * n / n_g, where g is the config's
+    normalizing group for that period and n_g / n the fraction of the coherent rows
+    landing in g (null where the config does not map the period).  Each group's
+    coherent total then matches its own goal POT; norm_goal_pot_<config> and
+    normalizing_run_period_<config> are reset to match the reassigned period.  See
+    _spread_run_period_series.
 
     Accepts either an eager DataFrame or a LazyFrame.
 
@@ -4202,8 +4215,7 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
     )
     print("  coherent_weights parquet queued for lazy scan")
 
-    total_goal_pots = _config_total_goal_pots(pot_dic, weight_configs)
-    print(f"  coherent per-config total goal POT: {total_goal_pots}")
+    print(f"  coherent per-config total goal POT: {_config_total_goal_pots(pot_dic, weight_configs)}")
 
     lf = df if is_lazy else df.lazy()
 
@@ -4211,12 +4223,6 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
         lf.filter(pl.col("filetype") == "isotropic_one_gamma_overlay")
         # inner join: events in empty coherent bins are dropped
         .join(coherent_weights_lf, on=["run", "subrun", "event"], how="inner")
-        .with_columns([
-            # one net-weight column per config: per-POT weight * that config's total goal POT
-            (pl.col("coherent_1g_weight_per_pot") * total_goal_pots[c["name"]])
-              .cast(pl.Float32).alias(c["weight_col"])
-            for c in weight_configs
-        ])
         .with_columns([
             pl.lit("NC_coherent_1g_reweighted").alias("filetype"),
             pl.lit(False).alias("normal_overlay"),
@@ -4231,19 +4237,20 @@ def apply_nc_coh_1g_reweighting(df, pot_dic, weight_configs, seed=23456):
             pl.lit(14).cast(pl.Int32).alias("wc_truth_nuPdg"),
             pl.lit(False).alias("wc_truth_isCC"),
         ])
-        .drop(["coherent_1g_weight_per_pot", "coherent_1g_true_nuEnergy"])
+        .drop(["coherent_1g_true_nuEnergy"])
     )
 
     def _spread_coherent_run_periods(cdf):
-        """Spread the appended coherent events across run periods like the rad-corr
-        simulation: each event keeps its already-computed full-goal-POT weight but is
-        randomly assigned ONE detailed_run_period ∝ beam-on data POT (instead of
-        inheriting the parent iso1g run-4-5 period).  The weight is period-independent
-        so the runs-1-5 total is unchanged; norm_goal_pot_<config> and
-        normalizing_run_period_<config> are reset to match the reassigned period."""
+        """Assign each appended coherent event ONE detailed_run_period and set its
+        per-config net weight from the per-POT weight (see _spread_run_period_series)."""
         if cdf.height == 0:
-            return cdf
-        return cdf.with_columns(_spread_run_period_series(cdf.height, pot_dic, weight_configs, seed))
+            return cdf.with_columns([pl.lit(None, dtype=pl.Float32).alias(c["weight_col"])
+                                     for c in weight_configs]).drop("coherent_1g_weight_per_pot")
+        series, scales = _spread_run_period_series(cdf.height, pot_dic, weight_configs, seed)
+        w_per_pot = cdf["coherent_1g_weight_per_pot"].cast(pl.Float64).to_numpy()
+        series += [pl.Series(c["weight_col"], w_per_pot * scales[c["name"]], nan_to_null=True).cast(pl.Float32)
+                   for c in weight_configs]
+        return cdf.with_columns(series).drop("coherent_1g_weight_per_pot")
 
     print("  collecting coherent_1g rows...")
     coherent_1g_df = _spread_coherent_run_periods(coherent_1g_lf.collect())
