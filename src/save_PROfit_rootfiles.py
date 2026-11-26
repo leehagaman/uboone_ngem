@@ -44,7 +44,7 @@ import polars as pl
 import xgboost as xgb
 from tqdm import tqdm
 
-from file_locations import intermediate_files_location
+from file_locations import intermediate_files_location, most_recent_bdt_training_run
 from df_helpers import format_duration
 from df_helpers import detvar_weight_col, DETVAR_WEIGHT_COL, DETVAR_SCE_RECOMB2_WEIGHT_COL
 from df_helpers import select_bdt_test_events
@@ -60,7 +60,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Configuration
 # ============================================================================
 
-DEFAULT_TRAINING = "all_vars_2026_11_04"
+DEFAULT_TRAINING = most_recent_bdt_training_run
 
 # Filetypes with no GENIE spline weights that are written with constant unit spline
 # branches (the data role of each study, and EXT when it is part of the prediction).

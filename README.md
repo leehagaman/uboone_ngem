@@ -30,27 +30,38 @@ src/file_locations.py
 
 
 ## Full Re-processing
-To run every step below in one go (create_df, then the rw and detvar systematics in
-parallel, then BDT training; stops at the first failure, each step logging to its usual
+To run everything in one go (stops at the first failure in steps 1-4; each step logs to its usual
 `*_nohup.out` file):
+1. create_df
+2. the rw and detvar systematics, in parallel
+3. hyperparameter tuning: a new study `hp_<YYYY_MM_DD>` starting from the newest
+   `hyperparameter_tuning_outputs/hp_*_best_params.json` (~1 day for 100 trials, `hp_nohup.out`)
+4. BDT training with the tuned hyperparameters; then `most_recent_bdt_training_run` in
+   `src/file_locations.py` (the training that notebooks and `save_PROfit_rootfiles.py` load by
+   default) is set to the new training, and `visualize_multiclass_probs.ipynb` is run on it
+5. clear the systematics cache, then the open data / NuWro / GiBUU distribution notebooks,
+   `efficiencies.ipynb`, `plot_many_variables.py`, and the p-value summary notebook `plot_all_bdt_vars.ipynb`
+   (a failure here is reported and the remaining steps still run)
 
 ```
-nohup bash run_full_reprocessing.sh all_vars_2026_11_21 > reprocess_nohup.out 2>&1 &
+nohup bash run_full_reprocessing.sh > reprocess_nohup.out 2>&1 &
 ```
 
-The argument is the training name (default `all_vars_<YYYY_MM_DD>`). Add `--no_train` to
-skip the BDT training step:
+The optional argument is the training name (default `all_vars_<YYYY_MM_DD>`). The script checks
+at the start that the training name and the tuning study are new. Close the distribution notebooks
+(and `visualize_multiclass_probs.ipynb`, `efficiencies.ipynb`) in Jupyter before it reaches them. Flags (they can be combined):
+- `--no_detvar`: skip `create_detvar_df.py` (the existing detvar df is left untouched)
+- `--no_hp`: skip the tuning; train with the newest existing `hp_*_best_params.json`
+- `--no_train`: skip the tuning and the training (the notebooks/plots then use the existing training)
+- `--no_plots`: skip step 5
 
 ```
-nohup bash run_full_reprocessing.sh --no_train > reprocess_nohup.out 2>&1 &
+nohup bash run_full_reprocessing.sh --no_detvar --no_hp all_vars_2026_11_04 > reprocess_nohup.out 2>&1 &
 ```
 
-Add `--no_detvar` to skip `create_detvar_df.py` (the existing detvar df is left untouched); the
-flags can be combined:
-
-```
-nohup bash run_full_reprocessing.sh --no_detvar all_vars_2026_11_04 > reprocess_nohup.out 2>&1 &
-```
+After it finishes, still to run by hand: the selection overlap plots (`selection_overlaps.ipynb`),
+the blip plots (`deexcitation_blip_checks.ipynb`, `erin_blip_studies.ipynb`), and the PROfit
+workflows (`run_profit.sh`).
 
 
 ## Creating Dataframes

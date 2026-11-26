@@ -2,6 +2,10 @@ data_files_location = "/nevis/riverside/data/leehagaman/ngem/data_files"
 intermediate_files_location = "/nevis/riverside/data/leehagaman/ngem/intermediate_files"
 covariance_cache_location = "/nevis/riverside/data/leehagaman/ngem/intermediate_files/systematics_cache"
 
+# The BDT training (training_outputs/<name>) that notebooks and scripts load by default.
+# run_full_reprocessing.sh rewrites this line after it trains a new BDT.
+most_recent_bdt_training_run = "all_vars_2026_11_21"
+
 tmp_dir = "/nevis/houston/home/leehagaman/uboone_ngem/tmp"
 
 other_files_location = "/nevis/riverside/data/leehagaman/ngem/other_files"
