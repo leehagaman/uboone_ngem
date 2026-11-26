@@ -124,7 +124,10 @@ def _orthogonalization_masks():
     masks["ext"] = is_filetype("ext")
     masks["nuwro"] = is_filetype("nuwro_fake_data")
     masks["gibuu"] = is_filetype("gibuu_fake_data")
-    masks["del1g"] = is_filetype("delete_one_gamma_overlay")
+    # del1g minus its nueCC events (in or out of FV): the sample is used for the 1gamma
+    # NC / numuCC BDT training classes, and a nueCC event with one photon deleted is an
+    # electron + photon event that belongs in neither those classes nor any prediction
+    masks["del1g"] = is_filetype("delete_one_gamma_overlay") & ~(is_cc & is_nue)
     masks["iso1g"] = is_filetype("isotropic_one_gamma_overlay")
     masks["fullosc"] = is_filetype("fullosc_overlay")
     masks["rad_corr_sim"] = is_filetype("numucc_rad_corr_sim")
